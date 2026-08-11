@@ -5,7 +5,7 @@ Use this setup to keep Firestore private while still letting the portal save and
 ## 1. Enable Email/Password Login
 
 1. Open Firebase Console.
-2. Select project `sheshaanglobal-eda84`.
+2. Select the Firebase project connected to this Netlify site.
 3. Go to Authentication > Sign-in method.
 4. Enable Email/Password.
 
