@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { LockKeyhole, LogOut, Loader2 } from 'lucide-react';
+import Image from 'next/image';
+import { LogOut, Loader2 } from 'lucide-react';
 import {
   browserLocalPersistence,
   onAuthStateChanged,
@@ -94,7 +95,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
         <button
           type="button"
           onClick={handleLogout}
-          className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-lg hover:bg-slate-800"
+          className="fixed bottom-24 right-4 z-50 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-lg hover:bg-slate-800 sm:bottom-4"
           title="Logout"
         >
           <LogOut className="h-4 w-4" />
@@ -109,12 +110,12 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <form onSubmit={handleLogin} className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-slate-200 p-6 space-y-5">
         <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-lg bg-slate-900 text-white flex items-center justify-center">
-            <LockKeyhole className="h-5 w-5" />
+          <div className="h-12 w-12 rounded-lg bg-white text-slate-900 flex items-center justify-center border border-slate-200 overflow-hidden shadow-sm">
+            <Image src="/logo.png" alt="Sheshaan Global logo" width={48} height={48} className="h-full w-full object-contain" />
           </div>
           <div>
-            <h1 className="text-lg font-extrabold text-slate-900">Crixy Portal Login</h1>
-            <p className="text-xs text-slate-500">Enter password to open the secure app.</p>
+            <h1 className="text-lg font-extrabold text-slate-900">Sheshaan Global Login</h1>
+            <p className="text-xs text-slate-500">Enter password to open the admin portal.</p>
           </div>
         </div>
 

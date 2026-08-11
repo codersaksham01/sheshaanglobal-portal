@@ -5,7 +5,7 @@ import { Quote, QuoteItem, BankDetails } from '../lib/types';
 // PDF Styling layout
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 24,
+    paddingTop: 22,
     paddingHorizontal: 26,
     paddingBottom: 24,
     fontFamily: 'Helvetica',
@@ -18,16 +18,16 @@ const styles = StyleSheet.create({
   companyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: '#0f766e',
-    paddingBottom: 6,
-    marginBottom: 8,
+    borderBottomWidth: 1.25,
+    borderBottomColor: '#0284c7',
+    paddingBottom: 8,
+    marginBottom: 9,
   },
   logoImage: {
-    width: 76,
-    height: 38,
+    width: 58,
+    height: 48,
     objectFit: 'contain',
-    marginRight: 8,
+    marginRight: 9,
   },
   companyLogoCol: {
     flexDirection: 'column',
@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   companyTitle: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 'bold',
     color: '#0f172a',
   },
@@ -69,6 +69,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
     maxWidth: '42%',
+    backgroundColor: '#f0f9ff',
+    borderRadius: 4,
+    padding: '7 8',
+    borderWidth: 0.75,
+    borderColor: '#bae6fd',
   },
   docHeaderTitle: {
     fontSize: 9,
@@ -93,10 +98,10 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontWeight: 'bold',
     color: '#0f172a',
-    backgroundColor: '#ecfeff',
-    padding: '2.5 6',
+    backgroundColor: '#eff6ff',
+    padding: '3 6',
     borderLeftWidth: 2,
-    borderLeftColor: '#0f766e',
+    borderLeftColor: '#0284c7',
     marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -777,12 +782,12 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {/* Upper Header Block */}
         <View style={styles.companyHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Image src="/logo.jpg" style={styles.logoImage} />
+            <Image src="/logo.png" style={styles.logoImage} />
             <View style={{ marginLeft: 2 }}>
-              <Text style={[styles.companyTitle, { fontSize: 13, textTransform: 'uppercase' }]}>{shipper.company_name}</Text>
+              <Text style={[styles.companyTitle, { textTransform: 'uppercase' }]}>{shipper.company_name}</Text>
               <Text style={styles.companySlogan}>Exporting Goodness Worldwide</Text>
               <Text style={styles.companyMeta}>
-                Registered with: IEC | GST | APEDA | FSSAI
+                IEC | GST | APEDA | FSSAI | Global Export Documentation
               </Text>
             </View>
           </View>

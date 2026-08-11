@@ -19,6 +19,23 @@ export interface Product {
   created_at?: string;
 }
 
+export interface Vendor {
+  id: string;
+  company_name: string;
+  contact_name?: string;
+  contact_email?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
+  product_categories?: string;
+  payment_terms?: string;
+  rating?: number;
+  status: 'Active' | 'Preferred' | 'On Hold';
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface FreightPreset {
   id: string;
   name: string;
@@ -65,6 +82,35 @@ export interface TimelineActivity {
   details?: string;
   activity_date: string;
   owner?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TaskRecord {
+  id: string;
+  title: string;
+  status: 'Open' | 'In Progress' | 'Done';
+  priority: 'Low' | 'Medium' | 'High';
+  due_date?: string;
+  owner?: string;
+  client_id?: string;
+  lead_id?: string;
+  quote_id?: string;
+  invoice_id?: string;
+  shipment_id?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MessageTemplate {
+  id: string;
+  name: string;
+  channel: 'Email' | 'WhatsApp' | 'SMS';
+  category: 'Introduction' | 'Quote Follow-up' | 'Payment Reminder' | 'Shipment Update' | 'Document Sharing' | 'General';
+  subject?: string;
+  body: string;
+  active: boolean;
   created_at?: string;
   updated_at?: string;
 }

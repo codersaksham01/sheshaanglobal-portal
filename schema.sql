@@ -123,3 +123,66 @@ create policy "Allow public write access to quotes" on quotes for all using (tru
 
 create policy "Allow public read access to quote_items" on quote_items for select using (true);
 create policy "Allow public write access to quote_items" on quote_items for all using (true);
+
+-- 6. Tasks & Reminders Table
+create table if not exists tasks (
+    id uuid default gen_random_uuid() primary key,
+    title text not null,
+    status text default 'Open'::text not null check (status in ('Open', 'In Progress', 'Done')),
+    priority text default 'Medium'::text not null check (priority in ('Low', 'Medium', 'High')),
+    due_date date,
+    owner text,
+    client_id uuid references clients(id) on delete set null,
+    lead_id uuid,
+    quote_id uuid references quotes(id) on delete set null,
+    invoice_id uuid,
+    shipment_id uuid,
+    notes text,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 7. Mail & Message Templates Table
+create table if not exists message_templates (
+    id uuid default gen_random_uuid() primary key,
+    name text not null,
+    channel text default 'Email'::text not null check (channel in ('Email', 'WhatsApp', 'SMS')),
+    category text default 'General'::text not null check (category in ('Introduction', 'Quote Follow-up', 'Payment Reminder', 'Shipment Update', 'Document Sharing', 'General')),
+    subject text,
+    body text not null,
+    active boolean default true not null,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table tasks enable row level security;
+alter table message_templates enable row level security;
+
+create policy "Allow public read access to tasks" on tasks for select using (true);
+create policy "Allow public write access to tasks" on tasks for all using (true);
+
+create policy "Allow public read access to message_templates" on message_templates for select using (true);
+create policy "Allow public write access to message_templates" on message_templates for all using (true);
+
+-- 8. Suppliers / Vendors Table
+create table if not exists vendors (
+    id uuid default gen_random_uuid() primary key,
+    company_name text not null,
+    contact_name text,
+    contact_email text,
+    phone text,
+    city text,
+    country text,
+    product_categories text,
+    payment_terms text,
+    rating integer default 3 check (rating >= 1 and rating <= 5),
+    status text default 'Active'::text not null check (status in ('Active', 'Preferred', 'On Hold')),
+    notes text,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table vendors enable row level security;
+
+create policy "Allow public read access to vendors" on vendors for select using (true);
+create policy "Allow public write access to vendors" on vendors for all using (true);

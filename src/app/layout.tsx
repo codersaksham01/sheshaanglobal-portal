@@ -5,8 +5,12 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'CIF Export Document Automation & Management System',
-  description: 'Enterprise-grade automation platform for generating, updating, and exporting CIF Incoterms documents (Quotes, Invoices, and Packing Lists).',
+  title: 'Sheshaan Global Admin Portal',
+  description: 'Connected CRM, quote automation, accounts, tasks, communications, documents, and shipment operations for Sheshaan Global.',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png'
+  }
 };
 
 export default function RootLayout({

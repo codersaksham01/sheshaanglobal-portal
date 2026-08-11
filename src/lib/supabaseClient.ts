@@ -33,12 +33,13 @@ class ServerFileDB {
     const fetchTable = async () => {
       if (typeof window === 'undefined') return { data: [] };
       const response = await fetch(`/api/db?table=${table}`);
+      if (!response.ok) return { data: [], error: { message: 'Could not load records' } };
       return await response.json();
     };
 
     return {
       select: (columns: string = '*') => {
-        const basePromise = fetchTable().then(res => ({ data: res.data, error: null }));
+        const basePromise = fetchTable().then(res => ({ data: res.data || [], error: res.error || null }));
 
         const selectMethods = {
           order: (col: string, { ascending = true } = {}) => {
@@ -49,14 +50,14 @@ class ServerFileDB {
                 if (a[col] > b[col]) return ascending ? 1 : -1;
                 return 0;
               });
-              return { data, error: null };
+              return { data, error: res.error || null };
             });
             return makeChainPromise(orderPromise);
           },
           eq: (col: string, val: any) => {
             const eqPromise = fetchTable().then(res => {
               const data = (res.data || []).filter((r: any) => r[col] === val);
-              return { data, error: null };
+              return { data, error: res.error || null };
             });
 
             const eqMethods = {
@@ -86,7 +87,7 @@ class ServerFileDB {
           body: JSON.stringify(values)
         }).then(res => res.json()).then(res => ({
           data: res.data || [],
-          error: null
+          error: res.error || null
         }));
 
         const insertMethods = {
@@ -120,7 +121,7 @@ class ServerFileDB {
                 body: JSON.stringify(updatedPayload)
               });
               const updateResult = await updateResponse.json();
-              return { data: updateResult.data || [], error: null };
+              return { data: updateResult.data || [], error: updateResult.error || null };
             });
             return makeChainPromise(updatePromise);
           }
@@ -131,12 +132,14 @@ class ServerFileDB {
           eq: (col: string, val: any) => {
             const deletePromise = (async () => {
               if (col === 'id') {
-                await fetch(`/api/db?table=${table}&id=${val}`, { method: 'DELETE' });
+                const response = await fetch(`/api/db?table=${table}&id=${val}`, { method: 'DELETE' });
+                if (!response.ok) return { data: null, error: { message: 'Could not delete record' } };
               } else {
                 const res = await fetchTable();
                 const matches = (res.data || []).filter((r: any) => r[col] === val);
                 for (const m of matches) {
-                  await fetch(`/api/db?table=${table}&id=${m.id}`, { method: 'DELETE' });
+                  const response = await fetch(`/api/db?table=${table}&id=${m.id}`, { method: 'DELETE' });
+                  if (!response.ok) return { data: null, error: { message: 'Could not delete record' } };
                 }
               }
               return { data: null, error: null };
@@ -311,7 +314,6 @@ export const dbType = isSupabaseConfigured
   : isFirebaseConfigured
     ? 'Firebase Cloud Firestore'
     : 'Persistent File-Backed Database (db.json)';
-console.log(`CIF Application running with: ${dbType}`);
 export const isMock = !isSupabaseConfigured && !isFirebaseConfigured;
 export const mockDB = isMock ? (supabase as any) : null;
 export const isFirebase = isFirebaseConfigured && !isSupabaseConfigured;

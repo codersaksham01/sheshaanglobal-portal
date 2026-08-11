@@ -5,6 +5,7 @@ import path from 'path';
 const dbPath = path.join(process.cwd(), 'db.json');
 const emptyDB = {
   clients: [],
+  vendors: [],
   products: [],
   freight_presets: [],
   quotes: [],
@@ -15,8 +16,12 @@ const emptyDB = {
   invoices: [],
   shipments: [],
   document_checklists: [],
+  tasks: [],
+  message_templates: [],
   app_users: []
 };
+
+const allowedTables = new Set(Object.keys(emptyDB));
 
 function readDB() {
   try {
@@ -36,8 +41,10 @@ function readDB() {
 function writeDB(data: any) {
   try {
     fs.writeFileSync(dbPath, JSON.stringify({ ...emptyDB, ...data }, null, 2), 'utf-8');
+    return true;
   } catch (err) {
     console.error('Error writing db.json:', err);
+    return false;
   }
 }
 
@@ -47,6 +54,10 @@ export async function GET(req: NextRequest) {
 
   if (!table) {
     return NextResponse.json({ error: 'Missing table name' }, { status: 400 });
+  }
+
+  if (!allowedTables.has(table)) {
+    return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
   }
 
   const db = readDB();
@@ -95,6 +106,25 @@ export async function POST(req: NextRequest) {
         weight: 1.0,
         dimensions: 'N/A',
         created_at: now
+      }
+    ];
+
+    db.vendors = [
+      {
+        id: 'ven-sg-1',
+        company_name: 'Nagpur Spice Processing Co.',
+        contact_name: 'Operations Desk',
+        contact_email: 'procurement@example.com',
+        phone: '+91 98765 43210',
+        city: 'Nagpur',
+        country: 'India',
+        product_categories: 'Cumin, coriander, fennel, export packing',
+        payment_terms: '30% advance, balance before dispatch',
+        rating: 4,
+        status: 'Preferred',
+        notes: 'Demo preferred supplier for spice processing and packing readiness.',
+        created_at: now,
+        updated_at: now
       }
     ];
 
@@ -325,6 +355,61 @@ export async function POST(req: NextRequest) {
       }
     ];
 
+    db.tasks = [
+      {
+        id: 'task-sg-1',
+        title: 'Follow up on CIF quotation acceptance',
+        status: 'Open',
+        priority: 'High',
+        due_date: now,
+        owner: 'Sana Zeba',
+        client_id: 'client-sg-1',
+        lead_id: 'lead-sg-1',
+        quote_id: 'quote-sg-1',
+        invoice_id: 'inv-sg-1',
+        shipment_id: 'ship-sg-1',
+        notes: 'Confirm buyer feedback and advance payment timeline.',
+        created_at: now,
+        updated_at: now
+      }
+    ];
+
+    db.message_templates = [
+      {
+        id: 'tmpl-sg-1',
+        name: 'Quotation Follow-up',
+        channel: 'Email',
+        category: 'Quote Follow-up',
+        subject: 'Follow-up on {{quote_number}} from Sheshaan Global',
+        body: 'Hi {{buyer_name}},\n\nI hope you are doing well. I am following up on quotation {{quote_number}} for {{product_name}} with CIF value {{total_value}} to {{destination_port}}.\n\nIf this product is still relevant, we can share a revised offer. If your requirement has changed, we can also propose options from our wider export range: {{product_catalogue}}.\n\nRegards,\nSheshaan Global',
+        active: true,
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: 'tmpl-sg-3',
+        name: 'General Buyer Introduction',
+        channel: 'Email',
+        category: 'Introduction',
+        subject: 'Export sourcing support from Sheshaan Global',
+        body: 'Hi {{buyer_name}},\n\nI am reaching out from Sheshaan Global, India.\n\nWe support international buyers with export-ready products including {{product_catalogue}}. If you do not have a specific product requirement right now, we can share our product range, current availability, packing options, and CIF/FOB quotations based on your destination port.\n\nPlease let us know the products or categories {{company_name}} is exploring.\n\nRegards,\nSheshaan Global',
+        active: true,
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: 'tmpl-sg-2',
+        name: 'Shipment Status Update',
+        channel: 'WhatsApp',
+        category: 'Shipment Update',
+        subject: '',
+        body: 'Hello {{buyer_name}}, shipment update for {{quote_number}}: current status is {{shipment_status}}. ETD: {{etd}}, ETA: {{eta}}. We will share documents as soon as they are ready.',
+        active: true,
+        created_at: now,
+        updated_at: now
+      }
+    ];
+
     db.app_users = [
       {
         id: 'usr-sg-1',
@@ -337,17 +422,25 @@ export async function POST(req: NextRequest) {
       }
     ];
 
-    writeDB(db);
+    if (!writeDB(db)) {
+      return NextResponse.json({ error: 'Could not save demo data' }, { status: 500 });
+    }
     return NextResponse.json({ success: true });
   }
 
   if (action === 'clear') {
-    writeDB({ ...emptyDB });
+    if (!writeDB({ ...emptyDB })) {
+      return NextResponse.json({ error: 'Could not clear demo data' }, { status: 500 });
+    }
     return NextResponse.json({ success: true });
   }
 
   if (!table) {
     return NextResponse.json({ error: 'Missing table name' }, { status: 400 });
+  }
+
+  if (!allowedTables.has(table)) {
+    return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
   }
 
   const body = await req.json();
@@ -374,7 +467,9 @@ export async function POST(req: NextRequest) {
   });
 
   db[table] = currentTable;
-  writeDB(db);
+  if (!writeDB(db)) {
+    return NextResponse.json({ error: 'Could not save record' }, { status: 500 });
+  }
 
   return NextResponse.json({ data: insertedOrUpdated });
 }
@@ -388,6 +483,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Missing table name or ID' }, { status: 400 });
   }
 
+  if (!allowedTables.has(table)) {
+    return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
+  }
+
   const db = readDB();
   db[table] = (db[table] || []).filter((r: any) => r.id !== id);
 
@@ -395,6 +494,8 @@ export async function DELETE(req: NextRequest) {
     db.quote_items = (db.quote_items || []).filter((qi: any) => qi.quote_id !== id);
   }
 
-  writeDB(db);
+  if (!writeDB(db)) {
+    return NextResponse.json({ error: 'Could not delete record' }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }
