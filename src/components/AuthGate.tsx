@@ -9,12 +9,12 @@ import {
   signInWithEmailAndPassword,
   signOut
 } from 'firebase/auth';
-import { firebaseAuth, firebaseLoginEmail, isFirebaseConfigured } from '../lib/firebaseClient';
+import { defaultFirebaseLoginEmail, firebaseAuth, isFirebaseConfigured } from '../lib/firebaseClient';
 
 const authStorageKey = 'crixy-authenticated';
 
 export const AuthGate = ({ children }: { children: React.ReactNode }) => {
-  const [email, setEmail] = useState(firebaseLoginEmail);
+  const [email, setEmail] = useState(defaultFirebaseLoginEmail);
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -75,7 +75,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
       await signOut(firebaseAuth);
     }
     window.localStorage.removeItem(authStorageKey);
-    setEmail(firebaseLoginEmail);
+    setEmail(defaultFirebaseLoginEmail);
     setPassword('');
     setIsAuthenticated(false);
   };
@@ -124,7 +124,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="admin@sheshaanglobal.local"
+            placeholder={defaultFirebaseLoginEmail}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
             autoFocus
             required

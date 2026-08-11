@@ -13,10 +13,10 @@ Use this setup to keep Firestore private while still letting the portal save and
 
 Go to Authentication > Users > Add user.
 
-- Email: `admin@sheshaanglobal.local`
-- Password: `Admin@200908`
+- Email: use the portal login email shown on the login screen.
+- Password: use the private password you want for portal access.
 
-The app shows only a password field, but it uses this email internally for Firebase login.
+The app shows the email field prefilled, so create the Firebase user with that same email.
 
 ## 3. Lock Firestore Rules
 
