@@ -1716,9 +1716,9 @@ export const Dashboard: React.FC = () => {
     const nextAction = leadNextAction(lead).toLowerCase();
     if (lead.stage === 'Won' || lead.stage === 'Lost') return 'Closed';
     if (leadMissingEmail(lead) || nextAction.includes('fix') || nextAction.includes('verify email')) return 'Needs Email Fix';
+    if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
     if (leadResponded(lead)) return 'Responded / Qualify';
     if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
-    if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
     if (leadHasOutreach(lead)) return 'Waiting Reply';
     return 'Review';
   };
