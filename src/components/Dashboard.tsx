@@ -1165,29 +1165,62 @@ export const Dashboard: React.FC = () => {
     const query = editingId
       ? supabase.from(table).update(finalPayload).eq('id', editingId)
       : supabase.from(table).insert([finalPayload]).select().single();
-    const { error } = await query as any;
+    const { data, error } = await query as any;
     if (error) {
       alert(error.message || `Failed to save ${table}`);
       return;
     }
 
-    // Sync lead phone update to client
-    if (table === 'leads' && (finalPayload as any).phone) {
-      const leadId = editingId || (finalPayload as any).id;
-      const leadObj = leads.find(l => l.id === leadId);
-      const clientId = (finalPayload as any).client_id || leadObj?.client_id;
-      const leadCompany = (finalPayload as any).company_name || leadObj?.company_name;
-      const client = clients.find(c => (clientId && c.id === clientId) || (leadCompany && c.company_name.toLowerCase() === leadCompany.toLowerCase()));
-      if (client) {
-        if (client.phone !== (finalPayload as any).phone) {
-          await supabase.from('clients').update({
-            company_name: client.company_name,
-            address: client.address || '',
-            contact_name: client.contact_name || '',
-            contact_email: client.contact_email || '',
-            destination_port: client.destination_port,
-            phone: (finalPayload as any).phone
-          }).eq('id', client.id);
+    // Sync CRM lead updates to registered buyer profiles, or automatically create profiles for new leads
+    if (table === 'leads') {
+      const isNew = !editingId;
+      const payloadObj = finalPayload as any;
+      const leadCompany = payloadObj.company_name;
+      
+      if (leadCompany) {
+        const client = clients.find(c => c.company_name.toLowerCase() === leadCompany.toLowerCase());
+        
+        if (isNew) {
+          const insertedLead = Array.isArray(data) ? data[0] : data;
+          const leadId = insertedLead?.id || payloadObj.id;
+          
+          if (!client) {
+            const newClientId = `client-sg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+            const newClientPayload = {
+              id: newClientId,
+              company_name: payloadObj.company_name,
+              contact_name: payloadObj.contact_name || '',
+              contact_email: payloadObj.contact_email || '',
+              destination_port: payloadObj.country || 'Not specified',
+              address: payloadObj.country ? `Country: ${payloadObj.country}` : '',
+              phone: payloadObj.phone || '',
+              products_dealing: payloadObj.product_interest ? [payloadObj.product_interest] : []
+            };
+            
+            await supabase.from('clients').insert([newClientPayload]);
+            
+            if (leadId) {
+              await supabase.from('leads').update({
+                client_id: newClientId
+              }).eq('id', leadId);
+            }
+          } else {
+            if (leadId) {
+              await supabase.from('leads').update({
+                client_id: client.id
+              }).eq('id', leadId);
+            }
+          }
+        } else {
+          if (client) {
+            await supabase.from('clients').update({
+              company_name: payloadObj.company_name || client.company_name,
+              contact_name: payloadObj.contact_name !== undefined ? payloadObj.contact_name : client.contact_name,
+              contact_email: payloadObj.contact_email !== undefined ? payloadObj.contact_email : client.contact_email,
+              phone: payloadObj.phone !== undefined ? payloadObj.phone : client.phone,
+              destination_port: payloadObj.country || client.destination_port
+            }).eq('id', client.id);
+          }
         }
       }
     }
