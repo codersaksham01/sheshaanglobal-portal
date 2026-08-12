@@ -2927,20 +2927,52 @@ export const Dashboard: React.FC = () => {
                     </div>
                     <div className="max-h-[64vh] overflow-y-auto pr-2 space-y-4 scroll-smooth">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {visibleBuyers.map((c) => (
-                          <BuyerCard
-                            key={c.id}
-                            client={c}
-                            country={buyerCountry(c)}
-                            phone={c.phone || clientPhones[c.id] || ''}
-                            metrics={clientMetrics[c.id] || { quotesCount: 0, receivableValue: 0, shipmentsCount: 0, openTasksCount: 0, lastActivityTitle: 'No activity logged' }}
-                            onView={() => setSelectedBuyerId(c.id)}
-                            onEdit={() => { setEditingClientId(c.id); setClientForm(c); }}
-                            onDelete={() => deleteClient(c.id)}
-                            formatQuoteCurrency={formatQuoteCurrency}
-                            bestSendWindowIST={bestSendWindowIST}
-                          />
-                        ))}
+                        {visibleBuyers.map((c) => {
+                          const crmLead = leads.find((l) => l.client_id === c.id || l.company_name.toLowerCase() === c.company_name.toLowerCase());
+                          return (
+                            <BuyerCard
+                              key={c.id}
+                              client={c}
+                              country={buyerCountry(c)}
+                              phone={c.phone || clientPhones[c.id] || ''}
+                              metrics={clientMetrics[c.id] || { quotesCount: 0, receivableValue: 0, shipmentsCount: 0, openTasksCount: 0, lastActivityTitle: 'No activity logged' }}
+                              onView={() => setSelectedBuyerId(c.id)}
+                              onEdit={() => { setEditingClientId(c.id); setClientForm(c); }}
+                              onDelete={() => deleteClient(c.id)}
+                              formatQuoteCurrency={formatQuoteCurrency}
+                              bestSendWindowIST={bestSendWindowIST}
+                              crmLead={crmLead}
+                              onPushToCrm={async () => {
+                                const productStr = c.products_dealing && c.products_dealing.length > 0 
+                                  ? c.products_dealing.join(', ') 
+                                  : 'General export product range';
+                                
+                                const { error } = await supabase.from('leads').insert([{
+                                  id: `import-lead-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                                  company_name: c.company_name,
+                                  contact_name: c.contact_name || '',
+                                  contact_email: c.contact_email || '',
+                                  phone: c.phone || clientPhones[c.id] || '',
+                                  country: c.destination_port || 'Not specified',
+                                  product_interest: productStr,
+                                  estimated_value: 0,
+                                  stage: 'New Lead',
+                                  priority: 'Medium',
+                                  owner: 'Sana Zeba',
+                                  notes: `Auto-created via manual CRM Push from Buyer Profile.`,
+                                  client_id: c.id
+                                }]);
+                                
+                                if (error) {
+                                  alert(error.message || 'Failed to sync to CRM');
+                                } else {
+                                  alert(`${c.company_name} successfully added to CRM!`);
+                                  await fetchData();
+                                }
+                              }}
+                            />
+                          );
+                        })}
                       </div>
                       {filteredBuyers.length > visibleBuyers.length && (
                         <div className="flex justify-center pt-2">
@@ -3969,6 +4001,8 @@ interface BuyerCardProps {
   onDelete: () => void;
   formatQuoteCurrency: (val: number, cur: 'INR' | 'USD') => string;
   bestSendWindowIST: (country: string) => string;
+  crmLead?: Lead;
+  onPushToCrm?: () => void;
 }
 
 const BuyerCard: React.FC<BuyerCardProps> = React.memo(({
@@ -3980,18 +4014,39 @@ const BuyerCard: React.FC<BuyerCardProps> = React.memo(({
   onEdit,
   onDelete,
   formatQuoteCurrency,
-  bestSendWindowIST
+  bestSendWindowIST,
+  crmLead,
+  onPushToCrm
 }) => {
   return (
     <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 text-xs">
       <div className="flex justify-between gap-3">
         <div className="min-w-0">
           <h4 className="font-bold text-slate-900 truncate">{client.company_name}</h4>
-          <div className="mt-1 flex flex-wrap gap-1.5">
+          <div className="mt-1 flex flex-wrap gap-1.5 items-center">
             <SmallBadge text={country} />
             <span className="inline-block px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold">
               {bestSendWindowIST(country).replace('Best send: ', '')}
             </span>
+            {crmLead ? (
+              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                crmLead.stage === 'Won' ? 'bg-teal-50 text-teal-700' :
+                crmLead.stage === 'Lost' ? 'bg-rose-50 text-rose-700' :
+                crmLead.stage === 'Quoted' ? 'bg-amber-50 text-amber-700' :
+                'bg-slate-100 text-slate-700'
+              }`}>
+                CRM: {crmLead.stage}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={onPushToCrm}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-extrabold transition shadow-sm"
+                title="Synchronize and create lead inside CRM Pipeline"
+              >
+                + Push to CRM
+              </button>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
