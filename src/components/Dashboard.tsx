@@ -598,6 +598,56 @@ export const Dashboard: React.FC = () => {
 
   const buyerCountry = (client: Client) => clientCountries[client.id] || 'Uncategorized';
   
+  const todayStart = new Date().setHours(0, 0, 0, 0);
+  const todayEnd = new Date().setHours(23, 59, 59, 999);
+  const leadNoteValue = (lead: Lead, label: string) => {
+    const line = (lead.notes || '').split('\n').find((item) => item.toLowerCase().startsWith(`${label.toLowerCase()}:`));
+    return line ? line.slice(line.indexOf(':') + 1).trim() : '';
+  };
+  const setLeadNoteValues = (lead: Lead, fields: Record<string, string>) => {
+    const fieldLabels = Object.keys(fields).map((label) => label.toLowerCase());
+    const existingLines = (lead.notes || '')
+      .split('\n')
+      .filter((line) => line.trim() && !fieldLabels.some((label) => line.toLowerCase().startsWith(`${label}:`)));
+    const updatedLines = Object.entries(fields).map(([label, value]) => `${label}: ${value}`);
+    return [...updatedLines, ...existingLines].join('\n');
+  };
+  const leadEmailStatus = (lead: Lead) => leadNoteValue(lead, 'Email Status') || 'Not tracked';
+  const leadResponseStatus = (lead: Lead) => leadNoteValue(lead, 'Response Received') || 'No';
+  const leadNextAction = (lead: Lead) => leadNoteValue(lead, 'Next Action') || 'Review lead';
+  const leadHasOutreach = (lead: Lead) => {
+    const status = leadEmailStatus(lead).toLowerCase();
+    return ['sent', 'follow', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded', 'email'].some((term) => status.includes(term)) || activities.some((activity) => (
+      activity.lead_id === lead.id &&
+      (activity.type === 'Email' || activity.title.toLowerCase().includes('whatsapp') || (activity.details || '').toLowerCase().includes('whatsapp'))
+    ));
+  };
+  const leadResponded = (lead: Lead) => leadResponseStatus(lead).toLowerCase().startsWith('yes');
+  const leadFollowUpDue = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() <= todayEnd && !['Won', 'Lost'].includes(lead.stage));
+  const leadNeedsFirstReach = (lead: Lead) => !leadHasOutreach(lead) && !['Won', 'Lost'].includes(lead.stage);
+  const leadMissingEmail = (lead: Lead) => !lead.contact_email || leadEmailStatus(lead).toLowerCase().includes('invalid');
+  const leadNextActionRequiresFollowUp = (lead: Lead) => {
+    const nextAction = leadNextAction(lead).toLowerCase();
+    return (
+      nextAction.includes('follow-up due') ||
+      nextAction.includes('follow up due') ||
+      nextAction.includes('follow-up pending') ||
+      nextAction.includes('follow up pending') ||
+      nextAction.includes('send follow-up') ||
+      nextAction.includes('send follow up')
+    );
+  };
+  const leadActionCategory = (lead: Lead) => {
+    const nextAction = leadNextAction(lead).toLowerCase();
+    if (lead.stage === 'Won' || lead.stage === 'Lost') return 'Closed';
+    if (leadMissingEmail(lead) || nextAction.includes('fix') || nextAction.includes('verify email')) return 'Needs Email Fix';
+    if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
+    if (leadResponded(lead)) return 'Responded / Qualify';
+    if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
+    if (leadHasOutreach(lead)) return 'Waiting Reply';
+    return 'Review';
+  };
+
   const buyerCountries = useMemo(() => {
     return Array.from(new Set(clients.map((client) => clientCountries[client.id] || 'Uncategorized').filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [clients, clientCountries]);
@@ -1702,55 +1752,7 @@ export const Dashboard: React.FC = () => {
     setFreightPresets((current) => current.filter((p) => p.id !== id));
   };
 
-  const todayStart = new Date().setHours(0, 0, 0, 0);
-  const todayEnd = new Date().setHours(23, 59, 59, 999);
-  const leadNoteValue = (lead: Lead, label: string) => {
-    const line = (lead.notes || '').split('\n').find((item) => item.toLowerCase().startsWith(`${label.toLowerCase()}:`));
-    return line ? line.slice(line.indexOf(':') + 1).trim() : '';
-  };
-  const setLeadNoteValues = (lead: Lead, fields: Record<string, string>) => {
-    const fieldLabels = Object.keys(fields).map((label) => label.toLowerCase());
-    const existingLines = (lead.notes || '')
-      .split('\n')
-      .filter((line) => line.trim() && !fieldLabels.some((label) => line.toLowerCase().startsWith(`${label}:`)));
-    const updatedLines = Object.entries(fields).map(([label, value]) => `${label}: ${value}`);
-    return [...updatedLines, ...existingLines].join('\n');
-  };
-  const leadEmailStatus = (lead: Lead) => leadNoteValue(lead, 'Email Status') || 'Not tracked';
-  const leadResponseStatus = (lead: Lead) => leadNoteValue(lead, 'Response Received') || 'No';
-  const leadNextAction = (lead: Lead) => leadNoteValue(lead, 'Next Action') || 'Review lead';
-  const leadHasOutreach = (lead: Lead) => {
-    const status = leadEmailStatus(lead).toLowerCase();
-    return ['sent', 'follow', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded', 'email'].some((term) => status.includes(term)) || activities.some((activity) => (
-      activity.lead_id === lead.id &&
-      (activity.type === 'Email' || activity.title.toLowerCase().includes('whatsapp') || (activity.details || '').toLowerCase().includes('whatsapp'))
-    ));
-  };
-  const leadResponded = (lead: Lead) => leadResponseStatus(lead).toLowerCase().startsWith('yes');
-  const leadFollowUpDue = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() <= todayEnd && !['Won', 'Lost'].includes(lead.stage));
-  const leadNeedsFirstReach = (lead: Lead) => !leadHasOutreach(lead) && !['Won', 'Lost'].includes(lead.stage);
-  const leadMissingEmail = (lead: Lead) => !lead.contact_email || leadEmailStatus(lead).toLowerCase().includes('invalid');
-  const leadNextActionRequiresFollowUp = (lead: Lead) => {
-    const nextAction = leadNextAction(lead).toLowerCase();
-    return (
-      nextAction.includes('follow-up due') ||
-      nextAction.includes('follow up due') ||
-      nextAction.includes('follow-up pending') ||
-      nextAction.includes('follow up pending') ||
-      nextAction.includes('send follow-up') ||
-      nextAction.includes('send follow up')
-    );
-  };
-  const leadActionCategory = (lead: Lead) => {
-    const nextAction = leadNextAction(lead).toLowerCase();
-    if (lead.stage === 'Won' || lead.stage === 'Lost') return 'Closed';
-    if (leadMissingEmail(lead) || nextAction.includes('fix') || nextAction.includes('verify email')) return 'Needs Email Fix';
-    if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
-    if (leadResponded(lead)) return 'Responded / Qualify';
-    if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
-    if (leadHasOutreach(lead)) return 'Waiting Reply';
-    return 'Review';
-  };
+  // CRM lead helper functions moved to the top of the component to avoid Temporal Dead Zone ReferenceError
 
   const filteredCrmLeads = useMemo(() => {
     const query = crmSearchQuery.trim().toLowerCase();
