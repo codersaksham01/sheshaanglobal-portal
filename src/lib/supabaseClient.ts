@@ -29,35 +29,65 @@ function makeChainPromise(promise: Promise<any>, extra: any = {}): any {
 
 // Server API-backed database client to allow persistent state in Replit/Local workspaces.
 class ServerFileDB {
+  private getLocalDB() {
+    if (typeof window === 'undefined') return null;
+    const data = localStorage.getItem('crixy_portal_db');
+    return data ? JSON.parse(data) : null;
+  }
+
+  private saveLocalDB(db: any) {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('crixy_portal_db', JSON.stringify(db));
+  }
+
+  private async fetchTable(table: string): Promise<any[]> {
+    if (typeof window === 'undefined') return [];
+    
+    let localDB = this.getLocalDB();
+    if (!localDB) {
+      localDB = {};
+    }
+    
+    if (!localDB[table]) {
+      try {
+        const response = await fetch(`/api/db?table=${table}`);
+        if (response.ok) {
+          const res = await response.json();
+          localDB[table] = res.data || [];
+          this.saveLocalDB(localDB);
+        }
+      } catch (e) {
+        console.error(`Failed to fetch initial seed for ${table}`, e);
+      }
+    }
+    
+    return localDB[table] || [];
+  }
+
   from(table: string) {
-    const fetchTable = async () => {
-      if (typeof window === 'undefined') return { data: [] };
-      const response = await fetch(`/api/db?table=${table}`);
-      if (!response.ok) return { data: [], error: { message: 'Could not load records' } };
-      return await response.json();
-    };
+    const fetchTable = () => this.fetchTable(table);
 
     return {
       select: (columns: string = '*') => {
-        const basePromise = fetchTable().then(res => ({ data: res.data || [], error: res.error || null }));
+        const basePromise = fetchTable().then(data => ({ data, error: null }));
 
         const selectMethods = {
           order: (col: string, { ascending = true } = {}) => {
-            const orderPromise = fetchTable().then(res => {
-              const data = res.data || [];
-              data.sort((a: any, b: any) => {
+            const orderPromise = fetchTable().then(data => {
+              const sorted = [...data];
+              sorted.sort((a: any, b: any) => {
                 if (a[col] < b[col]) return ascending ? -1 : 1;
                 if (a[col] > b[col]) return ascending ? 1 : -1;
                 return 0;
               });
-              return { data, error: res.error || null };
+              return { data: sorted, error: null };
             });
             return makeChainPromise(orderPromise);
           },
           eq: (col: string, val: any) => {
-            const eqPromise = fetchTable().then(res => {
-              const data = (res.data || []).filter((r: any) => r[col] === val);
-              return { data, error: res.error || null };
+            const eqPromise = fetchTable().then(data => {
+              const filtered = data.filter((r: any) => r[col] === val);
+              return { data: filtered, error: null };
             });
 
             const eqMethods = {
@@ -81,14 +111,25 @@ class ServerFileDB {
           return makeChainPromise(Promise.resolve({ data: [], error: null }));
         }
 
-        const insertPromise = fetch(`/api/db?table=${table}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(values)
-        }).then(res => res.json()).then(res => ({
-          data: res.data || [],
-          error: res.error || null
-        }));
+        const insertPromise = (async () => {
+          const localDB = this.getLocalDB() || {};
+          const currentTableData = localDB[table] || [];
+          const valArray = Array.isArray(values) ? values : [values];
+          
+          const newRecords = valArray.map((value: any) => {
+            const id = value.id || `${table.substring(0, 3)}-${Math.random().toString(36).slice(2, 11)}`;
+            return {
+              ...value,
+              id,
+              created_at: value.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+          });
+          
+          localDB[table] = [...currentTableData, ...newRecords];
+          this.saveLocalDB(localDB);
+          return { data: newRecords, error: null };
+        })();
 
         const insertMethods = {
           select: () => {
@@ -110,19 +151,24 @@ class ServerFileDB {
       update: (values: any) => {
         return {
           eq: (col: string, val: any) => {
-            const updatePromise = fetchTable().then(async (res) => {
-              const matches = (res.data || []).filter((r: any) => r[col] === val);
-              if (matches.length === 0) return { data: [], error: null };
-
-              const updatedPayload = matches.map((r: any) => ({ ...r, ...values }));
-              const updateResponse = await fetch(`/api/db?table=${table}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedPayload)
+            const updatePromise = (async () => {
+              const localDB = this.getLocalDB() || {};
+              const currentTableData = localDB[table] || [];
+              
+              const updatedRecords: any[] = [];
+              const newTableData = currentTableData.map((record: any) => {
+                if (record[col] === val) {
+                  const updated = { ...record, ...values, updated_at: new Date().toISOString() };
+                  updatedRecords.push(updated);
+                  return updated;
+                }
+                return record;
               });
-              const updateResult = await updateResponse.json();
-              return { data: updateResult.data || [], error: updateResult.error || null };
-            });
+              
+              localDB[table] = newTableData;
+              this.saveLocalDB(localDB);
+              return { data: updatedRecords, error: null };
+            })();
             return makeChainPromise(updatePromise);
           }
         };
@@ -131,17 +177,12 @@ class ServerFileDB {
         return {
           eq: (col: string, val: any) => {
             const deletePromise = (async () => {
-              if (col === 'id') {
-                const response = await fetch(`/api/db?table=${table}&id=${val}`, { method: 'DELETE' });
-                if (!response.ok) return { data: null, error: { message: 'Could not delete record' } };
-              } else {
-                const res = await fetchTable();
-                const matches = (res.data || []).filter((r: any) => r[col] === val);
-                for (const m of matches) {
-                  const response = await fetch(`/api/db?table=${table}&id=${m.id}`, { method: 'DELETE' });
-                  if (!response.ok) return { data: null, error: { message: 'Could not delete record' } };
-                }
-              }
+              const localDB = this.getLocalDB() || {};
+              const currentTableData = localDB[table] || [];
+              
+              const newTableData = currentTableData.filter((record: any) => record[col] !== val);
+              localDB[table] = newTableData;
+              this.saveLocalDB(localDB);
               return { data: null, error: null };
             })();
             return makeChainPromise(deletePromise);
@@ -152,11 +193,23 @@ class ServerFileDB {
   }
 
   async seedMockData() {
-    await fetch('/api/db?action=seed', { method: 'POST' });
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem('crixy_portal_db');
+      await fetch('/api/db?action=seed', { method: 'POST' });
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   async clearAllData() {
-    await fetch('/api/db?action=clear', { method: 'POST' });
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.removeItem('crixy_portal_db');
+      await fetch('/api/db?action=clear', { method: 'POST' });
+    } catch (e) {
+      console.error(e);
+    }
   }
 }
 

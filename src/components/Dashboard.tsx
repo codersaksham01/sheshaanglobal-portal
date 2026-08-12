@@ -1118,9 +1118,10 @@ export const Dashboard: React.FC = () => {
       const leadId = editingId || (finalPayload as any).id;
       const leadObj = leads.find(l => l.id === leadId);
       const clientId = (finalPayload as any).client_id || leadObj?.client_id;
-      if (clientId) {
-        const client = clients.find(c => c.id === clientId);
-        if (client && client.phone !== (finalPayload as any).phone) {
+      const leadCompany = (finalPayload as any).company_name || leadObj?.company_name;
+      const client = clients.find(c => (clientId && c.id === clientId) || (leadCompany && c.company_name.toLowerCase() === leadCompany.toLowerCase()));
+      if (client) {
+        if (client.phone !== (finalPayload as any).phone) {
           await supabase.from('clients').update({
             company_name: client.company_name,
             address: client.address || '',
@@ -1128,7 +1129,7 @@ export const Dashboard: React.FC = () => {
             contact_email: client.contact_email || '',
             destination_port: client.destination_port,
             phone: (finalPayload as any).phone
-          }).eq('id', clientId);
+          }).eq('id', client.id);
         }
       }
     }
