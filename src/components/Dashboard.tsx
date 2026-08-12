@@ -595,7 +595,17 @@ export const Dashboard: React.FC = () => {
   const templatePreviewProduct = products.find((product) => product.id === selectedTemplateProductId);
   const productCatalogue = products.map((product) => product.sku).filter(Boolean).slice(0, 6).join(', ') || 'spices, agro commodities, and export-ready food products';
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || templates[0];
-  const selectedCrmTemplate = templates.find((template) => template.id === selectedCrmTemplateId) || templates.find((template) => template.category === 'Quote Follow-up') || templates[0];
+  const selectedCrmTemplate = templates.find((template) => template.id === selectedCrmTemplateId);
+  const resolveCrmEmailTemplate = (mode: 'First Reach' | 'Follow-up') => {
+    const targetCategory = mode === 'First Reach' ? 'Introduction' : 'Quote Follow-up';
+    const explicitTemplate = selectedCrmTemplate?.channel === 'Email' && selectedCrmTemplate.category === targetCategory
+      ? selectedCrmTemplate
+      : null;
+
+    return explicitTemplate ||
+      templates.find((item) => item.channel === 'Email' && item.category === targetCategory && item.active !== false) ||
+      templates.find((item) => item.category === targetCategory && item.active !== false);
+  };
 
   const replaceTemplateVars = (text = '', options: { client?: Client; product?: Product | null } = {}) => {
     const buyer = options.client || communicationClient;
@@ -640,11 +650,15 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    const template =
-      selectedCrmTemplate ||
-      templates.find((item) => item.category === (mode === 'First Reach' ? 'Introduction' : 'Quote Follow-up'));
-    const subject = replaceLeadTemplateVars(template?.subject || `${mode} from Sheshaan Global`, lead);
-    const body = replaceLeadTemplateVars(template?.body || `Hi {{buyer_name}},\n\nThank you for connecting with Sheshaan Global.`, lead);
+    const template = resolveCrmEmailTemplate(mode);
+    const defaultSubject = mode === 'First Reach'
+      ? 'Export sourcing support from Sheshaan Global'
+      : 'Following up with {{company_name}}';
+    const defaultBody = mode === 'First Reach'
+      ? 'Hi {{buyer_name}},\n\nI am reaching out from Sheshaan Global, India.\n\nWe support international buyers with export-ready products including {{product_catalogue}}. If you have a specific product requirement, we can share specifications, packing options, CIF/FOB pricing, and shipment timelines for {{destination_port}}.\n\nRegards,\nSheshaan Global'
+      : 'Hi {{buyer_name}},\n\nJust following up on our previous discussion regarding {{product_name}}.\n\nIf this product is still relevant, we can share an updated quotation. If your requirement has changed, we can also propose options from our wider range: {{product_catalogue}}.\n\nRegards,\nSheshaan Global';
+    const subject = replaceLeadTemplateVars(template?.subject || defaultSubject, lead);
+    const body = replaceLeadTemplateVars(template?.body || defaultBody, lead);
     const today = new Date().toISOString().slice(0, 10);
     const nextFollowUpDate = new Date();
     nextFollowUpDate.setDate(nextFollowUpDate.getDate() + (mode === 'First Reach' ? 3 : 4));
@@ -2222,7 +2236,16 @@ export const Dashboard: React.FC = () => {
                           Edit
                         </button>
                       </div>
-                      <SelectInput label="Template" value={selectedCrmTemplate?.id || ''} onChange={setSelectedCrmTemplateId} options={templates.map((template) => template.id)} labels={Object.fromEntries(templates.map((template) => [template.id, `${template.name} (${template.channel})`]))} />
+                      <SelectInput
+                        label="Template"
+                        value={selectedCrmTemplateId}
+                        onChange={setSelectedCrmTemplateId}
+                        options={['', ...templates.map((template) => template.id)]}
+                        labels={{
+                          '': 'Auto by action type',
+                          ...Object.fromEntries(templates.map((template) => [template.id, `${template.name} (${template.channel} / ${template.category})`]))
+                        }}
+                      />
                     </div>
                     <SimplePanel title="Imported Field Sync" rows={[
                       ['Email Status', 'Outreach badges + queues'],
