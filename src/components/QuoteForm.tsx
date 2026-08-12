@@ -691,13 +691,33 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
       if (itemsErr) throw itemsErr;
 
+      // Update CRM lead stage to 'Quoted'
+      if (selectedClientId) {
+        const { data: leadData } = await supabase.from('leads').select('*').eq('client_id', selectedClientId);
+        const lead = leadData?.[0];
+        if (lead) {
+          await supabase.from('leads').update({
+            stage: 'Quoted'
+          }).eq('id', lead.id);
+        } else {
+          const clientObj = clients.find(c => c.id === selectedClientId);
+          if (clientObj) {
+            const { data: leadByCompany } = await supabase.from('leads').select('*').eq('company_name', clientObj.company_name);
+            const leadComp = leadByCompany?.[0];
+            if (leadComp) {
+              await supabase.from('leads').update({
+                stage: 'Quoted'
+              }).eq('id', leadComp.id);
+            }
+          }
+        }
+      }
+
       alert(quoteId ? 'Deal details updated!' : 'Deal saved successfully!');
       clearDraft();
       onSaveSuccess();
     } catch (err: any) {
       console.warn('Error saving quote:', err);
-      alert(`Save error: ${err.message || err}`);
-    } finally {
       setLoading(false);
     }
   };

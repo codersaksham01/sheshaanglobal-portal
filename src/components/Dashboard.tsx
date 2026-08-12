@@ -1155,6 +1155,14 @@ export const Dashboard: React.FC = () => {
     reset: () => void
   ) => {
     const finalPayload = { ...payload, id: editingId || payload.id || undefined };
+    // Auto-populate lead_id for activities and tasks if client_id is provided but lead_id is missing
+    if ((table === 'activities' || table === 'tasks') && (finalPayload as any).client_id && !(finalPayload as any).lead_id) {
+      const linkedLead = leads.find(l => l.client_id === (finalPayload as any).client_id);
+      if (linkedLead) {
+        (finalPayload as any).lead_id = linkedLead.id;
+      }
+    }
+
     const query = editingId
       ? supabase.from(table).update(finalPayload).eq('id', editingId)
       : supabase.from(table).insert([finalPayload]).select().single();
@@ -1215,6 +1223,18 @@ export const Dashboard: React.FC = () => {
             }).eq('id', client.id);
           }
         }
+      }
+    }
+
+    // Auto-set lead stage to 'Won' when a shipment is created
+    if (table === 'shipments' && !editingId && (finalPayload as any).client_id) {
+      const clientId = (finalPayload as any).client_id;
+      const clientObj = clients.find(c => c.id === clientId);
+      const lead = leads.find(l => l.client_id === clientId || (clientObj && l.company_name.toLowerCase() === clientObj.company_name.toLowerCase()));
+      if (lead) {
+        await supabase.from('leads').update({
+          stage: 'Won'
+        }).eq('id', lead.id);
       }
     }
 
@@ -1343,7 +1363,9 @@ export const Dashboard: React.FC = () => {
       alert(error.message || 'Failed to delete client');
       return;
     }
+    await supabase.from('leads').delete().eq('client_id', id);
     setClients((current) => current.filter((c) => c.id !== id));
+    await fetchData();
   };
 
   const handleSavePhone = async (clientId: string, newPhone: string) => {
