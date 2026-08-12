@@ -2631,6 +2631,7 @@ export const Dashboard: React.FC = () => {
               onSubmit={saveClient}
               onCancel={resetClientForm}
               isEditing={Boolean(editingClientId)}
+              scrollableForm
               form={
                 <>
                   <TextInput label="Company Name *" value={clientForm.company_name || ''} onChange={(value) => setClientForm({ ...clientForm, company_name: value })} required />
@@ -3586,7 +3587,8 @@ const TwoColumnManager = ({
   children,
   isEditing,
   onSubmit,
-  onCancel
+  onCancel,
+  scrollableForm = false
 }: {
   formTitle: string;
   form: React.ReactNode;
@@ -3594,12 +3596,15 @@ const TwoColumnManager = ({
   isEditing: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
+  scrollableForm?: boolean;
 }) => (
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <div className="bg-slate-50/90 p-5 rounded-2xl border border-slate-200 h-fit space-y-4 shadow-sm lg:sticky lg:top-24">
       <h3 className="font-black text-slate-900 text-[11px] uppercase tracking-wider border-b border-slate-200 pb-2">{formTitle}</h3>
       <form onSubmit={onSubmit} className="space-y-3.5 text-xs">
-        {form}
+        <div className={scrollableForm ? 'max-h-[52vh] overflow-y-auto pr-2 space-y-3.5 scroll-smooth' : 'space-y-3.5'}>
+          {form}
+        </div>
         <div className="flex gap-2 pt-2">
           <button type="submit" className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg shadow transition flex items-center justify-center gap-1.5 active:scale-98">
             <Plus className="h-4 w-4" />
