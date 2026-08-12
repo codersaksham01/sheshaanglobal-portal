@@ -681,16 +681,9 @@ export const Dashboard: React.FC = () => {
   const reachoutBuyers = useMemo(() => {
     return clients.filter((client) => {
       const phone = client.phone || clientPhones[client.id] || '';
-      if (!phone.trim()) return false;
-
-      // Filter out if lead already has outreach done
-      const linkedLead = leads.find((l) => l.client_id === client.id || l.company_name.toLowerCase() === client.company_name.toLowerCase());
-      if (linkedLead && leadHasOutreach(linkedLead)) {
-        return false;
-      }
-      return true;
+      return phone.trim().length > 0;
     });
-  }, [clients, clientPhones, leads, activities]);
+  }, [clients, clientPhones]);
 
   const clientMetrics = useMemo(() => {
     const map: Record<string, {
