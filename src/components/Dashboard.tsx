@@ -2756,33 +2756,35 @@ export const Dashboard: React.FC = () => {
                         </button>
                       )}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {visibleBuyers.map((c) => (
-                        <BuyerCard
-                          key={c.id}
-                          client={c}
-                          country={buyerCountry(c)}
-                          phone={c.phone || clientPhones[c.id] || ''}
-                          metrics={clientMetrics[c.id] || { quotesCount: 0, receivableValue: 0, shipmentsCount: 0, openTasksCount: 0, lastActivityTitle: 'No activity logged' }}
-                          onView={() => setSelectedBuyerId(c.id)}
-                          onEdit={() => { setEditingClientId(c.id); setClientForm(c); }}
-                          onDelete={() => deleteClient(c.id)}
-                          formatQuoteCurrency={formatQuoteCurrency}
-                          bestSendWindowIST={bestSendWindowIST}
-                        />
-                      ))}
-                    </div>
-                    {filteredBuyers.length > visibleBuyers.length && (
-                      <div className="flex justify-center">
-                        <button
-                          type="button"
-                          onClick={() => setBuyerVisibleCount((count) => Math.min(count + buyerListPageSize, filteredBuyers.length))}
-                          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm hover:border-sky-200 hover:text-sky-700"
-                        >
-                          Load More Buyers
-                        </button>
+                    <div className="max-h-[64vh] overflow-y-auto pr-2 space-y-4 scroll-fade scroll-smooth">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {visibleBuyers.map((c) => (
+                          <BuyerCard
+                            key={c.id}
+                            client={c}
+                            country={buyerCountry(c)}
+                            phone={c.phone || clientPhones[c.id] || ''}
+                            metrics={clientMetrics[c.id] || { quotesCount: 0, receivableValue: 0, shipmentsCount: 0, openTasksCount: 0, lastActivityTitle: 'No activity logged' }}
+                            onView={() => setSelectedBuyerId(c.id)}
+                            onEdit={() => { setEditingClientId(c.id); setClientForm(c); }}
+                            onDelete={() => deleteClient(c.id)}
+                            formatQuoteCurrency={formatQuoteCurrency}
+                            bestSendWindowIST={bestSendWindowIST}
+                          />
+                        ))}
                       </div>
-                    )}
+                      {filteredBuyers.length > visibleBuyers.length && (
+                        <div className="flex justify-center pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setBuyerVisibleCount((count) => Math.min(count + buyerListPageSize, filteredBuyers.length))}
+                            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm hover:border-sky-200 hover:text-sky-700"
+                          >
+                            Load More Buyers
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
