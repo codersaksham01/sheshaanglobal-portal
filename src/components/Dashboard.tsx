@@ -2756,7 +2756,7 @@ export const Dashboard: React.FC = () => {
                         </button>
                       )}
                     </div>
-                    <div className="max-h-[64vh] overflow-y-auto pr-2 space-y-4 scroll-fade scroll-smooth">
+                    <div className="max-h-[64vh] overflow-y-auto pr-2 space-y-4 scroll-smooth">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {visibleBuyers.map((c) => (
                           <BuyerCard
@@ -2971,7 +2971,7 @@ export const Dashboard: React.FC = () => {
                       These buyers do not have a phone number in the system. Add their phone numbers to enable one-click WhatsApp outreach.
                     </p>
 
-                    <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1 scroll-fade">
+                    <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
                       {clients
                         .filter((client) => {
                           const phone = client.phone || clientPhones[client.id] || '';
