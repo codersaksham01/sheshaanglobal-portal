@@ -418,6 +418,7 @@ export const Dashboard: React.FC = () => {
 
   const [leadForm, setLeadForm] = useState<Partial<Lead>>(blankLead);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [crmSearchQuery, setCrmSearchQuery] = useState('');
   const [activityForm, setActivityForm] = useState<Partial<TimelineActivity>>(blankActivity);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState<Partial<TaskRecord>>(blankTask);
@@ -1721,13 +1722,28 @@ export const Dashboard: React.FC = () => {
     if (leadHasOutreach(lead)) return 'Waiting Reply';
     return 'Review';
   };
+
+  const filteredCrmLeads = useMemo(() => {
+    const query = crmSearchQuery.trim().toLowerCase();
+    if (!query) return leads;
+    return leads.filter((lead) => {
+      return (
+        lead.company_name.toLowerCase().includes(query) ||
+        (lead.contact_name || '').toLowerCase().includes(query) ||
+        (lead.contact_email || '').toLowerCase().includes(query) ||
+        (lead.phone || '').toLowerCase().includes(query) ||
+        (lead.product_interest || '').toLowerCase().includes(query)
+      );
+    });
+  }, [leads, crmSearchQuery]);
+
   const crmQueues = [
-    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: leads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out') },
-    { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: leads.filter((lead) => leadActionCategory(lead) === 'Follow-up Due') },
-    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: leads.filter((lead) => leadActionCategory(lead) === 'Waiting Reply') },
-    { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: leads.filter((lead) => leadActionCategory(lead) === 'Responded / Qualify') },
-    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: leads.filter((lead) => leadActionCategory(lead) === 'Needs Email Fix') },
-    { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: leads.filter((lead) => leadActionCategory(lead) === 'Review') }
+    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out') },
+    { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Follow-up Due') },
+    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Waiting Reply') },
+    { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Responded / Qualify') },
+    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Needs Email Fix') },
+    { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Review') }
   ];
   const selectedLeads = leads.filter((lead) => selectedLeadIds.includes(lead.id));
 
@@ -2412,6 +2428,35 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm text-xs">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-extrabold text-slate-900">Search CRM Leads</h3>
+                      <p className="text-slate-500 mt-0.5">Quickly find any buyer or lead in the CRM to verify, email, or message them.</p>
+                    </div>
+                    <div className="relative w-full md:max-w-md">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search by company, contact, email, phone..."
+                        value={crmSearchQuery}
+                        onChange={(e) => setCrmSearchQuery(e.target.value)}
+                        className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition shadow-inner font-semibold"
+                      />
+                      {crmSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setCrmSearchQuery('')}
+                          className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition"
+                          title="Clear search"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -2445,7 +2490,7 @@ export const Dashboard: React.FC = () => {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         {['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost'].map((stage) => {
-                          const stageLeads = leads.filter((lead) => lead.stage === stage);
+                          const stageLeads = filteredCrmLeads.filter((lead) => lead.stage === stage);
                           return (
                             <div key={stage} className="bg-slate-50 border border-slate-200 rounded-lg p-3 min-h-[180px]">
                               <div className="flex items-center justify-between mb-3">
