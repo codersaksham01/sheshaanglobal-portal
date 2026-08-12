@@ -419,6 +419,7 @@ export const Dashboard: React.FC = () => {
   const [leadForm, setLeadForm] = useState<Partial<Lead>>(blankLead);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
+  const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
   const [activityForm, setActivityForm] = useState<Partial<TimelineActivity>>(blankActivity);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState<Partial<TaskRecord>>(blankTask);
@@ -657,8 +658,22 @@ export const Dashboard: React.FC = () => {
       ? clients 
       : clients.filter((client) => (clientCountries[client.id] || 'Uncategorized') === buyerCountryFilter);
     
+    const query = buyerSearchQuery.trim().toLowerCase();
+    const searchedList = query
+      ? list.filter((client) => {
+          return (
+            client.company_name.toLowerCase().includes(query) ||
+            (client.contact_name || '').toLowerCase().includes(query) ||
+            (client.contact_email || '').toLowerCase().includes(query) ||
+            (client.phone || '').toLowerCase().includes(query) ||
+            (client.destination_port || '').toLowerCase().includes(query) ||
+            (client.address || '').toLowerCase().includes(query)
+          );
+        })
+      : list;
+
     if (buyerSortKey === 'phone_asc') {
-      return [...list].sort((a, b) => {
+      return [...searchedList].sort((a, b) => {
         const phoneA = a.phone || clientPhones[a.id] || '';
         const phoneB = b.phone || clientPhones[b.id] || '';
         if (!phoneA) return 1;
@@ -666,7 +681,7 @@ export const Dashboard: React.FC = () => {
         return phoneA.localeCompare(phoneB);
       });
     } else if (buyerSortKey === 'phone_desc') {
-      return [...list].sort((a, b) => {
+      return [...searchedList].sort((a, b) => {
         const phoneA = a.phone || clientPhones[a.id] || '';
         const phoneB = b.phone || clientPhones[b.id] || '';
         if (!phoneA) return 1;
@@ -674,9 +689,9 @@ export const Dashboard: React.FC = () => {
         return phoneB.localeCompare(phoneA);
       });
     } else {
-      return [...list].sort((a, b) => a.company_name.localeCompare(b.company_name));
+      return [...searchedList].sort((a, b) => a.company_name.localeCompare(b.company_name));
     }
-  }, [clients, clientCountries, buyerCountryFilter, buyerSortKey, clientPhones]);
+  }, [clients, clientCountries, buyerCountryFilter, buyerSortKey, clientPhones, buyerSearchQuery]);
 
   const reachoutBuyers = useMemo(() => {
     return clients.filter((client) => {
@@ -2909,7 +2924,35 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {clients.length === 0 ? <EmptyState text="No buyer companies found." /> : filteredBuyers.length === 0 ? <EmptyState text="No buyers match this country filter." /> : (
+                {clients.length > 0 && (
+                  <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex items-center gap-3 text-xs">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search buyers by company name, contact, email, phone, port..."
+                        value={buyerSearchQuery}
+                        onChange={(e) => setBuyerSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400 focus:outline-none font-medium text-slate-800"
+                      />
+                    </div>
+                    {buyerSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setBuyerSearchQuery('')}
+                        className="shrink-0 text-slate-500 hover:text-slate-700 font-bold px-2 py-1"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {clients.length === 0 ? (
+                  <EmptyState text="No buyer companies found." />
+                ) : filteredBuyers.length === 0 ? (
+                  <EmptyState text={buyerSearchQuery ? "No buyers match your search." : "No buyers match this country filter."} />
+                ) : (
                   <>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
                       <span>
