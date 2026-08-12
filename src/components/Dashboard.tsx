@@ -631,9 +631,16 @@ export const Dashboard: React.FC = () => {
   const reachoutBuyers = useMemo(() => {
     return clients.filter((client) => {
       const phone = client.phone || clientPhones[client.id] || '';
-      return phone.trim().length > 0;
+      if (!phone.trim()) return false;
+
+      // Filter out if lead already has outreach done
+      const linkedLead = leads.find((l) => l.client_id === client.id || l.company_name.toLowerCase() === client.company_name.toLowerCase());
+      if (linkedLead && leadHasOutreach(linkedLead)) {
+        return false;
+      }
+      return true;
     });
-  }, [clients, clientPhones]);
+  }, [clients, clientPhones, leads, activities]);
 
   const clientMetrics = useMemo(() => {
     const map: Record<string, {
@@ -1215,15 +1222,37 @@ export const Dashboard: React.FC = () => {
     if (editingClientId) await fetchData();
     else setClients((current) => [...current, data]);
 
-    // Sync phone with linked lead
+    // Sync phone and details with linked lead or insert new lead
     const targetClientId = editingClientId || data?.id;
     if (targetClientId) {
       const linkedLead = leads.find((l) => l.client_id === targetClientId || l.company_name.toLowerCase() === payload.company_name.toLowerCase());
-      if (linkedLead && linkedLead.phone !== payload.phone) {
+      if (linkedLead) {
         await supabase.from('leads').update({
           ...linkedLead,
-          phone: payload.phone
+          company_name: payload.company_name,
+          contact_name: payload.contact_name,
+          contact_email: payload.contact_email,
+          phone: payload.phone,
+          country: payload.destination_port
         }).eq('id', linkedLead.id);
+      } else {
+        await supabase.from('leads').insert([{
+          id: `import-lead-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          company_name: payload.company_name,
+          contact_name: payload.contact_name,
+          contact_email: payload.contact_email,
+          phone: payload.phone,
+          country: payload.destination_port,
+          product_interest: payload.products_dealing && payload.products_dealing.length > 0 
+            ? payload.products_dealing.join(', ') 
+            : 'General export product range',
+          estimated_value: 0,
+          stage: 'New Lead',
+          priority: 'Medium',
+          owner: 'Sana Zeba',
+          notes: `Auto-created from registered buyer profile.`,
+          client_id: targetClientId
+        }]);
       }
     }
 
