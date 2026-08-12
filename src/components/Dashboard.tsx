@@ -1112,6 +1112,27 @@ export const Dashboard: React.FC = () => {
       alert(error.message || `Failed to save ${table}`);
       return;
     }
+
+    // Sync lead phone update to client
+    if (table === 'leads' && (finalPayload as any).phone) {
+      const leadId = editingId || (finalPayload as any).id;
+      const leadObj = leads.find(l => l.id === leadId);
+      const clientId = (finalPayload as any).client_id || leadObj?.client_id;
+      if (clientId) {
+        const client = clients.find(c => c.id === clientId);
+        if (client && client.phone !== (finalPayload as any).phone) {
+          await supabase.from('clients').update({
+            company_name: client.company_name,
+            address: client.address || '',
+            contact_name: client.contact_name || '',
+            contact_email: client.contact_email || '',
+            destination_port: client.destination_port,
+            phone: (finalPayload as any).phone
+          }).eq('id', clientId);
+        }
+      }
+    }
+
     reset();
     await fetchData();
   };
@@ -1191,6 +1212,20 @@ export const Dashboard: React.FC = () => {
 
     if (editingClientId) await fetchData();
     else setClients((current) => [...current, data]);
+
+    // Sync phone with linked lead
+    const targetClientId = editingClientId || data?.id;
+    if (targetClientId) {
+      const linkedLead = leads.find((l) => l.client_id === targetClientId || l.company_name.toLowerCase() === payload.company_name.toLowerCase());
+      if (linkedLead && linkedLead.phone !== payload.phone) {
+        await supabase.from('leads').update({
+          ...linkedLead,
+          phone: payload.phone
+        }).eq('id', linkedLead.id);
+      }
+    }
+
+    await fetchData();
     resetClientForm();
   };
 
@@ -1223,7 +1258,16 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    setClients((prev) => prev.map((c) => c.id === clientId ? { ...c, phone: newPhone } : c));
+    // Sync phone with linked lead
+    const linkedLead = leads.find((l) => l.client_id === clientId || l.company_name.toLowerCase() === client.company_name.toLowerCase());
+    if (linkedLead && linkedLead.phone !== newPhone) {
+      await supabase.from('leads').update({
+        ...linkedLead,
+        phone: newPhone
+      }).eq('id', linkedLead.id);
+    }
+
+    await fetchData();
     setEditingPhoneBuyerId(null);
   };
 
