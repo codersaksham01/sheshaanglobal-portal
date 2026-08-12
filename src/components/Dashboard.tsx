@@ -1692,7 +1692,7 @@ export const Dashboard: React.FC = () => {
   const leadNextAction = (lead: Lead) => leadNoteValue(lead, 'Next Action') || 'Review lead';
   const leadHasOutreach = (lead: Lead) => {
     const status = leadEmailStatus(lead).toLowerCase();
-    return ['sent', 'follow', 'opened', 'replied', 'whatsapp'].some((term) => status.includes(term)) || activities.some((activity) => (
+    return ['sent', 'follow', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded', 'email'].some((term) => status.includes(term)) || activities.some((activity) => (
       activity.lead_id === lead.id &&
       (activity.type === 'Email' || activity.title.toLowerCase().includes('whatsapp') || (activity.details || '').toLowerCase().includes('whatsapp'))
     ));
