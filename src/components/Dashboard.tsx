@@ -86,7 +86,8 @@ const blankClient: Partial<Client> = {
   contact_name: '',
   contact_email: '',
   destination_port: '',
-  phone: ''
+  phone: '',
+  products_dealing: []
 };
 
 const blankProduct: Partial<Product> = {
@@ -1177,7 +1178,8 @@ export const Dashboard: React.FC = () => {
       contact_name: clientForm.contact_name || '',
       contact_email: clientForm.contact_email || '',
       destination_port: clientForm.destination_port,
-      phone: clientForm.phone || ''
+      phone: clientForm.phone || '',
+      products_dealing: clientForm.products_dealing || []
     };
 
     const query = editingClientId ? supabase.from('clients').update(payload).eq('id', editingClientId) : supabase.from('clients').insert([payload]).select().single();
@@ -2648,6 +2650,15 @@ export const Dashboard: React.FC = () => {
                   <TextInput label="Contact Person" value={clientForm.contact_name || ''} onChange={(value) => setClientForm({ ...clientForm, contact_name: value })} />
                   <TextInput label="Email" type="email" value={clientForm.contact_email || ''} onChange={(value) => setClientForm({ ...clientForm, contact_email: value })} />
                   <TextInput label="Phone Number" value={clientForm.phone || ''} onChange={(value) => setClientForm({ ...clientForm, phone: value })} />
+                  <TextInput
+                    label="Products Dealing In"
+                    placeholder="e.g. Basmati Rice, Red Onions, Peanuts"
+                    value={(clientForm.products_dealing || []).join(', ')}
+                    onChange={(value) => {
+                      const list = value.split(',').map((s) => s.trim()).filter(Boolean);
+                      setClientForm({ ...clientForm, products_dealing: list });
+                    }}
+                  />
                 </>
               }
             >
@@ -3657,7 +3668,7 @@ const TwoColumnManager = ({
   </div>
 );
 
-const TextInput = ({ label, value, onChange, type = 'text', required = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) => (
+const TextInput = ({ label, value, onChange, type = 'text', required = false, placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; placeholder?: string }) => (
   <label className="block">
     <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
     <input 
@@ -3665,7 +3676,8 @@ const TextInput = ({ label, value, onChange, type = 'text', required = false }: 
       value={value} 
       onChange={(e) => onChange(e.target.value)} 
       required={required} 
-      className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm" 
+      placeholder={placeholder}
+      className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 placeholder-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm" 
     />
   </label>
 );
@@ -3823,6 +3835,15 @@ const BuyerCard: React.FC<BuyerCardProps> = React.memo(({
         <div>Email: {client.contact_email || 'N/A'}</div>
         <div>Phone: {phone || 'N/A'}</div>
       </div>
+      {client.products_dealing && client.products_dealing.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-1.5 border-t border-dashed border-slate-100">
+          {client.products_dealing.map((sku) => (
+            <span key={sku} className="inline-block px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[9px] font-extrabold uppercase tracking-wide">
+              {sku}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
         {[
           ['Quotes', metrics.quotesCount.toString()],
@@ -3912,6 +3933,18 @@ const BuyerDetailModal: React.FC<BuyerDetailModalProps> = React.memo(({
             ['Invoices', invoices.filter((invoice) => invoice.client_id === buyer.id).length.toString()],
             ['Shipments', metrics.shipmentsCount.toString()]
           ]} />
+          {buyer.products_dealing && buyer.products_dealing.length > 0 && (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm space-y-2">
+              <h4 className="font-extrabold text-slate-800 uppercase tracking-wider text-[10px]">Products Dealing In</h4>
+              <div className="flex flex-wrap gap-2">
+                {buyer.products_dealing.map((sku) => (
+                  <span key={sku} className="inline-block px-2.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-extrabold uppercase tracking-wide">
+                    {sku}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <DashboardList title="Recent Communication" empty="No communication logged." rows={clientActivities.slice(0, 5).map((activity) => ({
             title: activity.title,
             meta: `${activity.type} | ${activity.activity_date}`

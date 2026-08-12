@@ -7,6 +7,7 @@ export interface Client {
   destination_port: string;
   created_at?: string;
   phone?: string;
+  products_dealing?: string[];
 }
 
 export interface Product {
