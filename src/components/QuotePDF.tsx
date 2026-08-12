@@ -1,15 +1,15 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Font, Image } from '@react-pdf/renderer';
-import { Quote, QuoteItem, BankDetails } from '../lib/types';
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { Quote, BankDetails } from '../lib/types';
 
 // PDF Styling layout
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 22,
-    paddingHorizontal: 26,
-    paddingBottom: 24,
+    paddingTop: 24,
+    paddingHorizontal: 28,
+    paddingBottom: 28,
     fontFamily: 'Helvetica',
-    fontSize: 7.5,
+    fontSize: 8,
     color: '#334155', // slate-700
     backgroundColor: '#ffffff',
   },
@@ -18,16 +18,16 @@ const styles = StyleSheet.create({
   companyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    borderBottomWidth: 1.25,
-    borderBottomColor: '#0284c7',
-    paddingBottom: 8,
-    marginBottom: 9,
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#0284c7', // Sky-600
+    paddingBottom: 10,
+    marginBottom: 12,
   },
   logoImage: {
-    width: 58,
-    height: 48,
+    width: 60,
+    height: 50,
     objectFit: 'contain',
-    marginRight: 9,
+    marginRight: 10,
   },
   companyLogoCol: {
     flexDirection: 'column',
@@ -35,74 +35,71 @@ const styles = StyleSheet.create({
   companyNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
-  },
-  companyLogoBadge: {
-    backgroundColor: '#0f172a', // dark slate
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-    padding: '3 6',
-    borderRadius: 2,
-    marginRight: 6,
+    marginBottom: 3,
   },
   companyTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#0f172a',
+    color: '#0f172a', // Dark slate
+    letterSpacing: 0.5,
   },
   companySlogan: {
-    fontSize: 6.3,
-    color: '#0f766e',
+    fontSize: 6.8,
+    color: '#0f766e', // Teal-700
     fontWeight: 'bold',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 1,
+    letterSpacing: 0.8,
+    marginTop: 2,
   },
   companyMeta: {
-    fontSize: 5.8,
+    fontSize: 6.2,
     color: '#64748b',
-    marginTop: 2,
-    lineHeight: 1.2,
+    marginTop: 3,
+    lineHeight: 1.3,
   },
   docHeaderCol: {
     alignItems: 'flex-end',
     justifyContent: 'center',
-    maxWidth: '42%',
-    backgroundColor: '#f0f9ff',
-    borderRadius: 4,
-    padding: '7 8',
-    borderWidth: 0.75,
-    borderColor: '#bae6fd',
+    maxWidth: '45%',
+    backgroundColor: '#f8fafc',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   docHeaderTitle: {
     fontSize: 9,
     fontWeight: 'bold',
     color: '#0f172a',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   docHeaderRef: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 'bold',
-    color: '#0f766e',
-    marginTop: 2,
+    color: '#0284c7',
+    marginTop: 3,
   },
   docHeaderMeta: {
-    fontSize: 6.5,
+    fontSize: 6.8,
     color: '#475569',
-    marginTop: 2,
+    marginTop: 3,
+    lineHeight: 1.25,
   },
 
   // Section Dividers
   sectionTitle: {
-    fontSize: 8,
+    fontSize: 8.5,
     fontWeight: 'bold',
     color: '#0f172a',
-    backgroundColor: '#eff6ff',
-    padding: '3 6',
-    borderLeftWidth: 2,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderLeftWidth: 3,
     borderLeftColor: '#0284c7',
-    marginBottom: 4,
+    marginBottom: 6,
+    marginTop: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -111,78 +108,79 @@ const styles = StyleSheet.create({
   partyContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 6,
+    alignItems: 'stretch',
+    marginBottom: 8,
   },
   partyCard: {
     width: '49%',
-    borderWidth: 0.75,
-    borderColor: '#cbd5e1',
-    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 4,
     backgroundColor: '#ffffff',
   },
   partyHeaderBar: {
     backgroundColor: '#0f172a',
-    padding: '2.5 6',
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
+    paddingVertical: 3.5,
+    paddingHorizontal: 8,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
   },
   partyHeaderText: {
-    fontSize: 6.8,
+    fontSize: 7.2,
     fontWeight: 'bold',
     color: '#ffffff',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   partyBody: {
-    padding: '3.5 6',
-    lineHeight: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    lineHeight: 1.3,
   },
   partyName: {
-    fontSize: 8,
+    fontSize: 8.5,
     fontWeight: 'bold',
     color: '#0f172a',
-    marginBottom: 2.5,
+    marginBottom: 4,
   },
   partyText: {
-    fontSize: 6,
+    fontSize: 6.8,
     color: '#475569',
-    lineHeight: 1.05,
+    lineHeight: 1.3,
+    marginBottom: 4,
   },
   partyInfoRow: {
     flexDirection: 'row',
-    borderTopWidth: 0.35,
-    borderTopColor: '#e2e8f0',
-    paddingTop: 2,
-    marginTop: 2,
+    borderTopWidth: 0.5,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 3,
+    marginTop: 3,
   },
   partyInfoLabel: {
-    width: '17%',
-    fontSize: 5.4,
+    width: '20%',
+    fontSize: 6.2,
     color: '#64748b',
+    fontWeight: 'bold',
     textTransform: 'uppercase',
   },
   partyInfoValue: {
-    width: '83%',
-    fontSize: 5.9,
+    width: '80%',
+    fontSize: 6.8,
     color: '#334155',
-    lineHeight: 1.05,
-  },
-  partyMuted: {
-    color: '#64748b',
-    fontSize: 5.8,
+    lineHeight: 1.25,
   },
 
   // Logistics Parameters Grid
   logisticsGrid: {
-    borderWidth: 0.75,
-    borderColor: '#bae6fd',
-    borderRadius: 3,
-    marginBottom: 7,
-    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 4,
+    marginBottom: 10,
+    backgroundColor: '#f8fafc',
   },
   logisticsRow: {
     flexDirection: 'row',
-    borderBottomWidth: 0.5,
+    borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
   logisticsRowLast: {
@@ -190,22 +188,25 @@ const styles = StyleSheet.create({
   },
   logisticsCell: {
     flex: 1,
-    padding: '3 6',
-    borderRightWidth: 0.5,
-    borderRightColor: '#bae6fd',
+    paddingVertical: 4.5,
+    paddingHorizontal: 8,
+    borderRightWidth: 1,
+    borderRightColor: '#e2e8f0',
   },
   logisticsCellLast: {
     flex: 1,
-    padding: '3 6',
+    paddingVertical: 4.5,
+    paddingHorizontal: 8,
   },
   logisticsLabel: {
-    fontSize: 5.4,
-    color: '#0369a1',
+    fontSize: 6.2,
+    color: '#0284c7',
+    fontWeight: 'bold',
     textTransform: 'uppercase',
-    marginBottom: 0.5,
+    marginBottom: 2,
   },
   logisticsVal: {
-    fontSize: 6.5,
+    fontSize: 7.2,
     fontWeight: 'bold',
     color: '#0f172a',
   },
@@ -213,44 +214,48 @@ const styles = StyleSheet.create({
   // Tables
   table: {
     width: '100%',
-    marginBottom: 6,
-    borderWidth: 0.75,
-    borderColor: '#cbd5e1',
-    borderRadius: 3,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 4,
     overflow: 'hidden',
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b', // slate-800
-    padding: '4 6',
+    backgroundColor: '#0f172a', // slate-900 (luxurious dark slate)
+    paddingVertical: 5.5,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
   tableHeaderCol: {
     color: '#ffffff',
-    fontSize: 6.5,
+    fontSize: 7,
     fontWeight: 'bold',
     textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   tableRow: {
     flexDirection: 'row',
     borderBottomWidth: 0.5,
-    borderBottomColor: '#cbd5e1',
-    padding: '4 6',
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 5.5,
+    paddingHorizontal: 8,
     alignItems: 'center',
     backgroundColor: '#ffffff',
   },
   tableRowAlternate: {
     flexDirection: 'row',
     borderBottomWidth: 0.5,
-    borderBottomColor: '#cbd5e1',
-    padding: '4 6',
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 5.5,
+    paddingHorizontal: 8,
     alignItems: 'center',
     backgroundColor: '#f8fafc',
   },
   tableCol: {
-    fontSize: 6.7,
+    fontSize: 7.2,
     color: '#334155',
-    lineHeight: 1.2,
+    lineHeight: 1.35,
   },
   tableColDescBlock: {
     flexDirection: 'column',
@@ -258,13 +263,14 @@ const styles = StyleSheet.create({
   tableColDescTitle: {
     fontWeight: 'bold',
     color: '#0f172a',
-    fontSize: 7,
-    marginBottom: 1.5,
+    fontSize: 7.5,
+    marginBottom: 2,
   },
   tableColDescBullet: {
-    fontSize: 6.1,
-    color: '#475569',
-    marginLeft: 4,
+    fontSize: 6.5,
+    color: '#64748b',
+    marginLeft: 5,
+    marginTop: 1,
   },
 
   // Table Column Widths (Commercial offer)
@@ -285,34 +291,40 @@ const styles = StyleSheet.create({
   // Subtotals and Grand Totals
   grandTotalRow: {
     flexDirection: 'row',
-    backgroundColor: '#cbd5e1',
-    padding: '5 6',
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#cbd5e1',
   },
   grandTotalLabel: {
-    fontSize: 7.5,
+    fontSize: 8,
     fontWeight: 'bold',
     color: '#0f172a',
     textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   grandTotalVal: {
-    fontSize: 8.5,
+    fontSize: 9.5,
     fontWeight: 'bold',
     color: '#0284c7', // Sky-600
   },
   amountWordsBlock: {
-    padding: '4 6',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 2,
-    marginBottom: 10,
-    borderWidth: 0.5,
-    borderColor: '#cbd5e1',
+    paddingVertical: 5.5,
+    paddingHorizontal: 8,
+    backgroundColor: '#f8fafc',
+    borderRadius: 3,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   amountWordsText: {
-    fontSize: 7,
+    fontSize: 7.2,
     fontWeight: 'bold',
     color: '#475569',
+    lineHeight: 1.3,
   },
 
   // Section 3: Cost Breakdown Widths
@@ -325,37 +337,39 @@ const styles = StyleSheet.create({
   // Breakdown Summary Rows (FOB subtotal, Ocean freight, CIF Total)
   tableRowSubtotal: {
     flexDirection: 'row',
-    backgroundColor: '#e2e8f0',
-    padding: '5 6',
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     alignItems: 'center',
-    borderBottomWidth: 0.5,
+    borderBottomWidth: 1,
     borderBottomColor: '#cbd5e1',
   },
   tableRowGrandTotal: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    padding: '5 6',
+    backgroundColor: '#0f172a',
+    paddingVertical: 6.5,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
   bdSubtotalLabel: {
     flexGrow: 1,
-    fontSize: 7,
+    fontSize: 7.5,
     fontWeight: 'bold',
-    color: '#1e293b',
+    color: '#0f172a',
     textTransform: 'uppercase',
     textAlign: 'right',
     paddingRight: 10,
   },
   bdSubtotalVal: {
     width: '17%',
-    fontSize: 7.5,
+    fontSize: 8,
     fontWeight: 'bold',
-    color: '#1e293b',
+    color: '#0f172a',
     textAlign: 'right',
   },
   bdGrandLabel: {
     flexGrow: 1,
-    fontSize: 7.5,
+    fontSize: 8,
     fontWeight: 'bold',
     color: '#ffffff',
     textTransform: 'uppercase',
@@ -364,19 +378,19 @@ const styles = StyleSheet.create({
   },
   bdGrandVal: {
     width: '17%',
-    fontSize: 8.5,
+    fontSize: 9.5,
     fontWeight: 'bold',
     color: '#38bdf8', // Sky-400
     textAlign: 'right',
   },
 
   commercialNoteBlock: {
-    marginTop: 4,
-    paddingHorizontal: 2,
-    lineHeight: 1.3,
+    marginTop: 6,
+    paddingHorizontal: 4,
+    lineHeight: 1.35,
   },
   commercialNoteText: {
-    fontSize: 6.5,
+    fontSize: 7,
     color: '#64748b',
   },
 
@@ -384,48 +398,51 @@ const styles = StyleSheet.create({
   responsibilitiesContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
+    alignItems: 'stretch',
   },
   scopeBox: {
     width: '49%',
-    borderWidth: 0.75,
-    borderRadius: 3,
-    padding: 6,
+    borderWidth: 1,
+    borderRadius: 4,
+    padding: 8,
   },
   scopeBoxIncluded: {
-    borderColor: '#86efac', // Green-300
+    borderColor: '#bbf7d0', // Green-200
     backgroundColor: '#f0fdf4', // Green-50
   },
   scopeBoxExcluded: {
-    borderColor: '#fca5a5', // Red-300
+    borderColor: '#fecaca', // Red-200
     backgroundColor: '#fef2f2', // Red-50
   },
   scopeTitle: {
-    fontSize: 7.5,
+    fontSize: 8,
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 5,
     textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
-  scopeTitleIncluded: { color: '#16a34a' },
-  scopeTitleExcluded: { color: '#dc2626' },
+  scopeTitleIncluded: { color: '#15803d' },
+  scopeTitleExcluded: { color: '#b91c1c' },
   bulletList: {
     flexDirection: 'column',
   },
   bulletRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 3,
+    marginBottom: 4.5,
   },
   bulletPoint: {
-    fontSize: 7,
-    marginRight: 4,
+    fontSize: 7.5,
+    marginRight: 5,
+    fontWeight: 'bold',
   },
   bulletPointIncluded: { color: '#16a34a' },
   bulletPointExcluded: { color: '#dc2626' },
   bulletText: {
-    fontSize: 6.5,
+    fontSize: 6.8,
     color: '#334155',
-    lineHeight: 1.2,
+    lineHeight: 1.35,
     flex: 1,
   },
 
@@ -433,76 +450,78 @@ const styles = StyleSheet.create({
   docSpecsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
+    alignItems: 'stretch',
   },
   docBox: {
     width: '49%',
-    borderWidth: 0.75,
-    borderColor: '#94a3b8',
-    borderRadius: 3,
-    padding: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 4,
+    padding: 8,
     backgroundColor: '#f8fafc',
   },
   docTitle: {
-    fontSize: 7.5,
+    fontSize: 8,
     fontWeight: 'bold',
-    color: '#1e293b',
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#cbd5e1',
-    paddingBottom: 3,
-    marginBottom: 4,
+    color: '#0f172a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingBottom: 4,
+    marginBottom: 6,
     textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   specsBox: {
     width: '49%',
-    borderWidth: 0.75,
-    borderColor: '#94a3b8',
-    borderRadius: 3,
-    padding: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 4,
+    padding: 8,
     backgroundColor: '#f8fafc',
   },
   specsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 2.5,
+    paddingVertical: 3.5,
     borderBottomWidth: 0.5,
     borderBottomColor: '#e2e8f0',
   },
   specsLabel: {
-    fontSize: 6.5,
+    fontSize: 6.8,
     fontWeight: 'bold',
     color: '#475569',
   },
   specsValue: {
-    fontSize: 6.5,
+    fontSize: 6.8,
     color: '#0f172a',
     textAlign: 'right',
   },
 
   // Terms and Conditions Section 6
   termsSection: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   termsList: {
     flexDirection: 'column',
-    gap: 3,
+    gap: 4,
   },
   termRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 2.5,
+    marginBottom: 3.5,
   },
   termNum: {
-    fontSize: 7,
+    fontSize: 7.2,
     fontWeight: 'bold',
     color: '#0f172a',
-    marginRight: 4,
-    width: '2.5%',
+    marginRight: 5,
+    width: '3.5%',
   },
   termText: {
-    fontSize: 6.5,
+    fontSize: 6.8,
     color: '#475569',
-    lineHeight: 1.25,
+    lineHeight: 1.35,
     flex: 1,
   },
 
@@ -511,9 +530,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 'auto', // Pushes signature box to the very bottom
-    paddingTop: 10,
-    borderTopWidth: 0.75,
-    borderTopColor: '#cbd5e1',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
   },
   signatureBox: {
     width: '49%',
@@ -521,55 +540,57 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   signatureRoleLabel: {
-    fontSize: 7,
+    fontSize: 7.2,
     fontWeight: 'bold',
     color: '#475569',
     textTransform: 'uppercase',
-    marginBottom: 12,
+    marginBottom: 10,
+    textAlign: 'center',
+    lineHeight: 1.25,
   },
   signatureSignLine: {
     width: '80%',
-    borderBottomWidth: 0.75,
-    borderBottomColor: '#94a3b8',
-    marginBottom: 4,
-    height: 30,
+    borderBottomWidth: 1,
+    borderBottomColor: '#cbd5e1',
+    marginBottom: 6,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
   },
   signatureImage: {
-    width: 105,
-    height: 34,
+    width: 110,
+    height: 36,
     objectFit: 'contain',
     marginBottom: -4,
   },
   signatureCursive: {
-    fontSize: 11,
-    fontFamily: 'Times-Italic', // standard italic font in pdf
-    color: '#1e3a8a', // dark blue ink
+    fontSize: 12,
+    fontFamily: 'Times-Italic',
+    color: '#1e3a8a',
   },
   signatureTextName: {
-    fontSize: 7.5,
+    fontSize: 7.8,
     fontWeight: 'bold',
     color: '#0f172a',
   },
   signatureTextCompany: {
-    fontSize: 6.5,
+    fontSize: 6.8,
     color: '#64748b',
-    marginTop: 1,
+    marginTop: 2,
   },
 
   // Universal Page Footer
   footer: {
     position: 'absolute',
-    bottom: 12,
-    left: 30,
-    right: 30,
+    bottom: 14,
+    left: 28,
+    right: 28,
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderTopWidth: 0.5,
     borderTopColor: '#cbd5e1',
-    paddingTop: 4,
-    fontSize: 6,
+    paddingTop: 5,
+    fontSize: 6.2,
     color: '#94a3b8',
   }
 });
@@ -803,7 +824,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
         {/* 1. QUOTATION & PARTY DETAILS */}
         <Text style={styles.sectionTitle}>1. Quotation & Party Details</Text>
-        <View style={styles.partyContainer}>
+        <View style={styles.partyContainer} wrap={false}>
           <View style={styles.partyCard}>
             <View style={styles.partyHeaderBar}>
               <Text style={styles.partyHeaderText}>Exporter / Seller</Text>
@@ -844,7 +865,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         </View>
 
         {/* Logistics Grid details */}
-        <View style={styles.logisticsGrid}>
+        <View style={styles.logisticsGrid} wrap={false}>
           <View style={styles.logisticsRow}>
             <View style={styles.logisticsCell}>
               <Text style={styles.logisticsLabel}>Incoterm</Text>
@@ -877,7 +898,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
         {/* 2. COMMERCIAL OFFER & SPECIFICATIONS */}
         <Text style={styles.sectionTitle}>2. {documentType === 'packing_list' ? 'Export Goods Specifications' : 'Commercial Offer & Specifications'}</Text>
-        <View style={styles.table}>
+        <View style={styles.table} wrap={false}>
           {/* Header */}
           <View style={styles.tableHeader}>
             {documentType !== 'packing_list' ? (
@@ -911,7 +932,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
             const bullets = descLines.slice(1);
 
             return (
-              <View key={item.id || index} style={rowStyle}>
+              <View key={item.id || index} style={rowStyle} wrap={false}>
                 <Text style={[styles.tableCol, styles.colSr]}>{index + 1}</Text>
                 
                 {documentType !== 'packing_list' ? (
@@ -961,7 +982,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
           {/* Grand total header row of section 2 */}
           {documentType !== 'packing_list' && (
-            <View style={styles.grandTotalRow}>
+            <View style={styles.grandTotalRow} wrap={false}>
               <Text style={styles.grandTotalLabel}>Grand Total CIF {client.destination_port}</Text>
               <Text style={styles.grandTotalVal}>{formatValue(totalCIF)}</Text>
             </View>
@@ -970,7 +991,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
         {/* Amount in words */}
         {documentType !== 'packing_list' && (
-          <View style={styles.amountWordsBlock}>
+          <View style={styles.amountWordsBlock} wrap={false}>
             <Text style={styles.amountWordsText}>
               Amount in Words: {numberToWords(totalCIF, quote.currency)}
             </Text>
@@ -981,7 +1002,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {documentType === 'quotation' && (
           <>
             <Text style={styles.sectionTitle}>3. Transparent CIF Cost Structure Breakdown</Text>
-            <View style={styles.table}>
+            <View style={styles.table} wrap={false}>
               {/* Header */}
               <View style={styles.tableHeader}>
                 <Text style={[styles.tableHeaderCol, styles.colBdSr]}>SR</Text>
@@ -992,7 +1013,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
               </View>
 
               {/* Row 1: FOB Base Product Value */}
-              <View style={styles.tableRow}>
+              <View style={styles.tableRow} wrap={false}>
                 <Text style={[styles.tableCol, styles.colBdSr]}>1</Text>
                 <View style={[styles.tableCol, styles.colBdDesc]}>
                   <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Base Product Value (FOB {quote.loading_port.split(',')[0].trim()})</Text>
@@ -1008,7 +1029,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
               </View>
 
               {/* Row 2: Main Ocean Freight */}
-              <View style={styles.tableRowAlternate}>
+              <View style={styles.tableRowAlternate} wrap={false}>
                 <Text style={[styles.tableCol, styles.colBdSr]}>2</Text>
                 <View style={[styles.tableCol, styles.colBdDesc]}>
                   <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Main Ocean Freight</Text>
@@ -1020,7 +1041,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
               </View>
 
               {/* Row 3: Insurance */}
-              <View style={styles.tableRow}>
+              <View style={styles.tableRow} wrap={false}>
                 <Text style={[styles.tableCol, styles.colBdSr]}>3</Text>
                 <View style={[styles.tableCol, styles.colBdDesc]}>
                   <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Marine Cargo Transit Insurance</Text>
@@ -1032,7 +1053,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
               </View>
 
               {/* Grand total breakdown */}
-              <View style={styles.tableRowGrandTotal}>
+              <View style={styles.tableRowGrandTotal} wrap={false}>
                 <Text style={styles.bdGrandLabel}>Total Offered CIF Value ({client.destination_port.split(',')[0].toUpperCase()})</Text>
                 <Text style={styles.bdGrandVal}>{formatValue(totalCIF)}</Text>
               </View>
@@ -1043,7 +1064,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {documentType === 'invoice' && (
           <>
             <Text style={styles.sectionTitle}>3. Banking Settlement & Wire Instructions</Text>
-            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 10 }}>
+            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 10 }} wrap={false}>
               <Text style={{ fontSize: 7.5, fontWeight: 'bold', color: '#0f172a', marginBottom: 6, borderBottomWidth: 0.5, borderBottomColor: '#cbd5e1', paddingBottom: 2 }}>TELEGRAPHIC TRANSFER (T/T) ACCOUNT ROUTING</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 <View style={{ width: '48%', marginBottom: 3 }}>
@@ -1078,7 +1099,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {documentType === 'packing_list' && (
           <>
             <Text style={styles.sectionTitle}>3. Shipping Weight & Volumetric Totals</Text>
-            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }} wrap={false}>
               <View>
                 <Text style={{ fontSize: 6, color: '#64748b', textTransform: 'uppercase' }}>Total Packages</Text>
                 <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#0f172a', marginTop: 2 }}>{lineItems.length === 1 && lineItems[0]?.packing_container?.includes('325') ? '325 Bags' : 'Standard Crates/Bags'}</Text>
@@ -1097,7 +1118,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
         {/* Note on commercial structure */}
         {documentType === 'quotation' && quote.commercial_note && (
-          <View style={styles.commercialNoteBlock}>
+          <View style={styles.commercialNoteBlock} wrap={false}>
             <Text style={styles.commercialNoteText}>
               Note on Commercial Structure: {quote.commercial_note}
             </Text>
@@ -1107,7 +1128,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {/* Footer Page 1 */}
         <Text
           style={styles.footer}
-          render={({ pageNumber, totalPages }) => (
+          render={() => (
             `${shipper.company_name} | Office: Maharashtra, India | Email: ${shipper.contact_email} | Web: www.sheshaanglobal.com | Page 1 of 2`
           )}
           fixed
@@ -1131,7 +1152,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {documentType !== 'packing_list' ? (
           <>
             <Text style={styles.sectionTitle}>4. Scope of Responsibilities & Export Conditions</Text>
-            <View style={styles.responsibilitiesContainer}>
+            <View style={styles.responsibilitiesContainer} wrap={false}>
               
               <View style={[styles.scopeBox, styles.scopeBoxIncluded]}>
                 <Text style={[styles.scopeTitle, styles.scopeTitleIncluded]}>Included in Seller&apos;s CIF Price</Text>
@@ -1161,7 +1182,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         ) : (
           <>
             <Text style={styles.sectionTitle}>4. Packaging & Stuffing Specifications</Text>
-            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 12 }}>
+            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 12 }} wrap={false}>
               <Text style={{ fontSize: 7, color: '#334155', lineHeight: 1.4 }}>
                 - Packaging Material: High-strength, food-grade single Jute Bags (40 kg Net / Bag) with internal LDPE poly liner (50 microns).{"\n"}
                 - Container Stuffing: 325 bags manually palletized, strapped, and shrink-wrapped with corner guards inside a standard 20ft FCL container.{"\n"}
@@ -1173,7 +1194,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
         {/* 5. DOCUMENTATION & LOGISTICS PARAMETERS */}
         <Text style={styles.sectionTitle}>5. Documentation & Logistics Parameters</Text>
-        <View style={styles.docSpecsContainer}>
+        <View style={styles.docSpecsContainer} wrap={false}>
           
           <View style={styles.docBox}>
             <Text style={styles.docTitle}>{documentType === 'packing_list' ? 'Shipping Documents Attached' : 'Export Documentation Included'}</Text>
@@ -1217,7 +1238,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {documentType !== 'packing_list' ? (
           <>
             <Text style={styles.sectionTitle}>6. Commercial Terms & Conditions</Text>
-            <View style={styles.termsSection}>
+            <View style={styles.termsSection} wrap={false}>
               <View style={styles.termsList}>
                 {commercialTerms.map((term, idx) => (
                   <View key={idx} style={styles.termRow}>
@@ -1231,9 +1252,9 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         ) : (
           <>
             <Text style={styles.sectionTitle}>6. Port Delivery & Receipt Conditions</Text>
-            <View style={{ borderLeftWidth: 2, borderLeftColor: '#0ea5e9', paddingLeft: 6, marginBottom: 15 }}>
+            <View style={{ borderLeftWidth: 2, borderLeftColor: '#0ea5e9', paddingLeft: 6, marginBottom: 15 }} wrap={false}>
               <Text style={{ fontSize: 6.5, color: '#64748b', lineHeight: 1.4 }}>
-                1. Recipient must perform validation of seal integrity and container numbers against the Clean Bill of Lading immediately upon port clearance.
+                1. Recipient must perform validation of seal integrity and container numbers against the Clean Bill of Lading immediately upon port clearance.{"\n"}
                 2. Weight tolerances: A standard moisture weight variation of +/- 0.5% during sea transport is commercially acceptable.
               </Text>
             </View>
@@ -1241,7 +1262,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         )}
 
         {/* SIGNATURES BLOCK */}
-        <View style={styles.signaturesGrid}>
+        <View style={styles.signaturesGrid} wrap={false}>
           
           <View style={styles.signatureBox}>
             <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller Authorization)</Text>
@@ -1263,7 +1284,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {/* Footer Page 2 */}
         <Text
           style={styles.footer}
-          render={({ pageNumber, totalPages }) => (
+          render={() => (
             `${shipper.company_name} | Office: Maharashtra, India | Email: ${shipper.contact_email} | Web: www.sheshaanglobal.com | Page 2 of 2`
           )}
           fixed

@@ -15,10 +15,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1.2,
+    borderBottomWidth: 1.5,
     borderBottomColor: '#0284c7',
     paddingBottom: 10,
-    marginBottom: 16
+    marginBottom: 14
   },
   brand: {
     flexDirection: 'row',
@@ -26,8 +26,8 @@ const styles = StyleSheet.create({
     width: '58%'
   },
   logo: {
-    width: 58,
-    height: 48,
+    width: 60,
+    height: 50,
     objectFit: 'contain',
     marginRight: 10
   },
@@ -35,35 +35,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: '#0f172a',
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
   },
   tagline: {
     marginTop: 2,
     color: '#0284c7',
-    fontSize: 6.5,
+    fontSize: 6.8,
     fontWeight: 'bold',
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    letterSpacing: 0.8
   },
   companyMeta: {
     marginTop: 4,
     color: '#64748b',
-    fontSize: 6.3,
-    lineHeight: 1.25
+    fontSize: 6.5,
+    lineHeight: 1.3
   },
   docBox: {
     width: '38%',
-    backgroundColor: '#f0f9ff',
-    borderWidth: 0.75,
-    borderColor: '#bae6fd',
-    borderRadius: 5,
-    padding: 9,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 6,
+    padding: 10,
     alignItems: 'flex-end'
   },
   docTitle: {
     color: '#0f172a',
     fontSize: 10,
     fontWeight: 'bold',
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
   },
   docNo: {
     marginTop: 4,
@@ -74,110 +77,129 @@ const styles = StyleSheet.create({
   docMeta: {
     marginTop: 3,
     color: '#475569',
-    fontSize: 6.5
+    fontSize: 6.8,
+    lineHeight: 1.25
   },
   cards: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 14
+    marginBottom: 12
   },
   card: {
     width: '49%',
-    borderWidth: 0.75,
-    borderColor: '#cbd5e1',
-    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 6,
     overflow: 'hidden'
   },
   cardTitle: {
     backgroundColor: '#0f172a',
     color: '#ffffff',
-    fontSize: 7,
+    fontSize: 7.5,
     fontWeight: 'bold',
-    padding: '4 7',
-    textTransform: 'uppercase'
+    paddingVertical: 4.5,
+    paddingHorizontal: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3
   },
   cardBody: {
     padding: 8,
-    lineHeight: 1.25
+    lineHeight: 1.35
   },
   partyName: {
-    fontSize: 9,
+    fontSize: 8.8,
     color: '#0f172a',
     fontWeight: 'bold',
     marginBottom: 4
   },
   muted: {
-    color: '#64748b',
-    fontSize: 7
+    color: '#475569',
+    fontSize: 6.8,
+    lineHeight: 1.3
   },
   sectionTitle: {
-    fontSize: 8,
+    fontSize: 8.5,
     fontWeight: 'bold',
     color: '#0f172a',
-    backgroundColor: '#eff6ff',
-    borderLeftWidth: 2,
+    backgroundColor: '#f1f5f9',
+    borderLeftWidth: 3,
     borderLeftColor: '#0284c7',
-    padding: '4 7',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     marginBottom: 6,
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    letterSpacing: 0.3
   },
   table: {
-    borderWidth: 0.75,
+    borderWidth: 1,
     borderColor: '#cbd5e1',
-    borderRadius: 5,
+    borderRadius: 6,
     overflow: 'hidden',
-    marginBottom: 14
+    marginBottom: 12
   },
   row: {
     flexDirection: 'row',
     borderBottomWidth: 0.5,
-    borderBottomColor: '#e2e8f0'
+    borderBottomColor: '#e2e8f0',
+    alignItems: 'center',
+    backgroundColor: '#ffffff'
   },
   headerRow: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b'
+    backgroundColor: '#0f172a', // dark blue/slate theme matching quote PDF
+    alignItems: 'center'
   },
   th: {
     color: '#ffffff',
-    fontSize: 6.8,
+    fontSize: 7,
     fontWeight: 'bold',
-    padding: 7,
-    textTransform: 'uppercase'
+    paddingVertical: 5.5,
+    paddingHorizontal: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3
   },
   td: {
-    padding: 7,
+    paddingVertical: 5.5,
+    paddingHorizontal: 8,
     fontSize: 7.2,
-    color: '#334155'
+    color: '#334155',
+    lineHeight: 1.3
   },
   summaryWrap: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginBottom: 14
+    marginBottom: 12
   },
   summary: {
     width: '48%',
-    borderWidth: 0.75,
+    borderWidth: 1,
     borderColor: '#cbd5e1',
-    borderRadius: 5,
+    borderRadius: 6,
     overflow: 'hidden'
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: '6 8',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#e2e8f0'
+    borderBottomColor: '#e2e8f0',
+    fontSize: 7.2,
+    color: '#334155'
   },
   summaryGrand: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: '8 8',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
     backgroundColor: '#0f172a'
   },
   grandText: {
     color: '#ffffff',
     fontSize: 8,
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3
   },
   grandValue: {
     color: '#38bdf8',
@@ -185,18 +207,18 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   },
   note: {
-    borderWidth: 0.75,
+    borderWidth: 1,
     borderColor: '#bae6fd',
     backgroundColor: '#f0f9ff',
-    borderRadius: 5,
+    borderRadius: 6,
     padding: 8,
     color: '#475569',
-    fontSize: 7,
-    lineHeight: 1.3
+    fontSize: 7.2,
+    lineHeight: 1.35
   },
   footer: {
     position: 'absolute',
-    bottom: 16,
+    bottom: 14,
     left: 30,
     right: 30,
     borderTopWidth: 0.5,
@@ -205,7 +227,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     color: '#94a3b8',
-    fontSize: 6
+    fontSize: 6.2
   }
 });
 
@@ -252,7 +274,7 @@ export const InvoicePDF = ({
           </View>
         </View>
 
-        <View style={styles.cards}>
+        <View style={styles.cards} wrap={false}>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Bill From</Text>
             <View style={styles.cardBody}>
@@ -273,7 +295,7 @@ export const InvoicePDF = ({
         </View>
 
         <Text style={styles.sectionTitle}>Invoice Summary</Text>
-        <View style={styles.table}>
+        <View style={styles.table} wrap={false}>
           <View style={styles.headerRow}>
             <Text style={[styles.th, { width: '22%' }]}>Reference</Text>
             <Text style={[styles.th, { width: '32%' }]}>Description</Text>
@@ -281,7 +303,7 @@ export const InvoicePDF = ({
             <Text style={[styles.th, { width: '15%', textAlign: 'right' }]}>Advance</Text>
             <Text style={[styles.th, { width: '15%', textAlign: 'right' }]}>Balance</Text>
           </View>
-          <View style={styles.row}>
+          <View style={styles.row} wrap={false}>
             <Text style={[styles.td, { width: '22%', fontWeight: 'bold', color: '#0f172a' }]}>{quote?.quote_number || invoice.invoice_number}</Text>
             <Text style={[styles.td, { width: '32%' }]}>{invoice.notes || `${invoice.invoice_type} invoice raised for export order settlement.`}</Text>
             <Text style={[styles.td, { width: '16%', textAlign: 'center', fontWeight: 'bold' }]}>{invoice.payment_status}</Text>
@@ -290,7 +312,7 @@ export const InvoicePDF = ({
           </View>
         </View>
 
-        <View style={styles.summaryWrap}>
+        <View style={styles.summaryWrap} wrap={false}>
           <View style={styles.summary}>
             <View style={styles.summaryRow}>
               <Text>Invoice Amount</Text>
@@ -308,7 +330,7 @@ export const InvoicePDF = ({
         </View>
 
         <Text style={styles.sectionTitle}>Payment Instructions</Text>
-        <View style={styles.note}>
+        <View style={styles.note} wrap={false}>
           <Text>Payment should be made as per agreed commercial terms. Please mention invoice number {invoice.invoice_number} in the bank transfer reference. This document is generated from Sheshaan Global Admin Portal.</Text>
         </View>
 

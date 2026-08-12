@@ -6,6 +6,7 @@ export interface Client {
   contact_email: string;
   destination_port: string;
   created_at?: string;
+  phone?: string;
 }
 
 export interface Product {

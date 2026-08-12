@@ -27,6 +27,7 @@ import {
   Bell,
   Building2,
   CalendarCheck,
+  Check,
   CheckSquare,
   ChevronDown,
   ClipboardList,
@@ -74,7 +75,7 @@ const quoteStatuses: Quote['status'][] = [
   'Declined'
 ];
 
-type TabKey = 'overview' | 'crm' | 'buyers360' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
+type TabKey = 'overview' | 'crm' | 'buyers360' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string };
 
@@ -83,7 +84,8 @@ const blankClient: Partial<Client> = {
   address: '',
   contact_name: '',
   contact_email: '',
-  destination_port: ''
+  destination_port: '',
+  phone: ''
 };
 
 const blankProduct: Partial<Product> = {
@@ -338,20 +340,31 @@ const zonedLocalTimeToUtc = (timeZone: string, localHour: number) => {
   const offset = getTimeZoneOffsetMinutes(timeZone, guess);
   return new Date(guess.getTime() - offset * 60000);
 };
+const bestSendWindowCache = new Map<string, string>();
 const bestSendWindowIST = (country = '') => {
   const key = normalizeCountryKey(country);
+  if (bestSendWindowCache.has(key)) {
+    return bestSendWindowCache.get(key)!;
+  }
+  let windowStr = '';
   const timeZone = countryTimeZones[key];
   if (timeZone) {
     const start = zonedLocalTimeToUtc(timeZone, 10);
     const end = zonedLocalTimeToUtc(timeZone, 12);
     const formatter = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true });
-    return `Best send: ${formatter.format(start)} - ${formatter.format(end)} IST`;
+    windowStr = `Best send: ${formatter.format(start)} - ${formatter.format(end)} IST`;
+  } else {
+    const offset = countryTimezoneOffsets[key];
+    if (offset === undefined) {
+      windowStr = 'Best send: 10:30 AM - 12:30 PM IST';
+    } else {
+      const start = 10 - offset + 5.5;
+      const end = 12 - offset + 5.5;
+      windowStr = `Best send: ${formatIstHour(start)} - ${formatIstHour(end)} IST`;
+    }
   }
-  const offset = countryTimezoneOffsets[key];
-  if (offset === undefined) return 'Best send: 10:30 AM - 12:30 PM IST';
-  const start = 10 - offset + 5.5;
-  const end = 12 - offset + 5.5;
-  return `Best send: ${formatIstHour(start)} - ${formatIstHour(end)} IST`;
+  bestSendWindowCache.set(key, windowStr);
+  return windowStr;
 };
 
 export const Dashboard: React.FC = () => {
@@ -373,7 +386,9 @@ export const Dashboard: React.FC = () => {
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [reachoutSearchQuery, setReachoutSearchQuery] = useState('');
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showDevMenu, setShowDevMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
   const [importingBuyers, setImportingBuyers] = useState(false);
@@ -387,6 +402,8 @@ export const Dashboard: React.FC = () => {
 
   const [clientForm, setClientForm] = useState<Partial<Client>>(blankClient);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [editingPhoneBuyerId, setEditingPhoneBuyerId] = useState<string | null>(null);
+  const [editingPhoneValue, setEditingPhoneValue] = useState('');
 
   const [productForm, setProductForm] = useState<Partial<Product>>(blankProduct);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -411,6 +428,7 @@ export const Dashboard: React.FC = () => {
   const [selectedTemplateClientId, setSelectedTemplateClientId] = useState('');
   const [selectedTemplateProductId, setSelectedTemplateProductId] = useState('');
   const [buyerCountryFilter, setBuyerCountryFilter] = useState('All');
+  const [buyerSortKey, setBuyerSortKey] = useState<'name' | 'phone_asc' | 'phone_desc'>('name');
   const [rateForm, setRateForm] = useState<Partial<FreightRateHistory>>(blankRate);
   const [editingRateId, setEditingRateId] = useState<string | null>(null);
   const [invoiceForm, setInvoiceForm] = useState<Partial<InvoiceRecord>>(blankInvoice);
@@ -541,16 +559,111 @@ export const Dashboard: React.FC = () => {
   }, [quotes, invoices, shipments, checklists, freightRates, tasks, leads]);
 
   const quoteClient = (quote: Quote) => quote.client || clients.find((client) => client.id === quote.client_id);
-  const buyerCountry = (client: Client) => {
-    const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
-    if (linkedLead?.country) return titleCaseCountry(linkedLead.country.trim());
+  
+  const clientCountries = useMemo(() => {
+    const map: Record<string, string> = {};
+    clients.forEach((client) => {
+      const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+      if (linkedLead?.country) {
+        map[client.id] = titleCaseCountry(linkedLead.country.trim());
+        return;
+      }
+      const searchable = `${client.address || ''} ${client.destination_port || ''}`.toLowerCase();
+      const matchedCountry = commonCountryNames.find((country) => searchable.includes(country));
+      map[client.id] = matchedCountry ? titleCaseCountry(matchedCountry) : 'Uncategorized';
+    });
+    return map;
+  }, [clients, leads]);
 
-    const searchable = `${client.address || ''} ${client.destination_port || ''}`.toLowerCase();
-    const matchedCountry = commonCountryNames.find((country) => searchable.includes(country));
-    return matchedCountry ? titleCaseCountry(matchedCountry) : 'Uncategorized';
-  };
-  const buyerCountries = Array.from(new Set(clients.map((client) => buyerCountry(client)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  const filteredBuyers = buyerCountryFilter === 'All' ? clients : clients.filter((client) => buyerCountry(client) === buyerCountryFilter);
+  const clientPhones = useMemo(() => {
+    const map: Record<string, string> = {};
+    clients.forEach((client) => {
+      if (client.phone) {
+        map[client.id] = client.phone;
+        return;
+      }
+      const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+      map[client.id] = linkedLead?.phone || '';
+    });
+    return map;
+  }, [clients, leads]);
+
+  const buyerCountry = (client: Client) => clientCountries[client.id] || 'Uncategorized';
+  
+  const buyerCountries = useMemo(() => {
+    return Array.from(new Set(clients.map((client) => clientCountries[client.id] || 'Uncategorized').filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [clients, clientCountries]);
+
+  const filteredBuyers = useMemo(() => {
+    const list = buyerCountryFilter === 'All' 
+      ? clients 
+      : clients.filter((client) => (clientCountries[client.id] || 'Uncategorized') === buyerCountryFilter);
+    
+    if (buyerSortKey === 'phone_asc') {
+      return [...list].sort((a, b) => {
+        const phoneA = a.phone || clientPhones[a.id] || '';
+        const phoneB = b.phone || clientPhones[b.id] || '';
+        if (!phoneA) return 1;
+        if (!phoneB) return -1;
+        return phoneA.localeCompare(phoneB);
+      });
+    } else if (buyerSortKey === 'phone_desc') {
+      return [...list].sort((a, b) => {
+        const phoneA = a.phone || clientPhones[a.id] || '';
+        const phoneB = b.phone || clientPhones[b.id] || '';
+        if (!phoneA) return 1;
+        if (!phoneB) return -1;
+        return phoneB.localeCompare(phoneA);
+      });
+    } else {
+      return [...list].sort((a, b) => a.company_name.localeCompare(b.company_name));
+    }
+  }, [clients, clientCountries, buyerCountryFilter, buyerSortKey, clientPhones]);
+
+  const reachoutBuyers = useMemo(() => {
+    return clients.filter((client) => {
+      const phone = client.phone || clientPhones[client.id] || '';
+      return phone.trim().length > 0;
+    });
+  }, [clients, clientPhones]);
+
+  const clientMetrics = useMemo(() => {
+    const map: Record<string, {
+      quotesCount: number;
+      receivableValue: number;
+      shipmentsCount: number;
+      openTasksCount: number;
+      lastActivityTitle: string;
+    }> = {};
+
+    clients.forEach((client) => {
+      const cQuotes = quotes.filter((quote) => quote.client_id === client.id);
+      const cInvoices = invoices.filter((invoice) => invoice.client_id === client.id && invoice.payment_status !== 'Paid');
+      const cShipments = shipments.filter((shipment) => shipment.client_id === client.id);
+      const cTasks = tasks.filter((task) => task.client_id === client.id && task.status !== 'Done');
+      const cLastActivity = activities.find((activity) => activity.client_id === client.id);
+
+      const receivableValue = cInvoices.reduce((sum, invoice) => sum + Number(invoice.balance_amount || invoice.amount || 0), 0);
+
+      map[client.id] = {
+        quotesCount: cQuotes.length,
+        receivableValue,
+        shipmentsCount: cShipments.length,
+        openTasksCount: cTasks.length,
+        lastActivityTitle: cLastActivity?.title || 'No activity logged'
+      };
+    });
+
+    return map;
+  }, [clients, quotes, invoices, shipments, tasks, activities]);
+
+  const buyerSummaryStats = useMemo(() => {
+    const shown = filteredBuyers.length;
+    const countriesCount = buyerCountries.filter((country) => country !== 'Uncategorized').length;
+    const uncategorized = clients.filter((client) => clientCountries[client.id] === 'Uncategorized').length;
+    const crmLinked = clients.filter((client) => leads.some((lead) => lead.client_id === client.id)).length;
+    return { shown, countriesCount, uncategorized, crmLinked };
+  }, [filteredBuyers, buyerCountries, clients, clientCountries, leads]);
 
   const notifications = useMemo(() => {
     const today = new Date();
@@ -734,6 +847,58 @@ export const Dashboard: React.FC = () => {
       details: `Template: ${template?.name || 'Default WhatsApp message'}\nPhone: ${lead.phone}`,
       activity_date: today,
       owner: lead.owner || 'Sana Zeba'
+    }, resetActivityForm);
+
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(body)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleBuyerWhatsAppReachout = async (client: Client, phone: string) => {
+    if (!phone) {
+      alert('Please add a phone number before opening WhatsApp.');
+      return;
+    }
+
+    const template = templates.find((item) => item.channel === 'WhatsApp' && item.category === 'Introduction')
+      || templates.find((item) => item.channel === 'WhatsApp')
+      || { name: 'Default Intro', body: 'Hello {{buyer_name}}, this is Sheshaan Global from India. We can support {{company_name}} with export-ready products. Please let us know your requirement and destination port.' };
+
+    const linkedLead = leads.find((l) => l.client_id === client.id || l.company_name.toLowerCase() === client.company_name.toLowerCase());
+    const leadObj: Lead = linkedLead || {
+      id: '',
+      company_name: client.company_name,
+      contact_name: client.contact_name,
+      contact_email: client.contact_email,
+      phone: phone,
+      stage: 'Contacted',
+      client_id: client.id
+    };
+
+    const body = replaceLeadTemplateVars(template.body || '', leadObj);
+    const cleanPhone = phone.replace(/[^\d]/g, '');
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (linkedLead?.id) {
+      const nextFollowUpDate = new Date();
+      nextFollowUpDate.setDate(nextFollowUpDate.getDate() + 3);
+      await supabase.from('leads').update({
+        notes: setLeadNoteValues(linkedLead, {
+          'Email Status': 'WhatsApp Intro Sent',
+          'Last Email Sent On': today,
+          'Next Action': 'Waiting for buyer response'
+        }),
+        stage: ['Won', 'Lost'].includes(linkedLead.stage) ? linkedLead.stage : 'Contacted',
+        next_follow_up: nextFollowUpDate.toISOString().slice(0, 10)
+      }).eq('id', linkedLead.id);
+    }
+
+    await saveRecord<TimelineActivity>('activities', null, {
+      client_id: client.id,
+      lead_id: linkedLead?.id || undefined,
+      type: 'Note',
+      title: `WhatsApp Intro opened for ${client.company_name}`,
+      details: `Template: ${template.name || 'WhatsApp Introduction'}\nPhone: ${phone}`,
+      activity_date: today,
+      owner: 'Sana Zeba'
     }, resetActivityForm);
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(body)}`, '_blank', 'noopener,noreferrer');
@@ -1003,7 +1168,8 @@ export const Dashboard: React.FC = () => {
       address: clientForm.address || '',
       contact_name: clientForm.contact_name || '',
       contact_email: clientForm.contact_email || '',
-      destination_port: clientForm.destination_port
+      destination_port: clientForm.destination_port,
+      phone: clientForm.phone || ''
     };
 
     const query = editingClientId ? supabase.from('clients').update(payload).eq('id', editingClientId) : supabase.from('clients').insert([payload]).select().single();
@@ -1026,6 +1192,29 @@ export const Dashboard: React.FC = () => {
       return;
     }
     setClients((current) => current.filter((c) => c.id !== id));
+  };
+
+  const handleSavePhone = async (clientId: string, newPhone: string) => {
+    const client = clients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    const payload = {
+      company_name: client.company_name,
+      address: client.address || '',
+      contact_name: client.contact_name || '',
+      contact_email: client.contact_email || '',
+      destination_port: client.destination_port,
+      phone: newPhone
+    };
+
+    const { error } = await supabase.from('clients').update(payload).eq('id', clientId);
+    if (error) {
+      alert(error.message || 'Failed to update phone number');
+      return;
+    }
+
+    setClients((prev) => prev.map((c) => c.id === clientId ? { ...c, phone: newPhone } : c));
+    setEditingPhoneBuyerId(null);
   };
 
   const normalizeImportDate = (value: unknown) => {
@@ -1570,6 +1759,7 @@ export const Dashboard: React.FC = () => {
     { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
     { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
     { key: 'buyers360', label: 'Buyer 360 Profile', icon: <Users className="h-4 w-4" />, count: clients.length },
+    { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
     { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
     { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
     { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
@@ -1589,7 +1779,7 @@ export const Dashboard: React.FC = () => {
   const appBusy = loading || importingBuyers;
   const mobilePrimaryNav = navItems.filter((item) => ['overview', 'crm', 'quotes', 'tasks'].includes(item.key));
   const navGroups = [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'buyers360', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'buyers360', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users'].includes(item.key)) }
   ];
@@ -1906,6 +2096,36 @@ export const Dashboard: React.FC = () => {
                       </div>
                     )}
                   </div>
+                  {(isMock || isFirebase) && (
+                    <div className="relative">
+                      <button type="button" onClick={() => setShowDevMenu((v) => !v)} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
+                        <Database className="h-4 w-4 text-sky-600 shrink-0" />
+                        <span>Database</span>
+                      </button>
+                      {showDevMenu && (
+                        <div className="absolute right-0 top-10 z-30 w-80 rounded-lg border border-slate-200 bg-white shadow-xl p-4 text-xs space-y-3">
+                          <div className="border-b pb-2 flex justify-between items-center">
+                            <span className="font-bold text-slate-800">Database Tools</span>
+                            <span className="text-[10px] bg-sky-50 text-sky-700 font-extrabold px-1.5 py-0.5 rounded">{dbType.split(' ')[0]}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            {isFirebase ? 'Connected to Firebase Firestore. Seed will push mock data, Clear will wipe remote Firestore collections.' : 'Using local db.json file storage. Seed will inject standard mock data, Clear will empty database.'}
+                          </p>
+                          <div className="flex gap-2">
+                            <button onClick={() => { fetchData(); setShowDevMenu(false); }} className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-[11px] flex items-center justify-center gap-1 border border-slate-200">
+                              <RefreshCw className="h-3 w-3" /> Refresh
+                            </button>
+                            <button onClick={() => { handleSeedMock(); setShowDevMenu(false); }} className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[11px] flex items-center justify-center gap-1 shadow">
+                              <Sparkles className="h-3 w-3" /> Seed
+                            </button>
+                            <button onClick={() => { handleClearMock(); setShowDevMenu(false); }} className="flex-1 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded text-[11px] flex items-center justify-center gap-1">
+                              <Trash2 className="h-3 w-3" /> Clear
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <button type="button" onClick={() => navigateToTab('templates')} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
                     <Edit2 className="h-4 w-4" />
                     Templates
@@ -1921,43 +2141,6 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            <div className="bg-white/95 rounded-lg border border-slate-200 shadow-sm p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4 animate-fade-up">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600">Export operations command center</p>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">{activeNavItem?.label || 'Overview'}</h2>
-                <p className="text-xs text-slate-500 mt-1">Connected CRM, quotes, accounts, tasks, communication, documents, and shipment workflows.</p>
-              </div>
-              {(isMock || isFirebase) && (
-                <div className="hidden sm:flex flex-wrap gap-2">
-                  <button onClick={fetchData} className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-slate-700 text-xs font-medium rounded border border-slate-200 transition">
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Refresh
-                  </button>
-                  <button onClick={handleSeedMock} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded shadow transition">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Seed Demo
-                  </button>
-                  <button onClick={handleClearMock} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-medium rounded border border-red-200 transition">
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Clear
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {(isMock || isFirebase) && (
-              <div className="hidden sm:flex bg-white border border-slate-200 rounded-lg p-3 items-center gap-3">
-                <Database className="h-5 w-5 text-sky-500" />
-                <div>
-                  <span className="font-bold text-slate-800 text-xs block">{dbType} Active</span>
-                  <span className="text-[11px] text-slate-500 block">
-                    {isFirebase ? 'Firebase environment keys are configured, so records sync with Cloud Firestore.' : 'Cloud keys are not configured, so data is stored in db.json for this workspace.'}
-                  </span>
-                </div>
-              </div>
-            )}
-
             <div key={activeTab} className="bg-white/95 rounded-lg border border-slate-200 shadow-sm p-3 sm:p-5 min-w-0 animate-panel-in">
           {activeTab === 'overview' && (
             <div className="space-y-5">
@@ -2455,6 +2638,7 @@ export const Dashboard: React.FC = () => {
                   <TextArea label="Address" value={clientForm.address || ''} onChange={(value) => setClientForm({ ...clientForm, address: value })} />
                   <TextInput label="Contact Person" value={clientForm.contact_name || ''} onChange={(value) => setClientForm({ ...clientForm, contact_name: value })} />
                   <TextInput label="Email" type="email" value={clientForm.contact_email || ''} onChange={(value) => setClientForm({ ...clientForm, contact_email: value })} />
+                  <TextInput label="Phone Number" value={clientForm.phone || ''} onChange={(value) => setClientForm({ ...clientForm, phone: value })} />
                 </>
               }
             >
@@ -2497,6 +2681,22 @@ export const Dashboard: React.FC = () => {
                           </select>
                           <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
                         </div>
+                        <div className="mt-3 flex items-center justify-between gap-3 text-white border-t border-white/10 pt-2.5">
+                          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-300">Sort Buyers</p>
+                        </div>
+                        <div className="relative mt-2">
+                          <select
+                            aria-label="Buyer Sorting"
+                            value={buyerSortKey}
+                            onChange={(event) => setBuyerSortKey(event.target.value as any)}
+                            className="h-10 w-full appearance-none rounded-md border border-white/15 bg-white px-3 pr-9 text-xs font-bold text-slate-800 shadow-sm outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-300/30"
+                          >
+                            <option value="name">Company Name (A-Z)</option>
+                            <option value="phone_asc">Phone Number (Ascending)</option>
+                            <option value="phone_desc">Phone Number (Descending)</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                        </div>
                         <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scroll-fade">
                           {['All', ...buyerCountries.filter((country) => country !== 'Uncategorized').slice(0, 8)].map((country) => (
                             <button
@@ -2513,61 +2713,294 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                    <CrmMetric label="Shown Buyers" value={filteredBuyers.length.toString()} helper={buyerCountryFilter === 'All' ? 'All countries' : buyerCountryFilter} />
-                    <CrmMetric label="Countries" value={buyerCountries.filter((country) => country !== 'Uncategorized').length.toString()} helper="Detected markets" />
-                    <CrmMetric label="Uncategorized" value={clients.filter((client) => buyerCountry(client) === 'Uncategorized').length.toString()} helper="Needs country data" />
-                    <CrmMetric label="CRM Linked" value={clients.filter((client) => leads.some((lead) => lead.client_id === client.id)).length.toString()} helper="Synced with leads" />
+                    <CrmMetric label="Shown Buyers" value={buyerSummaryStats.shown.toString()} helper={buyerCountryFilter === 'All' ? 'All countries' : buyerCountryFilter} />
+                    <CrmMetric label="Countries" value={buyerSummaryStats.countriesCount.toString()} helper="Detected markets" />
+                    <CrmMetric label="Uncategorized" value={buyerSummaryStats.uncategorized.toString()} helper="Needs country data" />
+                    <CrmMetric label="CRM Linked" value={buyerSummaryStats.crmLinked.toString()} helper="Synced with leads" />
                   </div>
                 </div>
 
                 {clients.length === 0 ? <EmptyState text="No buyer companies found." /> : filteredBuyers.length === 0 ? <EmptyState text="No buyers match this country filter." /> : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {filteredBuyers.map((c) => {
-                      const country = buyerCountry(c);
-                      return (
-                        <div key={c.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 text-xs">
-                          <div className="flex justify-between gap-3">
-                            <div className="min-w-0">
-                              <h4 className="font-bold text-slate-900 truncate">{c.company_name}</h4>
-                              <div className="mt-1 flex flex-wrap gap-1.5">
-                                <SmallBadge text={country} />
-                                <span className="inline-block px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold">{bestSendWindowIST(country).replace('Best send: ', '')}</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button type="button" onClick={() => setSelectedBuyerId(c.id)} className="px-2 py-1 bg-sky-50 text-sky-700 rounded font-bold hover:bg-sky-100">View</button>
-                              <RowActions onEdit={() => { setEditingClientId(c.id); setClientForm(c); }} onDelete={() => deleteClient(c.id)} />
-                            </div>
-                          </div>
-                          <p className="text-slate-500 font-mono font-medium">{c.destination_port}</p>
-                          {c.address && <p className="text-[11px] text-slate-600 border-t pt-1.5">{c.address}</p>}
-                          <div className="text-[10px] text-slate-400 pt-1">
-                            <div>Contact: {c.contact_name || 'N/A'}</div>
-                            <div>Email: {c.contact_email || 'N/A'}</div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                            {[
-                              ['Quotes', quotes.filter((quote) => quote.client_id === c.id).length.toString()],
-                              ['Receivable', formatQuoteCurrency(invoices.filter((invoice) => invoice.client_id === c.id && invoice.payment_status !== 'Paid').reduce((sum, invoice) => sum + Number(invoice.balance_amount || invoice.amount || 0), 0), 'INR')],
-                              ['Shipments', shipments.filter((shipment) => shipment.client_id === c.id).length.toString()],
-                              ['Open Tasks', tasks.filter((task) => task.client_id === c.id && task.status !== 'Done').length.toString()]
-                            ].map(([label, value]) => (
-                              <div key={label} className="bg-slate-50 rounded p-2">
-                                <span className="block text-[9px] uppercase font-bold text-slate-400">{label}</span>
-                                <span className="font-bold text-slate-900">{value}</span>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="pt-2 text-[11px] text-slate-600">
-                            Last activity: {activities.find((activity) => activity.client_id === c.id)?.title || 'No activity logged'}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {filteredBuyers.map((c) => (
+                      <BuyerCard
+                        key={c.id}
+                        client={c}
+                        country={buyerCountry(c)}
+                        phone={c.phone || clientPhones[c.id] || ''}
+                        metrics={clientMetrics[c.id] || { quotesCount: 0, receivableValue: 0, shipmentsCount: 0, openTasksCount: 0, lastActivityTitle: 'No activity logged' }}
+                        onView={() => setSelectedBuyerId(c.id)}
+                        onEdit={() => { setEditingClientId(c.id); setClientForm(c); }}
+                        onDelete={() => deleteClient(c.id)}
+                        formatQuoteCurrency={formatQuoteCurrency}
+                        bestSendWindowIST={bestSendWindowIST}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
             </TwoColumnManager>
+          )}
+
+          {activeTab === 'phoneReachout' && (
+            <div className="space-y-5">
+              {/* Header and Statistics Panel */}
+              <div className="bg-slate-950 text-white rounded-lg p-5">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Outreach automation</p>
+                    <h3 className="text-xl font-extrabold">Phone & WhatsApp Reachout</h3>
+                    <p className="text-xs text-slate-300 mt-1">
+                      The CRM automatically finds which buyers have phone numbers registered directly or via linked CRM leads, and prepares quick WhatsApp intro templates.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded px-3 py-2 text-right">
+                      <span className="block text-[9px] uppercase font-bold text-emerald-300">Ready for Reachout</span>
+                      <span className="font-extrabold text-lg text-emerald-400">{reachoutBuyers.length} Buyers</span>
+                    </div>
+                    <div className="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-right">
+                      <span className="block text-[9px] uppercase font-bold text-slate-400">Total Buyers</span>
+                      <span className="font-extrabold text-lg text-white">{clients.length} Buyers</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Search and Filters */}
+                <div className="mt-4 flex flex-col md:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search reachout list by company, contact person, or phone number..."
+                      value={reachoutSearchQuery}
+                      onChange={(e) => setReachoutSearchQuery(e.target.value)}
+                      className="w-full h-10 bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Main content grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* Reachable Buyers list */}
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                    <h3 className="text-sm font-extrabold text-slate-900 mb-3 flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                      Identified Sourcing Contacts ({
+                        reachoutBuyers.filter((b) => {
+                          const query = reachoutSearchQuery.toLowerCase();
+                          const phone = b.phone || clientPhones[b.id] || '';
+                          return b.company_name.toLowerCase().includes(query) ||
+                            (b.contact_name || '').toLowerCase().includes(query) ||
+                            phone.includes(query);
+                        }).length
+                      })
+                    </h3>
+
+                    {reachoutBuyers.length === 0 ? (
+                      <EmptyState text="No buyers with phone numbers identified in the CRM. You can add phone numbers to buyers below." />
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {reachoutBuyers
+                          .filter((b) => {
+                            const query = reachoutSearchQuery.toLowerCase();
+                            const phone = b.phone || clientPhones[b.id] || '';
+                            return b.company_name.toLowerCase().includes(query) ||
+                              (b.contact_name || '').toLowerCase().includes(query) ||
+                              phone.includes(query);
+                          })
+                          .map((b) => {
+                            const phone = b.phone || clientPhones[b.id] || '';
+                            const country = buyerCountry(b);
+                            const lastActivity = activities.find((act) => act.client_id === b.id && act.title.toLowerCase().includes('whatsapp'));
+                            
+                            return (
+                              <div key={b.id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-extrabold text-slate-900 text-sm">{b.company_name}</h4>
+                                    <SmallBadge text={country} />
+                                  </div>
+                                  <div className="text-slate-500 font-medium">
+                                    Contact: <span className="text-slate-800">{b.contact_name || 'N/A'}</span>
+                                    {b.contact_email && <span className="mx-1.5 text-slate-300">|</span>}
+                                    {b.contact_email && <span className="text-slate-600">{b.contact_email}</span>}
+                                  </div>
+                                  {editingPhoneBuyerId === b.id ? (
+                                    <div className="flex items-center gap-1.5 pt-0.5">
+                                      <input
+                                        type="text"
+                                        aria-label="Edit Phone Number"
+                                        value={editingPhoneValue}
+                                        onChange={(e) => setEditingPhoneValue(e.target.value)}
+                                        className="px-2 py-0.5 border border-slate-300 bg-slate-50 rounded text-xs font-mono w-44 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') handleSavePhone(b.id, editingPhoneValue);
+                                          if (e.key === 'Escape') setEditingPhoneBuyerId(null);
+                                        }}
+                                        autoFocus
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSavePhone(b.id, editingPhoneValue)}
+                                        className="p-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded transition"
+                                        title="Save Phone"
+                                      >
+                                        <Check className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingPhoneBuyerId(null)}
+                                        className="p-1 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded transition"
+                                        title="Cancel"
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 font-mono text-[11px] text-slate-600">
+                                      <Phone className="h-3 w-3 text-slate-400" />
+                                      <span>{phone}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingPhoneBuyerId(b.id);
+                                          setEditingPhoneValue(phone);
+                                        }}
+                                        className="p-0.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded transition"
+                                        title="Edit Phone"
+                                      >
+                                        <Edit2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                                  {lastActivity ? (
+                                    <div className="text-[10px] text-emerald-600 font-medium">
+                                      Last Reachout: {lastActivity.title} on {lastActivity.activity_date}
+                                    </div>
+                                  ) : (
+                                    <div className="text-[10px] text-slate-400">
+                                      No WhatsApp reachout logged yet
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 self-start sm:self-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleBuyerWhatsAppReachout(b, phone)}
+                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-2 shadow-sm transition active:scale-[0.98]"
+                                  >
+                                    <Send className="h-3.5 w-3.5" />
+                                    WhatsApp Intro
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedBuyerId(b.id)}
+                                    className="px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg font-bold transition"
+                                  >
+                                    View 360
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right side panel: Missing numbers */}
+                <div className="space-y-4">
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                    <h3 className="text-sm font-extrabold text-slate-900 mb-2 flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                      Missing Phone Numbers ({clients.length - reachoutBuyers.length})
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+                      These buyers do not have a phone number in the system. Add their phone numbers to enable one-click WhatsApp outreach.
+                    </p>
+
+                    <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1 scroll-fade">
+                      {clients
+                        .filter((client) => {
+                          const phone = client.phone || clientPhones[client.id] || '';
+                          return !phone.trim();
+                        })
+                        .map((client) => (
+                          <div key={client.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between gap-3 text-xs">
+                            <div className="min-w-0">
+                              <h4 className="font-bold text-slate-800 truncate">{client.company_name}</h4>
+                              <p className="text-[10px] text-slate-500 truncate">{client.contact_name || 'No contact name'}</p>
+                            </div>
+                            {editingPhoneBuyerId === client.id ? (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <input
+                                  type="text"
+                                  aria-label="Add Phone Number"
+                                  placeholder="Phone"
+                                  value={editingPhoneValue}
+                                  onChange={(e) => setEditingPhoneValue(e.target.value)}
+                                  className="px-2 py-0.5 border border-slate-300 bg-white rounded text-[11px] font-mono w-28 focus:border-emerald-500 focus:outline-none"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSavePhone(client.id, editingPhoneValue);
+                                    if (e.key === 'Escape') setEditingPhoneBuyerId(null);
+                                  }}
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSavePhone(client.id, editingPhoneValue)}
+                                  className="p-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded transition"
+                                  title="Save Phone"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingPhoneBuyerId(null)}
+                                  className="p-1 bg-slate-100 text-slate-500 hover:bg-slate-200 rounded transition"
+                                  title="Cancel"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingPhoneBuyerId(client.id);
+                                  setEditingPhoneValue('');
+                                }}
+                                className="shrink-0 px-2.5 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded font-bold transition"
+                              >
+                                Add Phone
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      {clients.length === reachoutBuyers.length && (
+                        <div className="text-center py-4 text-[11px] text-slate-400 font-medium">
+                          All buyers have phone numbers! 🎉
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Intro template details */}
+                  <div className="bg-emerald-950 text-white rounded-xl p-4 shadow-sm space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400">Template Information</h4>
+                    <p className="text-[11px] text-emerald-200 leading-relaxed">
+                      WhatsApp Intro buttons use the <strong>WhatsApp Introduction</strong> category template. You can customize the body and variables of this message in the <strong>Mail & Message Templates</strong> tab.
+                    </p>
+                    <div className="bg-white/10 rounded p-2.5 text-[10px] border border-white/5 font-mono text-emerald-100">
+                      Hello {'{{buyer_name}}'}, this is Sheshaan Global...
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {activeTab === 'products' && (
@@ -2951,40 +3384,18 @@ export const Dashboard: React.FC = () => {
           )}
             </div>
             {selectedBuyer && (
-              <div className="fixed inset-0 z-40 bg-slate-950/30 flex justify-end" onClick={() => setSelectedBuyerId(null)}>
-                <div className="h-full w-full max-w-xl bg-white shadow-2xl overflow-y-auto animate-slide-in-right" onClick={(e) => e.stopPropagation()}>
-                  <div className="sticky top-0 bg-white border-b border-slate-200 p-5 flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600">Buyer 360 Detail</p>
-                      <h3 className="text-xl font-extrabold text-slate-900">{selectedBuyer.company_name}</h3>
-                      <p className="text-xs text-slate-500">{selectedBuyer.destination_port}</p>
-                    </div>
-                    <button type="button" onClick={() => setSelectedBuyerId(null)} className="p-2 rounded hover:bg-slate-100 text-slate-500"><X className="h-5 w-5" /></button>
-                  </div>
-                  <div className="p-5 space-y-4 text-xs">
-                    <div className="grid grid-cols-2 gap-3">
-                      <SmallMetric label="Contact" value={selectedBuyer.contact_name || 'Not set'} />
-                      <SmallMetric label="Email" value={selectedBuyer.contact_email || 'Not set'} />
-                      <SmallMetric label="Quotes" value={quotes.filter((quote) => quote.client_id === selectedBuyer.id).length.toString()} />
-                      <SmallMetric label="Open Tasks" value={tasks.filter((task) => task.client_id === selectedBuyer.id && task.status !== 'Done').length.toString()} />
-                    </div>
-                    <SimplePanel title="Financials" rows={[
-                      ['Quoted value', formatQuoteCurrency(quotes.filter((quote) => quote.client_id === selectedBuyer.id).reduce((sum, quote) => sum + quoteValue(quote), 0), 'INR')],
-                      ['Receivable', formatQuoteCurrency(invoices.filter((invoice) => invoice.client_id === selectedBuyer.id && invoice.payment_status !== 'Paid').reduce((sum, invoice) => sum + Number(invoice.balance_amount || invoice.amount || 0), 0), 'INR')],
-                      ['Invoices', invoices.filter((invoice) => invoice.client_id === selectedBuyer.id).length.toString()],
-                      ['Shipments', shipments.filter((shipment) => shipment.client_id === selectedBuyer.id).length.toString()]
-                    ]} />
-                    <DashboardList title="Recent Communication" empty="No communication logged." rows={activities.filter((activity) => activity.client_id === selectedBuyer.id).slice(0, 5).map((activity) => ({
-                      title: activity.title,
-                      meta: `${activity.type} | ${activity.activity_date}`
-                    }))} />
-                    <DashboardList title="Active Shipments" empty="No active shipments." rows={shipments.filter((shipment) => shipment.client_id === selectedBuyer.id).map((shipment) => ({
-                      title: shipment.booking_number || shipment.vessel_name || 'Shipment',
-                      meta: `${shipment.status} | ETA ${shipment.eta || 'TBA'}`
-                    }))} />
-                  </div>
-                </div>
-              </div>
+              <BuyerDetailModal
+                buyer={selectedBuyer}
+                clientMetrics={clientMetrics}
+                quotes={quotes}
+                invoices={invoices}
+                shipments={shipments}
+                tasks={tasks}
+                activities={activities}
+                onClose={() => setSelectedBuyerId(null)}
+                formatQuoteCurrency={formatQuoteCurrency}
+                quoteValue={quoteValue}
+              />
             )}
           </section>
         </div>
@@ -3073,28 +3484,44 @@ export const Dashboard: React.FC = () => {
 };
 
 const Stat = ({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone: 'sky' | 'indigo' | 'slate' | 'teal' }) => {
-  const toneClass = {
-    sky: 'bg-sky-50 text-sky-600',
-    indigo: 'bg-indigo-50 text-indigo-600',
-    slate: 'bg-slate-100 text-slate-600',
-    teal: 'bg-teal-50 text-teal-600'
+  const colorMap = {
+    sky: {
+      bg: 'bg-sky-50 text-sky-600 border-sky-100',
+      glow: 'hover:shadow-sky-100/50 hover:border-sky-300',
+      iconBg: 'bg-sky-500/10 text-sky-600',
+    },
+    indigo: {
+      bg: 'bg-indigo-50 text-indigo-600 border-indigo-100',
+      glow: 'hover:shadow-indigo-100/50 hover:border-indigo-300',
+      iconBg: 'bg-indigo-500/10 text-indigo-600',
+    },
+    slate: {
+      bg: 'bg-slate-50 text-slate-600 border-slate-200',
+      glow: 'hover:shadow-slate-100/50 hover:border-slate-350',
+      iconBg: 'bg-slate-500/10 text-slate-600',
+    },
+    teal: {
+      bg: 'bg-teal-50 text-teal-600 border-teal-100',
+      glow: 'hover:shadow-teal-100/50 hover:border-teal-300',
+      iconBg: 'bg-teal-500/10 text-teal-600',
+    },
   }[tone];
 
   return (
-    <div className="smooth-card bg-white/95 p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 sm:gap-4 hover:border-sky-100 hover:shadow-md">
-      <div className={`p-2.5 rounded-lg shrink-0 ${toneClass}`}>{icon}</div>
-      <div className="min-w-0">
-        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
-        <span className="block text-lg sm:text-xl font-extrabold text-slate-800 truncate" title={value}>{value}</span>
+    <div className={`group bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 hover:shadow-lg transition-all duration-300 ${colorMap.glow}`}>
+      <div className={`p-3 rounded-xl shrink-0 transition-transform duration-300 group-hover:scale-110 ${colorMap.iconBg}`}>{icon}</div>
+      <div className="min-w-0 flex-1">
+        <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1">{label}</span>
+        <span className="block text-xl sm:text-2xl font-black text-slate-800 tracking-tight truncate" title={value}>{value}</span>
       </div>
     </div>
   );
 };
 
 const CrmMetric = ({ label, value, helper }: { label: string; value: string; helper: string }) => (
-  <div className="smooth-card bg-white/10 border border-white/10 rounded-lg p-3 hover:bg-white/15">
-    <span className="block text-[10px] font-bold text-slate-300 uppercase">{label}</span>
-    <span className="block text-2xl font-extrabold text-white mt-1">{value}</span>
+  <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 hover:bg-white/10 transition duration-250">
+    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+    <span className="block text-xl font-extrabold text-white mt-1">{value}</span>
     <span className="block text-[10px] text-slate-400 mt-1">{helper}</span>
   </div>
 );
@@ -3102,33 +3529,39 @@ const CrmMetric = ({ label, value, helper }: { label: string; value: string; hel
 const StatusBadge = ({ status }: { status: Quote['status'] }) => {
   const tone =
     status === 'Approved' || status === 'Closed'
-      ? 'bg-emerald-50 text-emerald-700'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
       : status === 'Sent' || status === 'Invoice Raised' || status === 'Shipped'
-        ? 'bg-sky-50 text-sky-700'
+        ? 'bg-sky-50 text-sky-700 border-sky-100'
         : status === 'Lost' || status === 'Declined'
-          ? 'bg-red-50 text-red-700'
+          ? 'bg-red-50 text-red-700 border-red-100'
           : status === 'Negotiation'
-            ? 'bg-amber-50 text-amber-700'
-            : 'bg-slate-100 text-slate-700';
+            ? 'bg-amber-50 text-amber-700 border-amber-100'
+            : 'bg-slate-100 text-slate-700 border-slate-200';
 
-  return <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-full ${tone}`}>{status}</span>;
+  return <span className={`inline-block px-2.5 py-0.5 text-[10px] font-extrabold rounded-full border ${tone}`}>{status}</span>;
 };
 
 const EmptyState = ({ text }: { text: string }) => (
-  <div className="text-center py-10 text-slate-400 text-xs border border-dashed border-slate-200 rounded-lg bg-slate-50/60">{text}</div>
+  <div className="text-center py-12 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50 font-medium px-4">{text}</div>
 );
 
 const DashboardList = ({ title, empty, rows }: { title: string; empty: string; rows: { title: string; meta: string }[] }) => (
-  <div className="smooth-card bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md">
-    <h3 className="font-bold text-slate-900 text-sm mb-3">{title}</h3>
+  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+    <h3 className="font-extrabold text-slate-900 text-sm mb-4 relative pb-2 border-b border-slate-100 flex items-center">
+      <span className="absolute bottom-[-1px] left-0 h-[2px] w-8 bg-indigo-500 rounded"></span>
+      {title}
+    </h3>
     {rows.length === 0 ? (
       <EmptyState text={empty} />
     ) : (
-      <div className="space-y-2 text-xs">
+      <div className="space-y-2.5 text-xs">
         {rows.map((row) => (
-          <div key={`${row.title}-${row.meta}`} className="rounded-lg border border-slate-100 bg-slate-50/50 p-3 transition hover:border-sky-100 hover:bg-white">
-            <div className="font-bold text-slate-900">{row.title}</div>
-            <div className="text-[10px] text-slate-500 mt-1">{row.meta}</div>
+          <div key={`${row.title}-${row.meta}`} className="rounded-xl border border-slate-100 bg-slate-50/30 p-3.5 transition-all duration-200 hover:border-sky-200 hover:bg-sky-50/20">
+            <div className="font-bold text-slate-900 leading-snug">{row.title}</div>
+            <div className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+              {row.meta}
+            </div>
           </div>
         ))}
       </div>
@@ -3137,11 +3570,11 @@ const DashboardList = ({ title, empty, rows }: { title: string; empty: string; r
 );
 
 const RowActions = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) => (
-  <div className="flex items-center justify-center gap-2">
-    <button type="button" onClick={onEdit} className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded transition" title="Edit">
+  <div className="flex items-center justify-center gap-1">
+    <button type="button" onClick={onEdit} className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition" title="Edit">
       <Edit2 className="h-4 w-4" />
     </button>
-    <button type="button" onClick={onDelete} className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition" title="Delete">
+    <button type="button" onClick={onDelete} className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition" title="Delete">
       <Trash2 className="h-4 w-4" />
     </button>
   </div>
@@ -3162,39 +3595,51 @@ const TwoColumnManager = ({
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
 }) => (
-  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
-    <div className="smooth-card bg-slate-50/90 p-4 sm:p-5 rounded-xl border border-slate-200 h-fit space-y-3 shadow-sm lg:sticky lg:top-24">
-      <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b pb-1">{formTitle}</h3>
-      <form onSubmit={onSubmit} className="space-y-3 text-xs">
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="bg-slate-50/90 p-5 rounded-2xl border border-slate-200 h-fit space-y-4 shadow-sm lg:sticky lg:top-24">
+      <h3 className="font-black text-slate-900 text-[11px] uppercase tracking-wider border-b border-slate-200 pb-2">{formTitle}</h3>
+      <form onSubmit={onSubmit} className="space-y-3.5 text-xs">
         {form}
-        <div className="flex gap-2">
-          <button type="submit" className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded shadow transition flex items-center justify-center gap-1">
+        <div className="flex gap-2 pt-2">
+          <button type="submit" className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg shadow transition flex items-center justify-center gap-1.5 active:scale-98">
             <Plus className="h-4 w-4" />
             {isEditing ? 'Update' : 'Save'}
           </button>
           {isEditing && (
-            <button type="button" onClick={onCancel} className="px-3 py-2.5 bg-white border border-slate-300 text-slate-600 font-semibold rounded transition hover:bg-slate-50">
+            <button type="button" onClick={onCancel} className="px-3.5 py-2.5 bg-white border border-slate-300 text-slate-600 font-bold rounded-lg transition hover:bg-slate-50 active:scale-98">
               Cancel
             </button>
           )}
         </div>
       </form>
     </div>
-    <div className="lg:col-span-2 space-y-3">{children}</div>
+    <div className="lg:col-span-2 space-y-4">{children}</div>
   </div>
 );
 
 const TextInput = ({ label, value, onChange, type = 'text', required = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) => (
   <label className="block">
-    <span className="block text-slate-500 mb-1 font-semibold">{label}</span>
-    <input type={type} value={value} onChange={(e) => onChange(e.target.value)} required={required} className="w-full px-3 py-2 border border-slate-300 rounded bg-white focus:border-sky-400 focus:ring-1 focus:ring-sky-500 focus:outline-none transition" />
+    <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
+    <input 
+      type={type} 
+      value={value} 
+      onChange={(e) => onChange(e.target.value)} 
+      required={required} 
+      className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm" 
+    />
   </label>
 );
 
 const NumberInput = ({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) => (
   <label className="block">
-    <span className="block text-slate-500 mb-1 font-semibold">{label}</span>
-    <input type="number" step="0.01" value={value || ''} onChange={(e) => onChange(parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 border border-slate-300 rounded bg-white focus:border-sky-400 focus:ring-1 focus:ring-sky-500 focus:outline-none transition" />
+    <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
+    <input 
+      type="number" 
+      step="0.01" 
+      value={value || ''} 
+      onChange={(e) => onChange(parseFloat(e.target.value) || 0)} 
+      className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm" 
+    />
   </label>
 );
 
@@ -3212,33 +3657,44 @@ const SelectInput = ({
   labels?: Record<string, string>;
 }) => (
   <label className="block">
-    <span className="block text-slate-500 mb-1 font-semibold">{label}</span>
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded bg-white focus:border-sky-400 focus:ring-1 focus:ring-sky-500 focus:outline-none transition">
-      {options.map((option) => <option key={option} value={option}>{labels[option] || option || 'None'}</option>)}
-    </select>
+    <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
+    <div className="relative">
+      <select 
+        value={value} 
+        onChange={(e) => onChange(e.target.value)} 
+        className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 appearance-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm"
+      >
+        {options.map((option) => <option key={option} value={option}>{labels[option] || option || 'None'}</option>)}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+    </div>
   </label>
 );
 
 const CheckboxInput = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) => (
-  <label className="flex items-center gap-2 text-slate-600">
-    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
-    <span>{label}</span>
+  <label className="flex items-center gap-2.5 text-slate-600 cursor-pointer select-none">
+    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4.5 w-4.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer" />
+    <span className="font-bold text-xs">{label}</span>
   </label>
 );
 
 const TextArea = ({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) => (
   <label className="block">
-    <span className="block text-slate-500 mb-1 font-semibold">{label}</span>
-    <textarea value={value} onChange={(e) => onChange(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded bg-white min-h-20 resize-y focus:border-sky-400 focus:ring-1 focus:ring-sky-500 focus:outline-none transition" />
+    <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
+    <textarea 
+      value={value} 
+      onChange={(e) => onChange(e.target.value)} 
+      className="w-full p-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 min-h-24 resize-y focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm" 
+    />
   </label>
 );
 
 const DataTable = ({ headers, children }: { headers: string[]; children: React.ReactNode }) => (
-  <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm scroll-fade">
+  <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm scroll-fade">
     <table className="w-full text-left border-collapse text-xs">
       <thead>
-        <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px]">
-          {headers.map((header) => <th key={header} className="p-3 whitespace-nowrap">{header}</th>)}
+        <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
+          {headers.map((header) => <th key={header} className="p-3.5 whitespace-nowrap">{header}</th>)}
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100">{children}</tbody>
@@ -3247,12 +3703,15 @@ const DataTable = ({ headers, children }: { headers: string[]; children: React.R
 );
 
 const SimplePanel = ({ title, rows }: { title: string; rows: [string, string][] }) => (
-  <div className="smooth-card bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md">
-    <h3 className="font-bold text-slate-900 text-sm mb-3">{title}</h3>
-    <div className="space-y-2 text-xs">
+  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+    <h3 className="font-extrabold text-slate-900 text-sm mb-4 relative pb-2 border-b border-slate-100 flex items-center">
+      <span className="absolute bottom-[-1px] left-0 h-[2px] w-8 bg-sky-500 rounded"></span>
+      {title}
+    </h3>
+    <div className="space-y-2.5 text-xs">
       {rows.map(([label, value]) => (
-        <div key={label} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2 last:border-b-0">
-          <span className="text-slate-500">{label}</span>
+        <div key={label} className="flex items-center justify-between gap-3 border-b border-slate-50 pb-2.5 last:border-b-0 last:pb-0">
+          <span className="font-medium text-slate-500">{label}</span>
           <span className="font-bold text-slate-900 text-right break-words">{value}</span>
         </div>
       ))}
@@ -3261,12 +3720,169 @@ const SimplePanel = ({ title, rows }: { title: string; rows: [string, string][] 
 );
 
 const SmallMetric = ({ label, value }: { label: string; value: string }) => (
-  <div className="bg-slate-50 border border-slate-100 rounded p-2 min-w-0">
+  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 min-w-0">
     <span className="block text-[9px] uppercase font-bold text-slate-400">{label}</span>
-    <span className="block font-bold text-slate-900 truncate" title={value}>{value}</span>
+    <span className="block font-bold text-slate-900 truncate mt-0.5" title={value}>{value}</span>
   </div>
 );
 
 const SmallBadge = ({ text }: { text: string }) => (
-  <span className="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">{text}</span>
+  <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-extrabold">{text}</span>
 );
+
+interface BuyerCardProps {
+  client: Client;
+  country: string;
+  phone: string;
+  metrics: {
+    quotesCount: number;
+    receivableValue: number;
+    shipmentsCount: number;
+    openTasksCount: number;
+    lastActivityTitle: string;
+  };
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  formatQuoteCurrency: (val: number, cur: 'INR' | 'USD') => string;
+  bestSendWindowIST: (country: string) => string;
+}
+
+const BuyerCard: React.FC<BuyerCardProps> = React.memo(({
+  client,
+  country,
+  phone,
+  metrics,
+  onView,
+  onEdit,
+  onDelete,
+  formatQuoteCurrency,
+  bestSendWindowIST
+}) => {
+  return (
+    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 text-xs">
+      <div className="flex justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="font-bold text-slate-900 truncate">{client.company_name}</h4>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            <SmallBadge text={country} />
+            <span className="inline-block px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold">
+              {bestSendWindowIST(country).replace('Best send: ', '')}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onView} className="px-2 py-1 bg-sky-50 text-sky-700 rounded font-bold hover:bg-sky-100">View</button>
+          <RowActions onEdit={onEdit} onDelete={onDelete} />
+        </div>
+      </div>
+      <p className="text-slate-500 font-mono font-medium">{client.destination_port}</p>
+      {client.address && <p className="text-[11px] text-slate-600 border-t pt-1.5">{client.address}</p>}
+      <div className="text-[10px] text-slate-400 pt-1">
+        <div>Contact: {client.contact_name || 'N/A'}</div>
+        <div>Email: {client.contact_email || 'N/A'}</div>
+        <div>Phone: {phone || 'N/A'}</div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+        {[
+          ['Quotes', metrics.quotesCount.toString()],
+          ['Receivable', formatQuoteCurrency(metrics.receivableValue, 'INR')],
+          ['Shipments', metrics.shipmentsCount.toString()],
+          ['Open Tasks', metrics.openTasksCount.toString()]
+        ].map(([label, value]) => (
+          <div key={label} className="bg-slate-50 rounded p-2">
+            <span className="block text-[9px] uppercase font-bold text-slate-400">{label}</span>
+            <span className="font-bold text-slate-900">{value}</span>
+          </div>
+        ))}
+      </div>
+      <div className="pt-2 text-[11px] text-slate-600">
+        Last activity: {metrics.lastActivityTitle}
+      </div>
+    </div>
+  );
+});
+BuyerCard.displayName = 'BuyerCard';
+
+interface BuyerDetailModalProps {
+  buyer: Client;
+  clientMetrics: Record<string, {
+    quotesCount: number;
+    receivableValue: number;
+    shipmentsCount: number;
+    openTasksCount: number;
+    lastActivityTitle: string;
+  }>;
+  quotes: Quote[];
+  invoices: InvoiceRecord[];
+  shipments: ShipmentRecord[];
+  tasks: TaskRecord[];
+  activities: TimelineActivity[];
+  onClose: () => void;
+  formatQuoteCurrency: (val: number, cur: 'INR' | 'USD') => string;
+  quoteValue: (q: Quote) => number;
+}
+
+const BuyerDetailModal: React.FC<BuyerDetailModalProps> = React.memo(({
+  buyer,
+  clientMetrics,
+  quotes,
+  invoices,
+  shipments,
+  tasks,
+  activities,
+  onClose,
+  formatQuoteCurrency,
+  quoteValue
+}) => {
+  const metrics = clientMetrics[buyer.id] || {
+    quotesCount: 0,
+    receivableValue: 0,
+    shipmentsCount: 0,
+    openTasksCount: 0,
+    lastActivityTitle: 'No activity logged'
+  };
+
+  const clientQuotes = quotes.filter((q) => q.client_id === buyer.id);
+  const clientTasks = tasks.filter((t) => t.client_id === buyer.id && t.status !== 'Done');
+  const clientShipments = shipments.filter((s) => s.client_id === buyer.id);
+  const clientActivities = activities.filter((act) => act.client_id === buyer.id);
+
+  return (
+    <div className="fixed inset-0 z-40 bg-slate-950/30 flex justify-end" onClick={onClose}>
+      <div className="h-full w-full max-w-xl bg-white shadow-2xl overflow-y-auto animate-slide-in-right" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-slate-200 p-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600">Buyer 360 Detail</p>
+            <h3 className="text-xl font-extrabold text-slate-900">{buyer.company_name}</h3>
+            <p className="text-xs text-slate-500">{buyer.destination_port}</p>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 rounded hover:bg-slate-100 text-slate-500"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="p-5 space-y-4 text-xs">
+          <div className="grid grid-cols-2 gap-3">
+            <SmallMetric label="Contact" value={buyer.contact_name || 'Not set'} />
+            <SmallMetric label="Email" value={buyer.contact_email || 'Not set'} />
+            <SmallMetric label="Quotes" value={metrics.quotesCount.toString()} />
+            <SmallMetric label="Open Tasks" value={metrics.openTasksCount.toString()} />
+          </div>
+          <SimplePanel title="Financials" rows={[
+            ['Quoted value', formatQuoteCurrency(clientQuotes.reduce((sum, quote) => sum + quoteValue(quote), 0), 'INR')],
+            ['Receivable', formatQuoteCurrency(metrics.receivableValue, 'INR')],
+            ['Invoices', invoices.filter((invoice) => invoice.client_id === buyer.id).length.toString()],
+            ['Shipments', metrics.shipmentsCount.toString()]
+          ]} />
+          <DashboardList title="Recent Communication" empty="No communication logged." rows={clientActivities.slice(0, 5).map((activity) => ({
+            title: activity.title,
+            meta: `${activity.type} | ${activity.activity_date}`
+          }))} />
+          <DashboardList title="Active Shipments" empty="No active shipments." rows={clientShipments.map((shipment) => ({
+            title: shipment.booking_number || shipment.vessel_name || 'Shipment',
+            meta: `${shipment.status} | ETA ${shipment.eta || 'TBA'}`
+          }))} />
+        </div>
+      </div>
+    </div>
+  );
+});
+BuyerDetailModal.displayName = 'BuyerDetailModal';
