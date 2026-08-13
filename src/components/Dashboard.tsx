@@ -1508,7 +1508,8 @@ export const Dashboard: React.FC = () => {
       contact_name: client.contact_name || '',
       contact_email: client.contact_email || '',
       destination_port: client.destination_port,
-      phone: newPhone
+      phone: newPhone,
+      products_dealing: client.products_dealing || []
     };
 
     const { error } = await supabase.from('clients').update(payload).eq('id', clientId);
@@ -1528,6 +1529,40 @@ export const Dashboard: React.FC = () => {
 
     await fetchData();
     setEditingPhoneBuyerId(null);
+  };
+
+  const handleDeleteBuyerPhone = async (client: Client, phone: string) => {
+    if (!confirm(`Remove invalid phone number ${phone} from ${client.company_name}?`)) return;
+
+    const { error } = await supabase.from('clients').update({
+      company_name: client.company_name,
+      address: client.address || '',
+      contact_name: client.contact_name || '',
+      contact_email: client.contact_email || '',
+      destination_port: client.destination_port,
+      phone: '',
+      products_dealing: client.products_dealing || []
+    }).eq('id', client.id);
+
+    if (error) {
+      alert(error.message || 'Failed to remove phone number.');
+      return;
+    }
+
+    const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+    if (linkedLead?.phone) {
+      await supabase.from('leads').update({
+        ...linkedLead,
+        phone: ''
+      }).eq('id', linkedLead.id);
+    }
+
+    if (editingPhoneBuyerId === client.id) {
+      setEditingPhoneBuyerId(null);
+      setEditingPhoneValue('');
+    }
+
+    await fetchData();
   };
 
   const normalizeImportDate = (value: unknown) => {
@@ -3423,6 +3458,14 @@ export const Dashboard: React.FC = () => {
                                       >
                                         <Edit2 className="h-3 w-3" />
                                       </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteBuyerPhone(b, phone)}
+                                        className="p-0.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition"
+                                        title="Remove Invalid Phone"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
                                     </div>
                                   )}
                                   {lastActivity ? (
@@ -3449,7 +3492,7 @@ export const Dashboard: React.FC = () => {
                                     onClick={() => setSelectedBuyerId(b.id)}
                                     className="px-3 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg font-bold transition"
                                   >
-                                    View 360
+                                    View Details
                                   </button>
                                 </div>
                               </div>
