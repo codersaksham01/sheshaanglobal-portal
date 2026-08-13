@@ -636,6 +636,7 @@ export const Dashboard: React.FC = () => {
   };
   const leadResponded = (lead: Lead) => leadResponseStatus(lead).toLowerCase().startsWith('yes');
   const leadFollowUpDue = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() <= todayEnd && !['Won', 'Lost'].includes(lead.stage));
+  const leadNextFollowUpScheduled = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() > todayEnd && !leadResponded(lead) && !['Won', 'Lost'].includes(lead.stage));
   const leadNeedsFirstReach = (lead: Lead) => !leadHasOutreach(lead) && !['Won', 'Lost'].includes(lead.stage);
   const leadMissingEmail = (lead: Lead) => !lead.contact_email || leadEmailStatus(lead).toLowerCase().includes('invalid');
   const leadNextActionRequiresFollowUp = (lead: Lead) => {
@@ -656,6 +657,7 @@ export const Dashboard: React.FC = () => {
     if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
     if (leadResponded(lead)) return 'Responded / Qualify';
     if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
+    if (leadNextFollowUpScheduled(lead)) return 'Next Follow-up';
     if (leadHasOutreach(lead)) return 'Waiting Reply';
     return 'Review';
   };
@@ -1947,11 +1949,13 @@ export const Dashboard: React.FC = () => {
   const crmQueues = [
     { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out') },
     { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Follow-up Due') },
+    { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
     { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Waiting Reply') },
     { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Responded / Qualify') },
     { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Needs Email Fix') },
     { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Review') }
   ];
+  const crmBoardColumns = crmQueues.filter((queue) => ['Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix'].includes(queue.label));
   const selectedLeads = leads.filter((lead) => selectedLeadIds.includes(lead.id));
 
   const toggleLeadSelection = (leadId: string, checked: boolean) => {
@@ -2156,6 +2160,7 @@ export const Dashboard: React.FC = () => {
   const leadCategoryClass = (category: string) => {
     if (category === 'Need Reach Out') return 'bg-sky-50 text-sky-700 border-sky-100';
     if (category === 'Follow-up Due') return 'bg-amber-50 text-amber-700 border-amber-100';
+    if (category === 'Next Follow-up') return 'bg-indigo-50 text-indigo-700 border-indigo-100';
     if (category === 'Waiting Reply') return 'bg-slate-100 text-slate-700 border-slate-200';
     if (category === 'Responded / Qualify') return 'bg-teal-50 text-teal-700 border-teal-100';
     if (category === 'Needs Email Fix') return 'bg-red-50 text-red-700 border-red-100';
@@ -2164,7 +2169,7 @@ export const Dashboard: React.FC = () => {
   const leadEmailMode = (lead: Lead): 'First Reach' | 'Follow-up' => {
     const category = leadActionCategory(lead);
     if (category === 'Need Reach Out') return 'First Reach';
-    if (category === 'Follow-up Due' || category === 'Waiting Reply' || category === 'Responded / Qualify') return 'Follow-up';
+    if (category === 'Follow-up Due' || category === 'Next Follow-up' || category === 'Waiting Reply' || category === 'Responded / Qualify') return 'Follow-up';
     if (leadNextActionRequiresFollowUp(lead) || leadFollowUpDue(lead) || leadHasOutreach(lead)) return 'Follow-up';
     return 'First Reach';
   };
@@ -2224,6 +2229,7 @@ export const Dashboard: React.FC = () => {
         <SmallBadge text={leadEmailStatus(lead)} />
         {leadResponded(lead) && <span className="inline-block px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[10px] font-bold">Responded</span>}
         {leadFollowUpDue(lead) && <span className="inline-block px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold">Due</span>}
+        {leadNextFollowUpScheduled(lead) && <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold">Next: {lead.next_follow_up}</span>}
         {leadMissingEmail(lead) && <span className="inline-block px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] font-bold">Verify Email</span>}
       </div>
       {!compact && (
@@ -3003,8 +3009,9 @@ export const Dashboard: React.FC = () => {
                           <CrmMetric label="Total Leads" value={leads.length.toString()} helper="Pipeline records" />
                           <CrmMetric label="Reach Out" value={crmQueues[0].leads.length.toString()} helper="First contact needed" />
                           <CrmMetric label="Follow-up Due" value={crmQueues[1].leads.length.toString()} helper="Due now" />
-                          <CrmMetric label="Waiting" value={crmQueues[2].leads.length.toString()} helper="No response yet" />
-                          <CrmMetric label="Email Fix" value={crmQueues[4].leads.length.toString()} helper="Needs email" />
+                          <CrmMetric label="Next Follow-up" value={crmQueues[2].leads.length.toString()} helper="Scheduled by date" />
+                          <CrmMetric label="Waiting" value={crmQueues[3].leads.length.toString()} helper="No response yet" />
+                          <CrmMetric label="Email Fix" value={crmQueues[5].leads.length.toString()} helper="Needs email" />
                         </div>
                       </div>
 
@@ -3028,6 +3035,7 @@ export const Dashboard: React.FC = () => {
                           <div className="flex flex-wrap gap-2 text-xs">
                             <button type="button" onClick={() => selectLeadGroup(crmQueues[1].leads)} className="px-3 py-2 bg-amber-50 text-amber-700 rounded-lg font-bold hover:bg-amber-100">Select Due</button>
                             <button type="button" onClick={() => selectLeadGroup(crmQueues[0].leads)} className="px-3 py-2 bg-sky-50 text-sky-700 rounded-lg font-bold hover:bg-sky-100">Select Reach Out</button>
+                            <button type="button" onClick={() => selectLeadGroup(crmQueues[2].leads)} className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100">Select Next</button>
                             <button type="button" onClick={() => bulkUpdateSelectedLeads('email_sent')} className="px-3 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-40" disabled={!selectedLeads.length}>Contacted</button>
                             <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_due')} className="px-3 py-2 bg-amber-500 text-white rounded-lg font-bold hover:bg-amber-400 disabled:opacity-40" disabled={!selectedLeads.length}>Need Follow-up</button>
                             <button type="button" onClick={() => bulkUpdateSelectedLeads('responded')} className="px-3 py-2 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-500 disabled:opacity-40" disabled={!selectedLeads.length}>Responded</button>
@@ -3042,12 +3050,15 @@ export const Dashboard: React.FC = () => {
                         )}
                         <div className="overflow-x-auto pb-2">
                           <div className="grid min-w-[1180px] grid-cols-6 gap-3">
-                            {['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost'].map((stage) => {
-                              const stageLeads = filteredCrmLeads.filter((lead) => lead.stage === stage);
+                            {crmBoardColumns.map((column) => {
+                              const stageLeads = column.leads;
                               return (
-                                <div key={stage} className="rounded-lg border border-slate-200 bg-slate-50 p-3 min-h-[520px]">
+                                <div key={column.label} className="rounded-lg border border-slate-200 bg-slate-50 p-3 min-h-[520px]">
                                   <div className="flex items-center justify-between mb-3">
-                                    <h4 className="text-[11px] font-black text-slate-700 uppercase">{stage}</h4>
+                                    <div>
+                                      <h4 className="text-[11px] font-black text-slate-700 uppercase">{column.label}</h4>
+                                      <p className="text-[10px] text-slate-400">{column.description}</p>
+                                    </div>
                                     <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-slate-500 border border-slate-200">{stageLeads.length}</span>
                                   </div>
                                   <div className="space-y-2 max-h-[68vh] overflow-y-auto pr-1">
