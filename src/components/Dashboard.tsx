@@ -75,6 +75,7 @@ const quoteStatuses: Quote['status'][] = [
   'Declined'
 ];
 const buyerListPageSize = 48;
+const portalDataCacheVersion = 'crm-pipeline-only-2026-08-14';
 
 type TabKey = 'overview' | 'crm' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
@@ -449,6 +450,13 @@ export const Dashboard: React.FC = () => {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const cacheVersionKey = 'sheshaan_portal_cache_version';
+      if (window.localStorage.getItem(cacheVersionKey) !== portalDataCacheVersion) {
+        window.localStorage.removeItem('crixy_portal_db');
+        window.localStorage.setItem(cacheVersionKey, portalDataCacheVersion);
+      }
+    }
     fetchData();
   }, []);
 
@@ -4420,7 +4428,7 @@ const BuyerDetailModal: React.FC<BuyerDetailModalProps> = React.memo(({
       <div className="h-full w-full max-w-xl bg-white shadow-2xl overflow-y-auto animate-slide-in-right" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-slate-200 p-5 flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600">Buyer 360 Detail</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600">Buyer CRM Detail</p>
             <h3 className="text-xl font-extrabold text-slate-900">{buyer.company_name}</h3>
             <p className="text-xs text-slate-500">{buyer.destination_port}</p>
           </div>
