@@ -76,6 +76,8 @@ const quoteStatuses: Quote['status'][] = [
 ];
 const buyerListPageSize = 48;
 const portalDataCacheVersion = 'crm-pipeline-only-2026-08-14';
+const reachoutListPageSize = 60;
+const missingPhonePageSize = 40;
 
 type TabKey = 'overview' | 'crm' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
@@ -392,6 +394,8 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [reachoutSearchQuery, setReachoutSearchQuery] = useState('');
+  const [reachoutVisibleCount, setReachoutVisibleCount] = useState(reachoutListPageSize);
+  const [missingPhoneVisibleCount, setMissingPhoneVisibleCount] = useState(missingPhonePageSize);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showDevMenu, setShowDevMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -463,6 +467,11 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     setBuyerVisibleCount(buyerListPageSize);
   }, [buyerCountryFilter, buyerActionFilter, buyerSortKey, buyerSearchQuery]);
+
+  useEffect(() => {
+    setReachoutVisibleCount(reachoutListPageSize);
+    setMissingPhoneVisibleCount(missingPhonePageSize);
+  }, [reachoutSearchQuery]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -776,6 +785,40 @@ export const Dashboard: React.FC = () => {
       return phone.trim().length > 0;
     });
   }, [clients, clientPhones]);
+
+  const filteredReachoutBuyers = useMemo(() => {
+    const query = reachoutSearchQuery.trim().toLowerCase();
+    if (!query) return reachoutBuyers;
+    return reachoutBuyers.filter((buyer) => {
+      const phone = buyer.phone || clientPhones[buyer.id] || '';
+      return (
+        buyer.company_name.toLowerCase().includes(query) ||
+        (buyer.contact_name || '').toLowerCase().includes(query) ||
+        (buyer.contact_email || '').toLowerCase().includes(query) ||
+        phone.toLowerCase().includes(query)
+      );
+    });
+  }, [reachoutBuyers, reachoutSearchQuery, clientPhones]);
+
+  const visibleReachoutBuyers = useMemo(() => filteredReachoutBuyers.slice(0, reachoutVisibleCount), [filteredReachoutBuyers, reachoutVisibleCount]);
+
+  const missingPhoneBuyers = useMemo(() => {
+    return clients.filter((client) => {
+      const phone = client.phone || clientPhones[client.id] || '';
+      return !phone.trim();
+    });
+  }, [clients, clientPhones]);
+
+  const visibleMissingPhoneBuyers = useMemo(() => missingPhoneBuyers.slice(0, missingPhoneVisibleCount), [missingPhoneBuyers, missingPhoneVisibleCount]);
+
+  const whatsappActivityByClientId = useMemo(() => {
+    const map: Record<string, TimelineActivity> = {};
+    activities.forEach((activity) => {
+      if (!activity.client_id || map[activity.client_id]) return;
+      if (activity.title.toLowerCase().includes('whatsapp')) map[activity.client_id] = activity;
+    });
+    return map;
+  }, [activities]);
 
   const clientMetrics = useMemo(() => {
     const map: Record<string, {
@@ -3372,33 +3415,18 @@ export const Dashboard: React.FC = () => {
                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
                     <h3 className="text-sm font-extrabold text-slate-900 mb-3 flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                      Identified Sourcing Contacts ({
-                        reachoutBuyers.filter((b) => {
-                          const query = reachoutSearchQuery.toLowerCase();
-                          const phone = b.phone || clientPhones[b.id] || '';
-                          return b.company_name.toLowerCase().includes(query) ||
-                            (b.contact_name || '').toLowerCase().includes(query) ||
-                            phone.includes(query);
-                        }).length
-                      })
+                      Identified Sourcing Contacts ({filteredReachoutBuyers.length})
                     </h3>
 
-                    {reachoutBuyers.length === 0 ? (
+                    {filteredReachoutBuyers.length === 0 ? (
                       <EmptyState text="No buyers with phone numbers identified in the CRM. You can add phone numbers to buyers below." />
                     ) : (
                       <div className="divide-y divide-slate-100">
-                        {reachoutBuyers
-                          .filter((b) => {
-                            const query = reachoutSearchQuery.toLowerCase();
-                            const phone = b.phone || clientPhones[b.id] || '';
-                            return b.company_name.toLowerCase().includes(query) ||
-                              (b.contact_name || '').toLowerCase().includes(query) ||
-                              phone.includes(query);
-                          })
+                        {visibleReachoutBuyers
                           .map((b) => {
                             const phone = b.phone || clientPhones[b.id] || '';
                             const country = buyerCountry(b);
-                            const lastActivity = activities.find((act) => act.client_id === b.id && act.title.toLowerCase().includes('whatsapp'));
+                            const lastActivity = whatsappActivityByClientId[b.id];
                             
                             return (
                               <div key={b.id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
@@ -3498,6 +3526,17 @@ export const Dashboard: React.FC = () => {
                               </div>
                             );
                           })}
+                        {filteredReachoutBuyers.length > visibleReachoutBuyers.length && (
+                          <div className="pt-4 flex justify-center">
+                            <button
+                              type="button"
+                              onClick={() => setReachoutVisibleCount((count) => Math.min(count + reachoutListPageSize, filteredReachoutBuyers.length))}
+                              className="px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition"
+                            >
+                              Load More Contacts
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3508,18 +3547,14 @@ export const Dashboard: React.FC = () => {
                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
                     <h3 className="text-sm font-extrabold text-slate-900 mb-2 flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-                      Missing Phone Numbers ({clients.length - reachoutBuyers.length})
+                      Missing Phone Numbers ({missingPhoneBuyers.length})
                     </h3>
                     <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
                       These buyers do not have a phone number in the system. Add their phone numbers to enable one-click WhatsApp outreach.
                     </p>
 
                     <div className="max-h-[350px] overflow-y-auto space-y-2 pr-1">
-                      {clients
-                        .filter((client) => {
-                          const phone = client.phone || clientPhones[client.id] || '';
-                          return !phone.trim();
-                        })
+                      {visibleMissingPhoneBuyers
                         .map((client) => (
                           <div key={client.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between gap-3 text-xs">
                             <div className="min-w-0">
@@ -3572,9 +3607,18 @@ export const Dashboard: React.FC = () => {
                             )}
                           </div>
                         ))}
-                      {clients.length === reachoutBuyers.length && (
+                      {missingPhoneBuyers.length > visibleMissingPhoneBuyers.length && (
+                        <button
+                          type="button"
+                          onClick={() => setMissingPhoneVisibleCount((count) => Math.min(count + missingPhonePageSize, missingPhoneBuyers.length))}
+                          className="w-full rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-bold text-white hover:bg-slate-800 transition"
+                        >
+                          Load More Missing Numbers
+                        </button>
+                      )}
+                      {missingPhoneBuyers.length === 0 && (
                         <div className="text-center py-4 text-[11px] text-slate-400 font-medium">
-                          All buyers have phone numbers! 🎉
+                          All buyers have phone numbers.
                         </div>
                       )}
                     </div>
