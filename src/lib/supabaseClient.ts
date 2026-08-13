@@ -40,25 +40,47 @@ class ServerFileDB {
     localStorage.setItem('crixy_portal_db', JSON.stringify(db));
   }
 
+  private async saveServerRecords(table: string, records: any[]) {
+    const response = await fetch(`/api/db?table=${encodeURIComponent(table)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(records)
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `Could not save ${table}`);
+    }
+
+    return result.data || records;
+  }
+
+  private async deleteServerRecord(table: string, id: string) {
+    const response = await fetch(`/api/db?table=${encodeURIComponent(table)}&id=${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || `Could not delete ${table}`);
+    }
+  }
+
   private async fetchTable(table: string): Promise<any[]> {
     if (typeof window === 'undefined') return [];
     
-    let localDB = this.getLocalDB();
-    if (!localDB) {
-      localDB = {};
-    }
-    
-    if (!localDB[table]) {
-      try {
-        const response = await fetch(`/api/db?table=${table}`);
-        if (response.ok) {
-          const res = await response.json();
-          localDB[table] = res.data || [];
-          this.saveLocalDB(localDB);
-        }
-      } catch (e) {
-        console.error(`Failed to fetch initial seed for ${table}`, e);
+    const localDB = this.getLocalDB() || {};
+
+    try {
+      const response = await fetch(`/api/db?table=${encodeURIComponent(table)}`);
+      if (response.ok) {
+        const res = await response.json();
+        localDB[table] = res.data || [];
+        this.saveLocalDB(localDB);
+        return localDB[table];
       }
+    } catch (e) {
+      console.error(`Failed to fetch saved data for ${table}`, e);
     }
     
     return localDB[table] || [];
@@ -128,7 +150,15 @@ class ServerFileDB {
           
           localDB[table] = [...currentTableData, ...newRecords];
           this.saveLocalDB(localDB);
-          return { data: newRecords, error: null };
+
+          try {
+            const savedRecords = await this.saveServerRecords(table, newRecords);
+            localDB[table] = [...currentTableData, ...savedRecords];
+            this.saveLocalDB(localDB);
+            return { data: savedRecords, error: null };
+          } catch (error) {
+            return { data: newRecords, error: { message: error instanceof Error ? error.message : `Could not save ${table}` } };
+          }
         })();
 
         const insertMethods = {
@@ -167,7 +197,13 @@ class ServerFileDB {
               
               localDB[table] = newTableData;
               this.saveLocalDB(localDB);
-              return { data: updatedRecords, error: null };
+
+              try {
+                await this.saveServerRecords(table, updatedRecords);
+                return { data: updatedRecords, error: null };
+              } catch (error) {
+                return { data: updatedRecords, error: { message: error instanceof Error ? error.message : `Could not update ${table}` } };
+              }
             })();
             return makeChainPromise(updatePromise);
           }
@@ -180,9 +216,17 @@ class ServerFileDB {
               const localDB = this.getLocalDB() || {};
               const currentTableData = localDB[table] || [];
               
+              const deletedRecords = currentTableData.filter((record: any) => record[col] === val);
               const newTableData = currentTableData.filter((record: any) => record[col] !== val);
               localDB[table] = newTableData;
               this.saveLocalDB(localDB);
+
+              try {
+                await Promise.all(deletedRecords.map((record: any) => this.deleteServerRecord(table, record.id)));
+              } catch (error) {
+                return { data: null, error: { message: error instanceof Error ? error.message : `Could not delete ${table}` } };
+              }
+
               return { data: null, error: null };
             })();
             return makeChainPromise(deletePromise);

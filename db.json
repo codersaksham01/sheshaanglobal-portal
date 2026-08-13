@@ -1,184 +1,183 @@
-{
-  "clients": [
-    {
-      "id": "client-sg-1",
-      "company_name": "BusyExim Private Limited",
-      "address": "Plot No. 204, Industrial Area 1, Khor Fakkan / Dubai, UAE",
-      "contact_name": "Nancy Sharma",
-      "contact_email": "business@busyexim.com",
-      "destination_port": "Khor Fakkan Port, UAE",
-      "created_at": "2026-08-10T17:38:19.480Z"
-    },
-    {
-      "company_name": "ouhbb",
-      "address": "",
-      "contact_name": "",
-      "contact_email": "",
-      "destination_port": "oih",
-      "id": "cli-r518u6ndt",
-      "updated_at": "2026-08-10T17:38:49.436Z",
-      "created_at": "2026-08-10T17:38:49.436Z"
-    }
-  ],
-  "products": [
-    {
-      "id": "prod-sg-1",
-      "sku": "CUMIN-SG99",
-      "description": "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
-      "unit_price": 228.27,
-      "cost_price": 218.27,
-      "weight": 1,
-      "dimensions": "N/A",
-      "created_at": "2026-08-10T17:38:19.480Z"
-    }
-  ],
-  "freight_presets": [
-    {
-      "id": "fre-sg-1",
-      "name": "Mundra to Khor Fakkan - 20ft FCL",
-      "loading_port": "Mundra Port, India",
-      "destination_port": "Khor Fakkan Port, UAE",
-      "shipment_mode": "Sea Freight (1x20ft FCL)",
-      "freight_cost": 260000,
-      "insurance_cost": 2860,
-      "shipment_window": "10-14 days post advance payment/LC confirmation",
-      "transit_time": "7-12 days approx., subject to carrier schedule",
-      "partial_shipment": "Allowed / Allowed",
-      "container_type": "20ft FCL Dry Container / Ambient Storage",
-      "storage_condition": "Store in a cool, dry place away from direct sunlight",
-      "created_at": "2026-08-10T17:38:19.480Z",
-      "updated_at": "2026-08-10T17:38:19.480Z"
-    }
-  ],
-  "quotes": [
-    {
-      "id": "quote-sg-1",
-      "quote_number": "SG-CIF-2026-0001",
-      "client_id": "client-sg-1",
-      "currency": "INR",
-      "origin_country": "India",
-      "loading_port": "Mundra Port, India",
-      "shipment_mode": "Sea Freight (1x20ft FCL)",
-      "payment_terms": "50% Advance, 50% vs Shipping Bill",
-      "validity_days": 15,
-      "packaging_cost": 45500,
-      "inland_haulage_cost": 65000,
-      "customs_clearance_cost": 19500,
-      "freight_cost": 260000,
-      "insurance_cost": 2860,
-      "status": "Draft",
-      "margin_per_kg": 10,
-      "internal_notes": "Internal margin sample only. Not printed on PDFs.",
-      "shipper_details": {
-        "company_name": "Sheshaan Global",
-        "address": "Plot No. 1459, Opp. M.A.K. Azad Urdu School, Aasinagar, Nagpur - 440017, Maharashtra, India\nReg: IEC | GST | APEDA | FSSAI",
-        "contact_name": "Sana Zeba Bakshi (CEO)",
-        "contact_email": "info@sheshaanglobal.com",
-        "tax_id": "GST: 27AAAAA1111A1Z1"
-      },
-      "commercial_note": "Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.",
-      "included_responsibilities": [
-        "Complete raw product cost & export packing in 40 kg Jute Bags",
-        "Inland haulage and transportation from factory to Mundra Port",
-        "Terminal Handling Charges (THC) & container stuffing at origin port",
-        "Export customs clearance, shipping bill, COO, and Phytosanitary Certificate",
-        "Main ocean freight from Mundra to Khor Fakkan Port (INR 2,60,000.00 lump sum)",
-        "Marine transit cargo insurance policy (INR 2,860.00 lump sum coverage)"
-      ],
-      "excluded_responsibilities": [
-        "Import duties, tariffs, and local destination taxes / VAT in destination country",
-        "Destination port terminal handling charges (THC at Khor Fakkan)",
-        "Import customs clearance and local destination documentation",
-        "Inland transport/delivery from discharge port to buyer warehouse",
-        "Container demurrage, detention, or storage fees at destination port",
-        "Buyer-requested third-party pre-shipment or destination inspection/testing fees unless explicitly agreed in writing."
-      ],
-      "included_docs": [
-        "Commercial Invoice (Issued)",
-        "Packing List (Issued)",
-        "Bill of Lading (Clean On-Board B/L)",
-        "Marine Insurance Certificate",
-        "Certificate of Origin (Issued)",
-        "Phytosanitary Certificate (Issued)"
-      ],
-      "logistics_specs": {
-        "shipment_window": "10-14 days post advance payment/LC confirmation",
-        "transit_time": "7-12 days approx., subject to carrier schedule",
-        "partial_shipment": "Allowed / Allowed",
-        "container_type": "20ft FCL Dry Container / Ambient Storage",
-        "storage_condition": "Store in a cool, dry place away from direct sunlight"
-      },
-      "commercial_terms": [
-        "Quotation Validity & Ocean Freight Adjustments: Quoted rates are valid for 15 days from issuance. Ocean freight rates, insurance premiums, and exchange rates remain indicative until final vessel booking confirmation.",
-        "Payment Terms: 50% advance payment upon proforma invoice acceptance; balance 50% payable against soft copy of Shipping Bill / Bill of Lading (B/L).",
-        "Currency Exchange Protections & Settlement: All prices are quoted in Indian Rupees (INR) based on a baseline exchange rate. Final invoicing and settlement may be converted to USD or AED at prevailing RBI reference rates upon agreement.",
-        "Quality Assurance & Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, container stuffing/loading photographs, and seal numbers will be provided prior to vessel departure.",
-        "Claims & Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination port, supported by an official independent surveyor report and photographs.",
-        "Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.",
-        "Governing Law & Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration."
-      ],
-      "created_at": "2026-08-10T17:38:19.480Z",
-      "updated_at": "2026-08-10T18:09:03.996Z",
-      "client": {
-        "id": "client-sg-1",
-        "company_name": "BusyExim Private Limited",
-        "address": "Plot No. 204, Industrial Area 1, Khor Fakkan / Dubai, UAE",
-        "contact_name": "Nancy Sharma",
-        "contact_email": "business@busyexim.com",
-        "destination_port": "Khor Fakkan Port, UAE",
-        "created_at": "2026-08-10T17:38:19.480Z"
-      },
-      "items": [
-        {
-          "quote_id": "quote-sg-1",
-          "product_id": "prod-sg-1",
-          "sku": "CUMIN-SG99",
-          "description": "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
-          "quantity": 13000,
-          "unit_price": 228.27,
-          "cost_price": 218.27,
-          "weight": 1,
-          "hs_code": "09093129",
-          "packing_container": "325 Jute Bags (40 kg Net / Bag)\n1 x 20ft FCL",
-          "basis_of_calculation": "Per kg (13,000 kg)",
-          "id": "quo-jjzfpotm1",
-          "updated_at": "2026-08-10T18:08:51.121Z",
-          "created_at": "2026-08-10T18:08:51.121Z"
-        }
-      ],
-      "bank_details": {
-        "beneficiary_bank": "State Bank of India (SBI)",
-        "ifsc_code": "SBIN0000432",
-        "swift_code": "SBININBBXXX",
-        "account_holder_name": "Sheshaan Global Export Account",
-        "account_number": "334455667788",
-        "branch_location": "Nagpur Main Branch, Civil Lines, Nagpur, India"
-      }
-    }
-  ],
-  "quote_items": [
-    {
-      "quote_id": "quote-sg-1",
-      "product_id": "prod-sg-1",
-      "sku": "CUMIN-SG99",
-      "description": "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
-      "quantity": 13000,
-      "unit_price": 228.27,
-      "cost_price": 218.27,
-      "weight": 1,
-      "hs_code": "09093129",
-      "packing_container": "325 Jute Bags (40 kg Net / Bag)\n1 x 20ft FCL",
-      "basis_of_calculation": "Per kg (13,000 kg)",
-      "id": "quo-jjzfpotm1",
-      "updated_at": "2026-08-10T18:08:51.121Z",
-      "created_at": "2026-08-10T18:08:51.121Z"
-    }
-  ],
-  "leads": [],
-  "activities": [],
-  "freight_rate_history": [],
-  "invoices": [],
-  "shipments": [],
-  "document_checklists": [],
-  "app_users": []
+﻿{
+    "clients":  [
+
+                ],
+    "products":  [
+                     {
+                         "id":  "prod-sg-1",
+                         "sku":  "CUMIN-SG99",
+                         "description":  "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
+                         "unit_price":  228.27,
+                         "cost_price":  218.27,
+                         "weight":  1,
+                         "dimensions":  "N/A",
+                         "created_at":  "2026-08-10T17:38:19.480Z"
+                     }
+                 ],
+    "freight_presets":  [
+                            {
+                                "id":  "fre-sg-1",
+                                "name":  "Mundra to Khor Fakkan - 20ft FCL",
+                                "loading_port":  "Mundra Port, India",
+                                "destination_port":  "Khor Fakkan Port, UAE",
+                                "shipment_mode":  "Sea Freight (1x20ft FCL)",
+                                "freight_cost":  260000,
+                                "insurance_cost":  2860,
+                                "shipment_window":  "10-14 days post advance payment/LC confirmation",
+                                "transit_time":  "7-12 days approx., subject to carrier schedule",
+                                "partial_shipment":  "Allowed / Allowed",
+                                "container_type":  "20ft FCL Dry Container / Ambient Storage",
+                                "storage_condition":  "Store in a cool, dry place away from direct sunlight",
+                                "created_at":  "2026-08-10T17:38:19.480Z",
+                                "updated_at":  "2026-08-10T17:38:19.480Z"
+                            }
+                        ],
+    "quotes":  [
+                   {
+                       "id":  "quote-sg-1",
+                       "quote_number":  "SG-CIF-2026-0001",
+                       "client_id":  "client-sg-1",
+                       "currency":  "INR",
+                       "origin_country":  "India",
+                       "loading_port":  "Mundra Port, India",
+                       "shipment_mode":  "Sea Freight (1x20ft FCL)",
+                       "payment_terms":  "50% Advance, 50% vs Shipping Bill",
+                       "validity_days":  15,
+                       "packaging_cost":  45500,
+                       "inland_haulage_cost":  65000,
+                       "customs_clearance_cost":  19500,
+                       "freight_cost":  260000,
+                       "insurance_cost":  2860,
+                       "status":  "Draft",
+                       "margin_per_kg":  10,
+                       "internal_notes":  "Internal margin sample only. Not printed on PDFs.",
+                       "shipper_details":  {
+                                               "company_name":  "Sheshaan Global",
+                                               "address":  "Plot No. 1459, Opp. M.A.K. Azad Urdu School, Aasinagar, Nagpur - 440017, Maharashtra, India\nReg: IEC | GST | APEDA | FSSAI",
+                                               "contact_name":  "Sana Zeba Bakshi (CEO)",
+                                               "contact_email":  "info@sheshaanglobal.com",
+                                               "tax_id":  "GST: 27AAAAA1111A1Z1"
+                                           },
+                       "commercial_note":  "Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.",
+                       "included_responsibilities":  [
+                                                         "Complete raw product cost \u0026 export packing in 40 kg Jute Bags",
+                                                         "Inland haulage and transportation from factory to Mundra Port",
+                                                         "Terminal Handling Charges (THC) \u0026 container stuffing at origin port",
+                                                         "Export customs clearance, shipping bill, COO, and Phytosanitary Certificate",
+                                                         "Main ocean freight from Mundra to Khor Fakkan Port (INR 2,60,000.00 lump sum)",
+                                                         "Marine transit cargo insurance policy (INR 2,860.00 lump sum coverage)"
+                                                     ],
+                       "excluded_responsibilities":  [
+                                                         "Import duties, tariffs, and local destination taxes / VAT in destination country",
+                                                         "Destination port terminal handling charges (THC at Khor Fakkan)",
+                                                         "Import customs clearance and local destination documentation",
+                                                         "Inland transport/delivery from discharge port to buyer warehouse",
+                                                         "Container demurrage, detention, or storage fees at destination port",
+                                                         "Buyer-requested third-party pre-shipment or destination inspection/testing fees unless explicitly agreed in writing."
+                                                     ],
+                       "included_docs":  [
+                                             "Commercial Invoice (Issued)",
+                                             "Packing List (Issued)",
+                                             "Bill of Lading (Clean On-Board B/L)",
+                                             "Marine Insurance Certificate",
+                                             "Certificate of Origin (Issued)",
+                                             "Phytosanitary Certificate (Issued)"
+                                         ],
+                       "logistics_specs":  {
+                                               "shipment_window":  "10-14 days post advance payment/LC confirmation",
+                                               "transit_time":  "7-12 days approx., subject to carrier schedule",
+                                               "partial_shipment":  "Allowed / Allowed",
+                                               "container_type":  "20ft FCL Dry Container / Ambient Storage",
+                                               "storage_condition":  "Store in a cool, dry place away from direct sunlight"
+                                           },
+                       "commercial_terms":  [
+                                                "Quotation Validity \u0026 Ocean Freight Adjustments: Quoted rates are valid for 15 days from issuance. Ocean freight rates, insurance premiums, and exchange rates remain indicative until final vessel booking confirmation.",
+                                                "Payment Terms: 50% advance payment upon proforma invoice acceptance; balance 50% payable against soft copy of Shipping Bill / Bill of Lading (B/L).",
+                                                "Currency Exchange Protections \u0026 Settlement: All prices are quoted in Indian Rupees (INR) based on a baseline exchange rate. Final invoicing and settlement may be converted to USD or AED at prevailing RBI reference rates upon agreement.",
+                                                "Quality Assurance \u0026 Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, container stuffing/loading photographs, and seal numbers will be provided prior to vessel departure.",
+                                                "Claims \u0026 Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination port, supported by an official independent surveyor report and photographs.",
+                                                "Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.",
+                                                "Governing Law \u0026 Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration."
+                                            ],
+                       "created_at":  "2026-08-10T17:38:19.480Z",
+                       "updated_at":  "2026-08-10T18:09:03.996Z",
+                       "client":  {
+                                      "id":  "client-sg-1",
+                                      "company_name":  "BusyExim Private Limited",
+                                      "address":  "Plot No. 204, Industrial Area 1, Khor Fakkan / Dubai, UAE",
+                                      "contact_name":  "Nancy Sharma",
+                                      "contact_email":  "business@busyexim.com",
+                                      "destination_port":  "Khor Fakkan Port, UAE",
+                                      "created_at":  "2026-08-10T17:38:19.480Z"
+                                  },
+                       "items":  [
+                                     {
+                                         "quote_id":  "quote-sg-1",
+                                         "product_id":  "prod-sg-1",
+                                         "sku":  "CUMIN-SG99",
+                                         "description":  "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
+                                         "quantity":  13000,
+                                         "unit_price":  228.27,
+                                         "cost_price":  218.27,
+                                         "weight":  1,
+                                         "hs_code":  "09093129",
+                                         "packing_container":  "325 Jute Bags (40 kg Net / Bag)\n1 x 20ft FCL",
+                                         "basis_of_calculation":  "Per kg (13,000 kg)",
+                                         "id":  "quo-jjzfpotm1",
+                                         "updated_at":  "2026-08-10T18:08:51.121Z",
+                                         "created_at":  "2026-08-10T18:08:51.121Z"
+                                     }
+                                 ],
+                       "bank_details":  {
+                                            "beneficiary_bank":  "State Bank of India (SBI)",
+                                            "ifsc_code":  "SBIN0000432",
+                                            "swift_code":  "SBININBBXXX",
+                                            "account_holder_name":  "Sheshaan Global Export Account",
+                                            "account_number":  "334455667788",
+                                            "branch_location":  "Nagpur Main Branch, Civil Lines, Nagpur, India"
+                                        }
+                   }
+               ],
+    "quote_items":  [
+                        {
+                            "quote_id":  "quote-sg-1",
+                            "product_id":  "prod-sg-1",
+                            "sku":  "CUMIN-SG99",
+                            "description":  "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
+                            "quantity":  13000,
+                            "unit_price":  228.27,
+                            "cost_price":  218.27,
+                            "weight":  1,
+                            "hs_code":  "09093129",
+                            "packing_container":  "325 Jute Bags (40 kg Net / Bag)\n1 x 20ft FCL",
+                            "basis_of_calculation":  "Per kg (13,000 kg)",
+                            "id":  "quo-jjzfpotm1",
+                            "updated_at":  "2026-08-10T18:08:51.121Z",
+                            "created_at":  "2026-08-10T18:08:51.121Z"
+                        }
+                    ],
+    "leads":  [
+
+              ],
+    "activities":  [
+
+                   ],
+    "freight_rate_history":  [
+
+                             ],
+    "invoices":  [
+
+                 ],
+    "shipments":  [
+
+                  ],
+    "document_checklists":  [
+
+                            ],
+    "app_users":  [
+
+                  ],
+    "tasks":  [
+
+              ]
 }

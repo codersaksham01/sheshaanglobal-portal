@@ -76,9 +76,11 @@ const quoteStatuses: Quote['status'][] = [
 ];
 const buyerListPageSize = 48;
 
-type TabKey = 'overview' | 'crm' | 'buyers360' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
+type TabKey = 'overview' | 'crm' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string };
+type LeadTrackingAction = 'email_sent' | 'followup_1' | 'followup_2' | 'followup_3' | 'responded' | 'followup_due';
+type BuyerSortKey = 'name' | 'phone_asc' | 'phone_desc' | 'followup_first' | 'reachout_first' | 'waiting_first' | 'responded_first';
 
 const blankClient: Partial<Client> = {
   company_name: '',
@@ -432,7 +434,8 @@ export const Dashboard: React.FC = () => {
   const [selectedTemplateClientId, setSelectedTemplateClientId] = useState('');
   const [selectedTemplateProductId, setSelectedTemplateProductId] = useState('');
   const [buyerCountryFilter, setBuyerCountryFilter] = useState('All');
-  const [buyerSortKey, setBuyerSortKey] = useState<'name' | 'phone_asc' | 'phone_desc'>('name');
+  const [buyerActionFilter, setBuyerActionFilter] = useState('All');
+  const [buyerSortKey, setBuyerSortKey] = useState<BuyerSortKey>('name');
   const [buyerVisibleCount, setBuyerVisibleCount] = useState(buyerListPageSize);
   const [rateForm, setRateForm] = useState<Partial<FreightRateHistory>>(blankRate);
   const [editingRateId, setEditingRateId] = useState<string | null>(null);
@@ -451,7 +454,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     setBuyerVisibleCount(buyerListPageSize);
-  }, [buyerCountryFilter, buyerSortKey]);
+  }, [buyerCountryFilter, buyerActionFilter, buyerSortKey, buyerSearchQuery]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -648,15 +651,72 @@ export const Dashboard: React.FC = () => {
     if (leadHasOutreach(lead)) return 'Waiting Reply';
     return 'Review';
   };
+  const dateAfterDays = (days: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+  const smartLeadPayload = (payload: Partial<Lead>, editingId?: string | null) => {
+    const stage = payload.stage || 'New Lead';
+    const draftLead = {
+      ...blankLead,
+      ...payload,
+      id: editingId || payload.id || 'draft-lead',
+      company_name: payload.company_name || 'Buyer Company',
+      stage
+    } as Lead;
+    const fields: Record<string, string> = {};
+
+    if (!leadNoteValue(draftLead, 'Email Status')) {
+      fields['Email Status'] = ['Contacted', 'Quoted', 'Negotiation'].includes(stage) ? 'Email Sent' : 'Not Contacted';
+    }
+
+    if (!leadNoteValue(draftLead, 'Response Received')) {
+      fields['Response Received'] = 'No';
+    }
+
+    if (!leadNoteValue(draftLead, 'Next Action')) {
+      fields['Next Action'] = ['Contacted', 'Quoted', 'Negotiation'].includes(stage) ? 'Waiting for buyer response' : 'Send first outreach';
+    }
+
+    const shouldScheduleFollowUp = !payload.next_follow_up && ['Contacted', 'Quoted', 'Negotiation'].includes(stage) && !leadResponded(draftLead);
+
+    return {
+      ...payload,
+      notes: Object.keys(fields).length ? setLeadNoteValues(draftLead, fields) : payload.notes,
+      next_follow_up: shouldScheduleFollowUp ? dateAfterDays(3) : payload.next_follow_up
+    };
+  };
 
   const buyerCountries = useMemo(() => {
     return Array.from(new Set(clients.map((client) => clientCountries[client.id] || 'Uncategorized').filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [clients, clientCountries]);
+  const linkedLeadForBuyer = (client: Client) => leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+  const buyerActionCategory = (client: Client) => {
+    const linkedLead = linkedLeadForBuyer(client);
+    return linkedLead ? leadActionCategory(linkedLead) : 'Need Reach Out';
+  };
+  const buyerActionRank = (client: Client, priority: BuyerSortKey) => {
+    const category = buyerActionCategory(client);
+    const rankMaps: Record<BuyerSortKey, Record<string, number>> = {
+      name: {},
+      phone_asc: {},
+      phone_desc: {},
+      followup_first: { 'Follow-up Due': 0, 'Need Reach Out': 1, 'Waiting Reply': 2, 'Responded / Qualify': 3, 'Needs Email Fix': 4, Review: 5, Closed: 6 },
+      reachout_first: { 'Need Reach Out': 0, 'Follow-up Due': 1, 'Needs Email Fix': 2, 'Waiting Reply': 3, 'Responded / Qualify': 4, Review: 5, Closed: 6 },
+      waiting_first: { 'Waiting Reply': 0, 'Follow-up Due': 1, 'Need Reach Out': 2, 'Responded / Qualify': 3, 'Needs Email Fix': 4, Review: 5, Closed: 6 },
+      responded_first: { 'Responded / Qualify': 0, 'Follow-up Due': 1, 'Waiting Reply': 2, 'Need Reach Out': 3, 'Needs Email Fix': 4, Review: 5, Closed: 6 }
+    };
+    return rankMaps[priority][category] ?? 99;
+  };
 
   const filteredBuyers = useMemo(() => {
-    const list = buyerCountryFilter === 'All' 
+    const countryList = buyerCountryFilter === 'All' 
       ? clients 
       : clients.filter((client) => (clientCountries[client.id] || 'Uncategorized') === buyerCountryFilter);
+    const list = buyerActionFilter === 'All'
+      ? countryList
+      : countryList.filter((client) => buyerActionCategory(client) === buyerActionFilter);
     
     const query = buyerSearchQuery.trim().toLowerCase();
     const searchedList = query
@@ -688,10 +748,17 @@ export const Dashboard: React.FC = () => {
         if (!phoneB) return -1;
         return phoneB.localeCompare(phoneA);
       });
+    } else if (['followup_first', 'reachout_first', 'waiting_first', 'responded_first'].includes(buyerSortKey)) {
+      return [...searchedList].sort((a, b) => {
+        const rankA = buyerActionRank(a, buyerSortKey);
+        const rankB = buyerActionRank(b, buyerSortKey);
+        if (rankA !== rankB) return rankA - rankB;
+        return a.company_name.localeCompare(b.company_name);
+      });
     } else {
       return [...searchedList].sort((a, b) => a.company_name.localeCompare(b.company_name));
     }
-  }, [clients, clientCountries, buyerCountryFilter, buyerSortKey, clientPhones, buyerSearchQuery]);
+  }, [clients, clientCountries, buyerCountryFilter, buyerActionFilter, buyerSortKey, clientPhones, buyerSearchQuery, leads]);
 
   const reachoutBuyers = useMemo(() => {
     return clients.filter((client) => {
@@ -767,7 +834,7 @@ export const Dashboard: React.FC = () => {
     if (!search) return [];
 
     return [
-      ...clients.map((item) => ({ key: `buyer-${item.id}`, label: item.company_name, meta: `${buyerCountry(item)} | ${item.contact_email || item.destination_port || 'Buyer'}`, tab: 'buyers360' as TabKey, buyerId: item.id })),
+      ...clients.map((item) => ({ key: `buyer-${item.id}`, label: item.company_name, meta: `${buyerCountry(item)} | ${item.contact_email || item.destination_port || 'Buyer'}`, tab: 'crm' as TabKey, buyerId: item.id })),
       ...leads.map((item) => ({ key: `lead-${item.id}`, label: item.company_name, meta: `${item.country || 'Country not set'} | ${item.stage} | ${item.product_interest || 'Lead'}`, tab: 'crm' as TabKey })),
       ...quotes.map((item) => ({ key: `quote-${item.id}`, label: item.quote_number, meta: `${quoteClient(item)?.company_name || 'Unassigned'} | ${item.status}`, tab: 'quotes' as TabKey })),
       ...invoices.map((item) => ({ key: `invoice-${item.id}`, label: item.invoice_number, meta: `${item.payment_status} | ${formatQuoteCurrency(Number(item.balance_amount || item.amount || 0), item.currency || 'INR')}`, tab: 'accounts' as TabKey })),
@@ -979,6 +1046,44 @@ export const Dashboard: React.FC = () => {
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(body)}`, '_blank', 'noopener,noreferrer');
   };
 
+  const handleBuyerEmail = async (client: Client, mode: 'First Reach' | 'Follow-up') => {
+    const email = client.contact_email?.trim();
+    if (!email) {
+      alert('Please add a buyer email address before sending.');
+      return;
+    }
+
+    const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+    if (linkedLead) {
+      await handleLeadEmail({ ...linkedLead, contact_email: linkedLead.contact_email || email }, mode);
+      return;
+    }
+
+    const leadPayload: Partial<Lead> = {
+      client_id: client.id,
+      company_name: client.company_name,
+      contact_name: client.contact_name,
+      contact_email: email,
+      phone: client.phone || clientPhones[client.id] || '',
+      country: buyerCountry(client),
+      product_interest: client.products_dealing?.join(', ') || 'General export product range',
+      estimated_value: 0,
+      stage: 'New Lead',
+      priority: 'Medium',
+      owner: 'Sana Zeba',
+      notes: ''
+    };
+
+    const { data, error } = await supabase.from('leads').insert([leadPayload]).select().single();
+    if (error || !data) {
+      alert(error?.message || 'Could not create the CRM lead before sending email.');
+      return;
+    }
+
+    setLeads((current) => [data as Lead, ...current]);
+    await handleLeadEmail(data as Lead, mode);
+  };
+
   const runFollowUpAutomation = async () => {
     const today = new Date().toISOString().slice(0, 10);
     const automatedTasks: Partial<TaskRecord>[] = [
@@ -1169,7 +1274,8 @@ export const Dashboard: React.FC = () => {
     payload: Partial<T>,
     reset: () => void
   ) => {
-    const finalPayload = { ...payload, id: editingId || payload.id || undefined };
+    const preparedPayload = table === 'leads' ? smartLeadPayload(payload as Partial<Lead>, editingId) : payload;
+    const finalPayload = { ...preparedPayload, id: editingId || preparedPayload.id || undefined };
     // Auto-populate lead_id for activities and tasks if client_id is provided but lead_id is missing
     if ((table === 'activities' || table === 'tasks') && (finalPayload as any).client_id && !(finalPayload as any).lead_id) {
       const linkedLead = leads.find(l => l.client_id === (finalPayload as any).client_id);
@@ -1201,9 +1307,7 @@ export const Dashboard: React.FC = () => {
           const leadId = insertedLead?.id || payloadObj.id;
           
           if (!client) {
-            const newClientId = `client-sg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
             const newClientPayload = {
-              id: newClientId,
               company_name: payloadObj.company_name,
               contact_name: payloadObj.contact_name || '',
               contact_email: payloadObj.contact_email || '',
@@ -1213,9 +1317,10 @@ export const Dashboard: React.FC = () => {
               products_dealing: payloadObj.product_interest ? [payloadObj.product_interest] : []
             };
             
-            await supabase.from('clients').insert([newClientPayload]);
+            const { data: insertedClient } = await supabase.from('clients').insert([newClientPayload]).select().single();
+            const newClientId = insertedClient?.id;
             
-            if (leadId) {
+            if (leadId && newClientId) {
               await supabase.from('leads').update({
                 client_id: newClientId
               }).eq('id', leadId);
@@ -1849,69 +1954,156 @@ export const Dashboard: React.FC = () => {
     setSelectedLeadIds(Array.from(new Set([...selectedLeadIds, ...group.map((lead) => lead.id)])));
   };
 
-  const bulkUpdateSelectedLeads = async (action: 'email_sent' | 'followup_1' | 'followup_2' | 'followup_3' | 'responded') => {
+  const deleteRecordsByIds = async (table: string, ids: string[]) => {
+    const chunkSize = 25;
+    for (let index = 0; index < ids.length; index += chunkSize) {
+      const chunk = ids.slice(index, index + chunkSize);
+      const results = await Promise.all(chunk.map((id) => supabase.from(table).delete().eq('id', id)));
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw new Error(failed.error.message || `Failed to delete ${table}`);
+    }
+  };
+
+  const handleDeleteAllCrmData = async () => {
+    const leadIds = leads.map((lead) => lead.id);
+    const clientIds = clients.map((client) => client.id);
+    const leadIdSet = new Set(leadIds);
+    const clientIdSet = new Set(clientIds);
+    const crmActivityIds = activities
+      .filter((activity) => (activity.lead_id && leadIdSet.has(activity.lead_id)) || (activity.client_id && clientIdSet.has(activity.client_id)))
+      .map((activity) => activity.id);
+    const crmTaskIds = tasks
+      .filter((task) => (task.lead_id && leadIdSet.has(task.lead_id)) || (task.client_id && clientIdSet.has(task.client_id)))
+      .map((task) => task.id);
+    const totalRecords = leadIds.length + clientIds.length + crmActivityIds.length + crmTaskIds.length;
+
+    if (!totalRecords) {
+      alert('No CRM buyer or lead data found to delete.');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Delete all CRM data?\n\nThis will delete ${clientIds.length} registered buyers, ${leadIds.length} leads, ${crmActivityIds.length} CRM activities, and ${crmTaskIds.length} CRM follow-up tasks.\n\nQuotes, invoices, products, templates, and shipments will stay safe.`
+    );
+    if (!confirmed) return;
+
+    const typed = window.prompt('Type DELETE CRM to confirm this action.');
+    if (typed !== 'DELETE CRM') {
+      alert('CRM delete cancelled.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await deleteRecordsByIds('activities', crmActivityIds);
+      await deleteRecordsByIds('tasks', crmTaskIds);
+      await deleteRecordsByIds('leads', leadIds);
+      await deleteRecordsByIds('clients', clientIds);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('crixy_portal_db');
+      }
+
+      setActivities((current) => current.filter((activity) => !crmActivityIds.includes(activity.id)));
+      setTasks((current) => current.filter((task) => !crmTaskIds.includes(task.id)));
+      setClients([]);
+      setLeads([]);
+      setSelectedLeadIds([]);
+      setSelectedBuyerId(null);
+      setEditingLeadId(null);
+      setEditingClientId(null);
+      setLeadForm(blankLead);
+      setClientForm(blankClient);
+      setImportSummary(null);
+      await fetchData();
+      alert('All CRM buyer and lead data has been deleted.');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not delete CRM data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const leadTrackingDefinition = (action: LeadTrackingAction) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const actionDefinitions: Record<LeadTrackingAction, { title: string; fields: Record<string, string>; stage: Lead['stage']; nextFollowUp: string | null }> = {
+      email_sent: {
+        title: 'Buyer contacted',
+        fields: { 'Email Status': 'Email Sent', 'First Email Sent On': today, 'Last Email Sent On': today, 'Response Received': 'No', 'Next Action': 'Waiting for buyer response' },
+        stage: 'Contacted',
+        nextFollowUp: dateAfterDays(3)
+      },
+      followup_due: {
+        title: 'Follow-up scheduled as due',
+        fields: { 'Next Action': 'Send follow-up today', 'Response Received': 'No' },
+        stage: 'Contacted',
+        nextFollowUp: today
+      },
+      followup_1: {
+        title: 'Follow-up 1 completed',
+        fields: { 'Email Status': 'Follow-up 1 Done', 'Follow-up 1 Done': 'Yes', 'Follow-up 1 Date': today, 'Last Email Sent On': today, 'Response Received': 'No', 'Next Action': 'Waiting for buyer response' },
+        stage: 'Contacted',
+        nextFollowUp: dateAfterDays(4)
+      },
+      followup_2: {
+        title: 'Follow-up 2 completed',
+        fields: { 'Email Status': 'Follow-up 2 Done', 'Follow-up 2 Done': 'Yes', 'Follow-up 2 Date': today, 'Last Email Sent On': today, 'Response Received': 'No', 'Next Action': 'Waiting for buyer response' },
+        stage: 'Contacted',
+        nextFollowUp: dateAfterDays(7)
+      },
+      followup_3: {
+        title: 'Follow-up 3 completed',
+        fields: { 'Email Status': 'Follow-up 3 Done', 'Follow-up 3 Done': 'Yes', 'Follow-up 3 Date': today, 'Last Email Sent On': today, 'Response Received': 'No', 'Next Action': 'No further follow-up scheduled' },
+        stage: 'Contacted',
+        nextFollowUp: ''
+      },
+      responded: {
+        title: 'Buyer response received',
+        fields: { 'Response Received': 'Yes', 'Response Date': today, 'Next Action': 'Review buyer requirement and prepare next step' },
+        stage: 'Negotiation',
+        nextFollowUp: ''
+      }
+    };
+
+    return actionDefinitions[action];
+  };
+
+  const updateLeadTracking = async (lead: Lead, action: LeadTrackingAction, refresh = true) => {
+    const actionMap = leadTrackingDefinition(action);
+    const today = new Date().toISOString().slice(0, 10);
+    const { error } = await supabase.from('leads').update({
+      notes: setLeadNoteValues(lead, actionMap.fields),
+      stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : actionMap.stage,
+      next_follow_up: actionMap.nextFollowUp === null ? lead.next_follow_up : actionMap.nextFollowUp
+    }).eq('id', lead.id);
+
+    if (error) {
+      alert(error.message || 'Could not update lead tracking.');
+      return false;
+    }
+
+    await supabase.from('activities').insert([{
+      client_id: lead.client_id,
+      lead_id: lead.id,
+      type: action === 'responded' ? 'Status' : 'Email',
+      title: `${actionMap.title}: ${lead.company_name}`,
+      details: `Smart CRM tracker updated ${lead.company_name}.`,
+      activity_date: today,
+      owner: lead.owner || 'Sana Zeba'
+    }]);
+
+    if (refresh) await fetchData();
+    return true;
+  };
+
+  const bulkUpdateSelectedLeads = async (action: LeadTrackingAction) => {
     if (!selectedLeads.length) {
       alert('Select at least one lead first.');
       return;
     }
 
-    const dateAfterDays = (days: number) => {
-      const date = new Date();
-      date.setDate(date.getDate() + days);
-      return date.toISOString().slice(0, 10);
-    };
-    const today = new Date().toISOString().slice(0, 10);
-    const actionDefinitions: Record<typeof action, { title: string; fields: Record<string, string>; stage: Lead['stage']; nextFollowUp: string | null }> = {
-      email_sent: {
-        title: 'Email marked as sent',
-        fields: { 'Email Status': 'Email Sent', 'First Email Sent On': today, 'Last Email Sent On': today, 'Next Action': 'Waiting for buyer response' },
-        stage: 'Contacted' as Lead['stage'],
-        nextFollowUp: dateAfterDays(3)
-      },
-      followup_1: {
-        title: 'Follow-up 1 marked done',
-        fields: { 'Email Status': 'Follow-up 1 Done', 'Follow-up 1 Done': 'Yes', 'Follow-up 1 Date': today, 'Last Email Sent On': today, 'Next Action': 'Waiting for buyer response' },
-        stage: 'Contacted' as Lead['stage'],
-        nextFollowUp: dateAfterDays(4)
-      },
-      followup_2: {
-        title: 'Follow-up 2 marked done',
-        fields: { 'Email Status': 'Follow-up 2 Done', 'Follow-up 2 Done': 'Yes', 'Follow-up 2 Date': today, 'Last Email Sent On': today, 'Next Action': 'Waiting for buyer response' },
-        stage: 'Contacted' as Lead['stage'],
-        nextFollowUp: dateAfterDays(7)
-      },
-      followup_3: {
-        title: 'Follow-up 3 marked done',
-        fields: { 'Email Status': 'Follow-up 3 Done', 'Follow-up 3 Done': 'Yes', 'Follow-up 3 Date': today, 'Last Email Sent On': today, 'Next Action': 'No further follow-up scheduled' },
-        stage: 'Contacted' as Lead['stage'],
-        nextFollowUp: ''
-      },
-      responded: {
-        title: 'Buyer response marked received',
-        fields: { 'Response Received': 'Yes', 'Response Date': today, 'Next Action': 'Review buyer requirement and prepare next step' },
-        stage: 'Negotiation' as Lead['stage'],
-        nextFollowUp: ''
-      }
-    };
-    const actionMap = actionDefinitions[action];
-
     try {
-      await Promise.all(selectedLeads.map((lead) => supabase.from('leads').update({
-        notes: setLeadNoteValues(lead, actionMap.fields),
-        stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : actionMap.stage,
-        next_follow_up: actionMap.nextFollowUp === null ? lead.next_follow_up : actionMap.nextFollowUp
-      }).eq('id', lead.id)));
-
-      await supabase.from('activities').insert(selectedLeads.map((lead) => ({
-        client_id: lead.client_id,
-        lead_id: lead.id,
-        type: action === 'responded' ? 'Status' : 'Email',
-        title: `${actionMap.title}: ${lead.company_name}`,
-        details: `Bulk CRM update applied to ${lead.company_name}.`,
-        activity_date: today,
-        owner: lead.owner || 'Sana Zeba'
-      })));
-
+      await Promise.all(selectedLeads.map((lead) => updateLeadTracking(lead, action, false)));
       setSelectedLeadIds([]);
       await fetchData();
     } catch (err) {
@@ -1923,7 +2115,6 @@ export const Dashboard: React.FC = () => {
   const navItems: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
     { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
-    { key: 'buyers360', label: 'Buyer 360 Profile', icon: <Users className="h-4 w-4" />, count: clients.length },
     { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
     { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
     { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
@@ -1944,7 +2135,7 @@ export const Dashboard: React.FC = () => {
   const appBusy = loading || importingBuyers;
   const mobilePrimaryNav = navItems.filter((item) => ['overview', 'crm', 'quotes', 'tasks'].includes(item.key));
   const navGroups = [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'buyers360', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users'].includes(item.key)) }
   ];
@@ -1972,6 +2163,28 @@ export const Dashboard: React.FC = () => {
   const editLeadFromCard = (lead: Lead) => {
     setEditingLeadId(lead.id);
     setLeadForm(lead);
+  };
+  const openBuyerAsCrmLead = (client: Client) => {
+    const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+    if (linkedLead) {
+      setEditingLeadId(linkedLead.id);
+      setLeadForm(linkedLead);
+      return;
+    }
+
+    setEditingLeadId(null);
+    setLeadForm({
+      ...blankLead,
+      client_id: client.id,
+      company_name: client.company_name,
+      contact_name: client.contact_name,
+      contact_email: client.contact_email,
+      phone: client.phone || clientPhones[client.id] || '',
+      country: buyerCountry(client),
+      product_interest: client.products_dealing?.join(', ') || '',
+      stage: 'New Lead',
+      priority: 'Medium'
+    });
   };
   const renderLeadCard = (lead: Lead, compact = false) => {
     const actionCategory = leadActionCategory(lead);
@@ -2020,6 +2233,11 @@ export const Dashboard: React.FC = () => {
           <Phone className="h-3.5 w-3.5" />
           {whatsappButtonLabel}
         </button>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-1.5">
+        <button type="button" onClick={() => updateLeadTracking(lead, 'email_sent')} className="rounded bg-sky-50 px-2 py-1 text-[10px] font-extrabold text-sky-700 hover:bg-sky-100">Contacted</button>
+        <button type="button" onClick={() => updateLeadTracking(lead, leadFollowUpDue(lead) ? 'followup_1' : 'followup_due')} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-extrabold text-amber-700 hover:bg-amber-100">{leadFollowUpDue(lead) ? 'Follow-up Done' : 'Need Follow-up'}</button>
+        <button type="button" onClick={() => updateLeadTracking(lead, 'responded')} className="rounded bg-teal-50 px-2 py-1 text-[10px] font-extrabold text-teal-700 hover:bg-teal-100">Responded</button>
       </div>
       <div className="mt-2 rounded bg-slate-50 border border-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 truncate">{sendWindow}{lead.country ? ` | ${lead.country}` : ' | Country not set'}</div>
       <div className="mt-2 text-[10px] text-slate-400 truncate">{lead.contact_email || 'Missing email'}{lead.phone ? ` | ${lead.phone}` : ' | Missing phone'}</div>
@@ -2440,12 +2658,14 @@ export const Dashboard: React.FC = () => {
               }}
               onCancel={resetLeadForm}
               isEditing={Boolean(editingLeadId)}
+              scrollableForm
               form={
                 <>
                   <TextInput label="Company Name *" value={leadForm.company_name || ''} onChange={(value) => setLeadForm({ ...leadForm, company_name: value })} required />
                   <TextInput label="Contact Person" value={leadForm.contact_name || ''} onChange={(value) => setLeadForm({ ...leadForm, contact_name: value })} />
                   <TextInput label="Email" value={leadForm.contact_email || ''} onChange={(value) => setLeadForm({ ...leadForm, contact_email: value })} />
                   <TextInput label="Phone" value={leadForm.phone || ''} onChange={(value) => setLeadForm({ ...leadForm, phone: value })} />
+                  <TextInput label="Country" placeholder="e.g. Sweden, UAE, France" value={leadForm.country || ''} onChange={(value) => setLeadForm({ ...leadForm, country: value })} />
                   <SelectInput label="Pipeline Stage" value={leadForm.stage || 'New Lead'} onChange={(value) => setLeadForm({ ...leadForm, stage: value as Lead['stage'] })} options={['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost']} />
                   <SelectInput label="Priority" value={leadForm.priority || 'Medium'} onChange={(value) => setLeadForm({ ...leadForm, priority: value as Lead['priority'] })} options={['Low', 'Medium', 'High']} />
                   <TextInput label="Product Interest" value={leadForm.product_interest || ''} onChange={(value) => setLeadForm({ ...leadForm, product_interest: value })} />
@@ -2456,7 +2676,7 @@ export const Dashboard: React.FC = () => {
               }
             >
               <div className="space-y-4">
-                <div className="bg-slate-950 rounded-lg p-4 text-white overflow-hidden">
+                <div className="hidden">
                   <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4">
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-sky-300">CRM command center</p>
@@ -2482,6 +2702,16 @@ export const Dashboard: React.FC = () => {
                           className="hidden"
                         />
                       </label>
+                      <button
+                        type="button"
+                        onClick={handleDeleteAllCrmData}
+                        disabled={(!leads.length && !clients.length) || loading}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded font-bold hover:bg-red-400 transition disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400"
+                        title="Delete CRM buyers, leads, activities, and follow-up tasks"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete CRM Data
+                      </button>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 mt-5">
@@ -2499,7 +2729,7 @@ export const Dashboard: React.FC = () => {
                   )}
                 </div>
 
-                <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm text-xs">
+                <div className="hidden">
                   <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
                     <div>
                       <h3 className="font-extrabold text-slate-900">Bulk Lead Actions</h3>
@@ -2515,6 +2745,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" onClick={() => bulkUpdateSelectedLeads('email_sent')} className="px-3 py-2 bg-slate-900 text-white rounded font-bold hover:bg-slate-800 disabled:opacity-40" disabled={!selectedLeads.length}>Mark Email Sent</button>
+                    <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_due')} className="px-3 py-2 bg-amber-500 text-white rounded font-bold hover:bg-amber-400 disabled:opacity-40" disabled={!selectedLeads.length}>Mark Follow-up Due</button>
                     <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_1')} className="px-3 py-2 bg-sky-600 text-white rounded font-bold hover:bg-sky-500 disabled:opacity-40" disabled={!selectedLeads.length}>Follow-up 1 Done</button>
                     <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_2')} className="px-3 py-2 bg-sky-600 text-white rounded font-bold hover:bg-sky-500 disabled:opacity-40" disabled={!selectedLeads.length}>Follow-up 2 Done</button>
                     <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_3')} className="px-3 py-2 bg-sky-600 text-white rounded font-bold hover:bg-sky-500 disabled:opacity-40" disabled={!selectedLeads.length}>Follow-up 3 Done</button>
@@ -2522,7 +2753,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm text-xs">
+                <div className="hidden">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <h3 className="font-extrabold text-slate-900">Search CRM Leads</h3>
@@ -2551,9 +2782,155 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
+                <div className="hidden">
+                  <div className="flex flex-col 2xl:flex-row 2xl:items-end justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600">Buyer database inside CRM</p>
+                      <h3 className="text-base font-extrabold text-slate-900">All buyers, countries, phone numbers, and products in one sorted view</h3>
+                      <p className="text-slate-500 mt-1">Use this to find a buyer, view their profile, create the linked CRM lead, or open WhatsApp without leaving CRM.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 w-full 2xl:max-w-5xl">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search buyers, phone, product, port..."
+                          value={buyerSearchQuery}
+                          onChange={(event) => setBuyerSearchQuery(event.target.value)}
+                          className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs font-semibold text-slate-800 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                        />
+                        {buyerSearchQuery && (
+                          <button type="button" onClick={() => setBuyerSearchQuery('')} className="absolute right-3 top-3 text-slate-400 hover:text-slate-700" title="Clear buyer search">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <select
+                          aria-label="Country Filter"
+                          value={buyerCountryFilter}
+                          onChange={(event) => setBuyerCountryFilter(event.target.value)}
+                          className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                        >
+                          {['All', ...buyerCountries].map((country) => (
+                            <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                      </div>
+                      <div className="relative">
+                        <select
+                          aria-label="Buyer Outreach Filter"
+                          value={buyerActionFilter}
+                          onChange={(event) => setBuyerActionFilter(event.target.value)}
+                          className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                        >
+                          <option value="All">All Outreach Status</option>
+                          <option value="Need Reach Out">Need Reach Out</option>
+                          <option value="Follow-up Due">Follow-up Due</option>
+                          <option value="Waiting Reply">Waiting Reply</option>
+                          <option value="Responded / Qualify">Responded / Qualify</option>
+                          <option value="Needs Email Fix">Needs Email Fix</option>
+                          <option value="Review">Needs Review</option>
+                          <option value="Closed">Closed</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                      </div>
+                      <div className="relative">
+                        <select
+                          aria-label="Buyer Sorting"
+                          value={buyerSortKey}
+                          onChange={(event) => setBuyerSortKey(event.target.value as typeof buyerSortKey)}
+                          className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                        >
+                          <option value="name">Company Name (A-Z)</option>
+                          <option value="followup_first">Follow-up Due First</option>
+                          <option value="reachout_first">Need Reach Out First</option>
+                          <option value="waiting_first">Waiting Reply First</option>
+                          <option value="responded_first">Responded First</option>
+                          <option value="phone_asc">Phone Number (Ascending)</option>
+                          <option value="phone_desc">Phone Number (Descending)</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                    <CrmMetric label="Shown Buyers" value={buyerSummaryStats.shown.toString()} helper={buyerCountryFilter === 'All' ? 'All countries' : buyerCountryFilter} />
+                    <CrmMetric label="Countries" value={buyerSummaryStats.countriesCount.toString()} helper="Detected markets" />
+                    <CrmMetric label="Uncategorized" value={buyerSummaryStats.uncategorized.toString()} helper="Needs country data" />
+                    <CrmMetric label="CRM Linked" value={buyerSummaryStats.crmLinked.toString()} helper="Synced leads" />
+                  </div>
+
+                  <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-500">
+                    <span>Showing <strong className="text-slate-900">{visibleBuyers.length}</strong> of <strong className="text-slate-900">{filteredBuyers.length}</strong> buyers</span>
+                    {filteredBuyers.length > visibleBuyers.length && (
+                      <button
+                        type="button"
+                        onClick={() => setBuyerVisibleCount((count) => Math.min(count + buyerListPageSize, filteredBuyers.length))}
+                        className="rounded-md bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800"
+                      >
+                        Load More Buyers
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-3">
+                    {visibleBuyers.length === 0 ? (
+                      <EmptyState text="No buyers match this CRM filter." />
+                    ) : visibleBuyers.map((buyer) => {
+                      const country = buyerCountry(buyer);
+                      const phone = buyer.phone || clientPhones[buyer.id] || '';
+                      const metrics = clientMetrics[buyer.id] || { quotesCount: 0, receivableValue: 0, shipmentsCount: 0, openTasksCount: 0, lastActivityTitle: 'No activity logged' };
+                      const linkedLead = linkedLeadForBuyer(buyer);
+                      const buyerCategory = buyerActionCategory(buyer);
+                      return (
+                        <div key={buyer.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-extrabold text-slate-900 truncate">{buyer.company_name}</div>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                <SmallBadge text={country} />
+                                <span className="inline-block rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">{bestSendWindowIST(country).replace('Best send: ', '')}</span>
+                                <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-extrabold ${leadCategoryClass(buyerCategory)}`}>{buyerCategory}</span>
+                                <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${linkedLead ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700'}`}>{linkedLead ? 'CRM Linked' : 'Create Lead'}</span>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                              <button type="button" onClick={() => setSelectedBuyerId(buyer.id)} className="rounded bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700 hover:bg-sky-100">View</button>
+                              <button type="button" onClick={() => openBuyerAsCrmLead(buyer)} className="rounded bg-slate-900 px-2 py-1 text-[10px] font-bold text-white hover:bg-slate-800">{linkedLead ? 'Edit Lead' : 'Create Lead'}</button>
+                              <button type="button" onClick={() => handleBuyerEmail(buyer, 'First Reach')} className="rounded bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100">Reach Out Email</button>
+                              <button type="button" onClick={() => handleBuyerEmail(buyer, 'Follow-up')} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-100">Follow-up Email</button>
+                              {phone && <button type="button" onClick={() => handleBuyerWhatsAppReachout(buyer, phone)} className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-500">WhatsApp</button>}
+                            </div>
+                          </div>
+                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-slate-500">
+                            <div className="truncate">Contact: <span className="font-bold text-slate-700">{buyer.contact_name || 'N/A'}</span></div>
+                            <div className="truncate">Phone: <span className="font-bold text-slate-700">{phone || 'N/A'}</span></div>
+                            <div className="truncate">Email: <span className="font-bold text-slate-700">{buyer.contact_email || 'N/A'}</span></div>
+                            <div className="truncate">Port: <span className="font-bold text-slate-700">{buyer.destination_port || 'N/A'}</span></div>
+                          </div>
+                          {buyer.products_dealing?.length ? (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {buyer.products_dealing.slice(0, 5).map((productName) => <span key={productName} className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{productName}</span>)}
+                            </div>
+                          ) : null}
+                          <div className="mt-3 grid grid-cols-4 gap-1.5 border-t border-slate-100 pt-2 text-center">
+                            <SmallMetric label="Quotes" value={metrics.quotesCount.toString()} />
+                            <SmallMetric label="Due" value={formatQuoteCurrency(metrics.receivableValue, 'INR')} />
+                            <SmallMetric label="Ship" value={metrics.shipmentsCount.toString()} />
+                            <SmallMetric label="Tasks" value={metrics.openTasksCount.toString()} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <div className="hidden">
                       {crmQueues.map((queue) => (
                         <div key={queue.label} className="bg-slate-50 border border-slate-200 rounded-lg p-3 min-h-[220px]">
                           <div className="flex items-center justify-between gap-2 mb-3">
@@ -2571,37 +2948,113 @@ export const Dashboard: React.FC = () => {
                       ))}
                     </div>
 
-                    <div className="bg-white border border-slate-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between gap-3 mb-4">
-                        <div>
-                          <h3 className="font-extrabold text-slate-900">Pipeline Board</h3>
-                          <p className="text-xs text-slate-500">Stage synced from imported sheet, responses, and manual edits.</p>
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                      <div className="border-b border-slate-200 bg-slate-950 px-4 py-4 text-white">
+                        <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4">
+                          <div>
+                            <p className="text-[10px] font-extrabold uppercase tracking-wider text-sky-300">Smart CRM Pipeline</p>
+                            <h3 className="text-lg font-black">Buyer follow-up workflow</h3>
+                            <p className="text-xs text-slate-300 mt-1">Only the working pipeline is shown here. Cards auto-sort by stage, outreach status, response, and follow-up date.</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" onClick={downloadCrmImportTemplate} className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs">
+                              <Download className="h-4 w-4" />
+                              Template
+                            </button>
+                            <label className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-sky-500 text-white rounded-lg font-bold cursor-pointer hover:bg-sky-400 transition text-xs">
+                              <FileCheck2 className="h-4 w-4" />
+                              {importingBuyers ? 'Importing...' : 'Import'}
+                              <input
+                                type="file"
+                                accept=".xlsx,.xls,.csv"
+                                disabled={importingBuyers}
+                                onChange={(event) => {
+                                  handleBuyerWorkbookImport(event.target.files?.[0] || null);
+                                  event.currentTarget.value = '';
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                            <button type="button" onClick={runFollowUpAutomation} className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white text-slate-950 rounded-lg font-bold text-xs hover:bg-slate-100 transition">
+                              <Sparkles className="h-4 w-4" />
+                              Follow-up Tasks
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleDeleteAllCrmData}
+                              disabled={(!leads.length && !clients.length) || loading}
+                              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg font-bold hover:bg-red-400 transition disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400 text-xs"
+                              title="Delete CRM buyers, leads, activities, and follow-up tasks"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </button>
+                          </div>
                         </div>
-                        <button type="button" onClick={runFollowUpAutomation} className="px-3 py-2 bg-slate-900 text-white rounded font-bold text-xs flex items-center gap-2 hover:bg-slate-800">
-                          <Sparkles className="h-4 w-4" />
-                          Create Follow-up Tasks
-                        </button>
+                        <div className="mt-4 grid grid-cols-2 xl:grid-cols-5 gap-2">
+                          <CrmMetric label="Total Leads" value={leads.length.toString()} helper="Pipeline records" />
+                          <CrmMetric label="Reach Out" value={crmQueues[0].leads.length.toString()} helper="First contact needed" />
+                          <CrmMetric label="Follow-up Due" value={crmQueues[1].leads.length.toString()} helper="Due now" />
+                          <CrmMetric label="Waiting" value={crmQueues[2].leads.length.toString()} helper="No response yet" />
+                          <CrmMetric label="Email Fix" value={crmQueues[4].leads.length.toString()} helper="Needs email" />
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost'].map((stage) => {
-                          const stageLeads = filteredCrmLeads.filter((lead) => lead.stage === stage);
-                          return (
-                            <div key={stage} className="bg-slate-50 border border-slate-200 rounded-lg p-3 min-h-[180px]">
-                              <div className="flex items-center justify-between mb-3">
-                                <h4 className="text-[11px] font-bold text-slate-600 uppercase">{stage}</h4>
-                                <span className="text-[10px] font-bold text-slate-400">{stageLeads.length}</span>
-                              </div>
-                              <div className="space-y-2">
-                                {stageLeads.length === 0 ? <EmptyState text="No leads." /> : stageLeads.slice(0, 8).map((lead) => renderLeadCard(lead))}
-                              </div>
-                            </div>
-                          );
-                        })}
+
+                      <div className="p-4">
+                        <div className="mb-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                          <div className="relative w-full xl:max-w-xl">
+                            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <input
+                              type="text"
+                              placeholder="Search pipeline by company, contact, email, phone, country..."
+                              value={crmSearchQuery}
+                              onChange={(e) => setCrmSearchQuery(e.target.value)}
+                              className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition font-semibold"
+                            />
+                            {crmSearchQuery && (
+                              <button type="button" onClick={() => setCrmSearchQuery('')} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition" title="Clear search">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            <button type="button" onClick={() => selectLeadGroup(crmQueues[1].leads)} className="px-3 py-2 bg-amber-50 text-amber-700 rounded-lg font-bold hover:bg-amber-100">Select Due</button>
+                            <button type="button" onClick={() => selectLeadGroup(crmQueues[0].leads)} className="px-3 py-2 bg-sky-50 text-sky-700 rounded-lg font-bold hover:bg-sky-100">Select Reach Out</button>
+                            <button type="button" onClick={() => bulkUpdateSelectedLeads('email_sent')} className="px-3 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-40" disabled={!selectedLeads.length}>Contacted</button>
+                            <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_due')} className="px-3 py-2 bg-amber-500 text-white rounded-lg font-bold hover:bg-amber-400 disabled:opacity-40" disabled={!selectedLeads.length}>Need Follow-up</button>
+                            <button type="button" onClick={() => bulkUpdateSelectedLeads('responded')} className="px-3 py-2 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-500 disabled:opacity-40" disabled={!selectedLeads.length}>Responded</button>
+                            {selectedLeads.length > 0 && <button type="button" onClick={() => setSelectedLeadIds([])} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200">{selectedLeads.length} selected - Clear</button>}
+                          </div>
+                        </div>
+                        {importSummary && (
+                          <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-slate-700">
+                            <span className="font-bold text-slate-900">{importSummary.message}</span>
+                            <span className="ml-2 text-[11px] text-slate-500">Buyers: {importSummary.buyers} | Leads: {importSummary.leads} | Skipped: {importSummary.skipped}</span>
+                          </div>
+                        )}
+                        <div className="overflow-x-auto pb-2">
+                          <div className="grid min-w-[1180px] grid-cols-6 gap-3">
+                            {['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost'].map((stage) => {
+                              const stageLeads = filteredCrmLeads.filter((lead) => lead.stage === stage);
+                              return (
+                                <div key={stage} className="rounded-lg border border-slate-200 bg-slate-50 p-3 min-h-[520px]">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-[11px] font-black text-slate-700 uppercase">{stage}</h4>
+                                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-slate-500 border border-slate-200">{stageLeads.length}</span>
+                                  </div>
+                                  <div className="space-y-2 max-h-[68vh] overflow-y-auto pr-1">
+                                    {stageLeads.length === 0 ? <EmptyState text="No leads." /> : stageLeads.map((lead) => renderLeadCard(lead))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="hidden">
                     <div className="bg-white border border-slate-200 rounded-lg p-4 text-xs space-y-3 shadow-sm">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -2817,222 +3270,6 @@ export const Dashboard: React.FC = () => {
                 <SimplePanel title="Invoice Status" rows={['Pending', 'Part Paid', 'Paid', 'Overdue'].map((status) => [status, invoices.filter((invoice) => invoice.payment_status === status).length.toString()])} />
               </div>
             </div>
-          )}
-
-          {activeTab === 'buyers360' && (
-            <TwoColumnManager
-              formTitle={editingClientId ? 'Edit Buyer' : 'Register Buyer'}
-              onSubmit={saveClient}
-              onCancel={resetClientForm}
-              isEditing={Boolean(editingClientId)}
-              scrollableForm
-              form={
-                <>
-                  <TextInput label="Company Name *" value={clientForm.company_name || ''} onChange={(value) => setClientForm({ ...clientForm, company_name: value })} required />
-                  <TextInput label="Destination Port *" value={clientForm.destination_port || ''} onChange={(value) => setClientForm({ ...clientForm, destination_port: value })} required />
-                  <TextArea label="Address" value={clientForm.address || ''} onChange={(value) => setClientForm({ ...clientForm, address: value })} />
-                  <TextInput label="Contact Person" value={clientForm.contact_name || ''} onChange={(value) => setClientForm({ ...clientForm, contact_name: value })} />
-                  <TextInput label="Email" type="email" value={clientForm.contact_email || ''} onChange={(value) => setClientForm({ ...clientForm, contact_email: value })} />
-                  <TextInput label="Phone Number" value={clientForm.phone || ''} onChange={(value) => setClientForm({ ...clientForm, phone: value })} />
-                  <TextInput
-                    label="Products Dealing In"
-                    placeholder="e.g. Basmati Rice, Red Onions, Peanuts"
-                    value={(clientForm.products_dealing || []).join(', ')}
-                    onChange={(value) => {
-                      const list = value.split(',').map((s) => s.trim()).filter(Boolean);
-                      setClientForm({ ...clientForm, products_dealing: list });
-                    }}
-                  />
-                </>
-              }
-            >
-              <div className="space-y-4">
-                <div className="bg-slate-950 text-white rounded-lg p-4">
-                  <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-sky-300">Buyer geography</p>
-                      <h3 className="text-lg font-extrabold">Filter buyers by country and plan outreach windows</h3>
-                      <p className="text-xs text-slate-300 mt-1">Country is detected from the linked CRM lead first, then buyer address or destination port.</p>
-                    </div>
-                    <div className="w-full xl:max-w-sm">
-                      <div className="rounded-lg border border-white/15 bg-white/10 p-3 text-xs shadow-inner">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-7 w-7 items-center justify-center rounded bg-sky-400/20 text-sky-200">
-                              <Filter className="h-3.5 w-3.5" />
-                            </span>
-                            <div>
-                              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-300">Country Filter</p>
-                              <p className="text-[11px] font-semibold text-white">{buyerCountryFilter === 'All' ? 'Showing all buyer markets' : `Showing ${buyerCountryFilter}`}</p>
-                            </div>
-                          </div>
-                          {buyerCountryFilter !== 'All' && (
-                            <button type="button" onClick={() => setBuyerCountryFilter('All')} className="rounded bg-white/10 px-2 py-1 text-[10px] font-bold text-white hover:bg-white/20">
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                        <div className="relative">
-                          <select
-                            aria-label="Country Filter"
-                            value={buyerCountryFilter}
-                            onChange={(event) => setBuyerCountryFilter(event.target.value)}
-                            className="h-10 w-full appearance-none rounded-md border border-white/15 bg-white px-3 pr-9 text-xs font-bold text-slate-800 shadow-sm outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-300/30"
-                          >
-                            {['All', ...buyerCountries].map((country) => (
-                              <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-3 text-white border-t border-white/10 pt-2.5">
-                          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-300">Sort Buyers</p>
-                        </div>
-                        <div className="relative mt-2">
-                          <select
-                            aria-label="Buyer Sorting"
-                            value={buyerSortKey}
-                            onChange={(event) => setBuyerSortKey(event.target.value as any)}
-                            className="h-10 w-full appearance-none rounded-md border border-white/15 bg-white px-3 pr-9 text-xs font-bold text-slate-800 shadow-sm outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-300/30"
-                          >
-                            <option value="name">Company Name (A-Z)</option>
-                            <option value="phone_asc">Phone Number (Ascending)</option>
-                            <option value="phone_desc">Phone Number (Descending)</option>
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                        </div>
-                        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 scroll-fade">
-                          {['All', ...buyerCountries.filter((country) => country !== 'Uncategorized').slice(0, 8)].map((country) => (
-                            <button
-                              key={country}
-                              type="button"
-                              onClick={() => setBuyerCountryFilter(country)}
-                              className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-extrabold transition ${buyerCountryFilter === country ? 'bg-sky-400 text-slate-950 shadow' : 'bg-white/10 text-slate-200 hover:bg-white/20'}`}
-                            >
-                              {country === 'All' ? 'All' : country}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                    <CrmMetric label="Shown Buyers" value={buyerSummaryStats.shown.toString()} helper={buyerCountryFilter === 'All' ? 'All countries' : buyerCountryFilter} />
-                    <CrmMetric label="Countries" value={buyerSummaryStats.countriesCount.toString()} helper="Detected markets" />
-                    <CrmMetric label="Uncategorized" value={buyerSummaryStats.uncategorized.toString()} helper="Needs country data" />
-                    <CrmMetric label="CRM Linked" value={buyerSummaryStats.crmLinked.toString()} helper="Synced with leads" />
-                  </div>
-                </div>
-
-                {clients.length > 0 && (
-                  <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex items-center gap-3 text-xs">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Search buyers by company name, contact, email, phone, port..."
-                        value={buyerSearchQuery}
-                        onChange={(e) => setBuyerSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-300/50 focus:border-sky-400 focus:outline-none font-medium text-slate-800"
-                      />
-                    </div>
-                    {buyerSearchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setBuyerSearchQuery('')}
-                        className="shrink-0 text-slate-500 hover:text-slate-700 font-bold px-2 py-1"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {clients.length === 0 ? (
-                  <EmptyState text="No buyer companies found." />
-                ) : filteredBuyers.length === 0 ? (
-                  <EmptyState text={buyerSearchQuery ? "No buyers match your search." : "No buyers match this country filter."} />
-                ) : (
-                  <>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                      <span>
-                        Showing <strong className="text-slate-900">{visibleBuyers.length}</strong> of <strong className="text-slate-900">{filteredBuyers.length}</strong> buyers
-                      </span>
-                      {filteredBuyers.length > visibleBuyers.length && (
-                        <button
-                          type="button"
-                          onClick={() => setBuyerVisibleCount((count) => Math.min(count + buyerListPageSize, filteredBuyers.length))}
-                          className="rounded-md bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800"
-                        >
-                          Load {Math.min(buyerListPageSize, filteredBuyers.length - visibleBuyers.length)} More
-                        </button>
-                      )}
-                    </div>
-                    <div className="max-h-[64vh] overflow-y-auto pr-2 space-y-4 scroll-smooth">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {visibleBuyers.map((c) => {
-                          const crmLead = leads.find((l) => l.client_id === c.id || l.company_name.toLowerCase() === c.company_name.toLowerCase());
-                          return (
-                            <BuyerCard
-                              key={c.id}
-                              client={c}
-                              country={buyerCountry(c)}
-                              phone={c.phone || clientPhones[c.id] || ''}
-                              metrics={clientMetrics[c.id] || { quotesCount: 0, receivableValue: 0, shipmentsCount: 0, openTasksCount: 0, lastActivityTitle: 'No activity logged' }}
-                              onView={() => setSelectedBuyerId(c.id)}
-                              onEdit={() => { setEditingClientId(c.id); setClientForm(c); }}
-                              onDelete={() => deleteClient(c.id)}
-                              formatQuoteCurrency={formatQuoteCurrency}
-                              bestSendWindowIST={bestSendWindowIST}
-                              crmLead={crmLead}
-                              onPushToCrm={async () => {
-                                const productStr = c.products_dealing && c.products_dealing.length > 0 
-                                  ? c.products_dealing.join(', ') 
-                                  : 'General export product range';
-                                
-                                const { error } = await supabase.from('leads').insert([{
-                                  id: `import-lead-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                                  company_name: c.company_name,
-                                  contact_name: c.contact_name || '',
-                                  contact_email: c.contact_email || '',
-                                  phone: c.phone || clientPhones[c.id] || '',
-                                  country: c.destination_port || 'Not specified',
-                                  product_interest: productStr,
-                                  estimated_value: 0,
-                                  stage: 'New Lead',
-                                  priority: 'Medium',
-                                  owner: 'Sana Zeba',
-                                  notes: `Auto-created via manual CRM Push from Buyer Profile.`,
-                                  client_id: c.id
-                                }]);
-                                
-                                if (error) {
-                                  alert(error.message || 'Failed to sync to CRM');
-                                } else {
-                                  alert(`${c.company_name} successfully added to CRM!`);
-                                  await fetchData();
-                                }
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                      {filteredBuyers.length > visibleBuyers.length && (
-                        <div className="flex justify-center pt-2">
-                          <button
-                            type="button"
-                            onClick={() => setBuyerVisibleCount((count) => Math.min(count + buyerListPageSize, filteredBuyers.length))}
-                            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-sm hover:border-sky-200 hover:text-sky-700"
-                          >
-                            Load More Buyers
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </TwoColumnManager>
           )}
 
           {activeTab === 'phoneReachout' && (
