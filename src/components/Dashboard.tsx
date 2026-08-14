@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import readXlsxFile from 'read-excel-file/browser';
@@ -78,6 +78,8 @@ const buyerListPageSize = 48;
 const portalDataCacheVersion = 'crm-pipeline-only-2026-08-14';
 const reachoutListPageSize = 60;
 const missingPhonePageSize = 40;
+const sourceListPageSize = 60;
+const crmColumnPageSize = 24;
 
 type TabKey = 'overview' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
@@ -439,6 +441,8 @@ export const Dashboard: React.FC = () => {
   const [sourceCountryFilter, setSourceCountryFilter] = useState('All');
   const [sourceActionFilter, setSourceActionFilter] = useState('All');
   const [sourceSortKey, setSourceSortKey] = useState<'source' | 'action' | 'country' | 'followup'>('source');
+  const [sourceVisibleCount, setSourceVisibleCount] = useState(sourceListPageSize);
+  const [crmColumnVisibleCounts, setCrmColumnVisibleCounts] = useState<Record<string, number>>({});
   const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
   const [activityForm, setActivityForm] = useState<Partial<TimelineActivity>>(blankActivity);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
@@ -465,6 +469,11 @@ export const Dashboard: React.FC = () => {
   const [editingChecklistId, setEditingChecklistId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState<Partial<AppUser>>(blankUser);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const deferredGlobalSearch = useDeferredValue(globalSearch);
+  const deferredBuyerSearchQuery = useDeferredValue(buyerSearchQuery);
+  const deferredReachoutSearchQuery = useDeferredValue(reachoutSearchQuery);
+  const deferredCrmSearchQuery = useDeferredValue(crmSearchQuery);
+  const deferredSourceSearchQuery = useDeferredValue(sourceSearchQuery);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -485,6 +494,14 @@ export const Dashboard: React.FC = () => {
     setReachoutVisibleCount(reachoutListPageSize);
     setMissingPhoneVisibleCount(missingPhonePageSize);
   }, [reachoutSearchQuery, reachoutCountryFilter, reachoutSortKey]);
+
+  useEffect(() => {
+    setSourceVisibleCount(sourceListPageSize);
+  }, [sourceSearchQuery, sourceTypeFilter, sourceCountryFilter, sourceActionFilter, sourceSortKey]);
+
+  useEffect(() => {
+    setCrmColumnVisibleCounts({});
+  }, [crmSearchQuery, crmCountryFilter, crmSortKey]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -729,7 +746,22 @@ export const Dashboard: React.FC = () => {
   const buyerCountries = useMemo(() => {
     return Array.from(new Set(clients.map((client) => clientCountries[client.id] || 'Uncategorized').filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [clients, clientCountries]);
-  const linkedLeadForBuyer = (client: Client) => leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+  const leadsByClientId = useMemo(() => {
+    const map: Record<string, Lead> = {};
+    leads.forEach((lead) => {
+      if (lead.client_id && !map[lead.client_id]) map[lead.client_id] = lead;
+    });
+    return map;
+  }, [leads]);
+  const leadsByCompanyName = useMemo(() => {
+    const map: Record<string, Lead> = {};
+    leads.forEach((lead) => {
+      const key = lead.company_name.toLowerCase();
+      if (key && !map[key]) map[key] = lead;
+    });
+    return map;
+  }, [leads]);
+  const linkedLeadForBuyer = (client: Client) => leadsByClientId[client.id] || leadsByCompanyName[client.company_name.toLowerCase()];
   const buyerActionCategory = (client: Client) => {
     const linkedLead = linkedLeadForBuyer(client);
     return linkedLead ? leadActionCategory(linkedLead) : 'Need Reach Out';
@@ -756,7 +788,7 @@ export const Dashboard: React.FC = () => {
       ? countryList
       : countryList.filter((client) => buyerActionCategory(client) === buyerActionFilter);
     
-    const query = buyerSearchQuery.trim().toLowerCase();
+    const query = deferredBuyerSearchQuery.trim().toLowerCase();
     const searchedList = query
       ? list.filter((client) => {
           return (
@@ -796,7 +828,7 @@ export const Dashboard: React.FC = () => {
     } else {
       return [...searchedList].sort((a, b) => a.company_name.localeCompare(b.company_name));
     }
-  }, [clients, clientCountries, buyerCountryFilter, buyerActionFilter, buyerSortKey, clientPhones, buyerSearchQuery, leads]);
+  }, [clients, clientCountries, buyerCountryFilter, buyerActionFilter, buyerSortKey, clientPhones, deferredBuyerSearchQuery, leads]);
 
   const reachoutBuyers = useMemo(() => {
     return clients.filter((client) => {
@@ -810,7 +842,7 @@ export const Dashboard: React.FC = () => {
   }, [reachoutBuyers, clientCountries]);
 
   const filteredReachoutBuyers = useMemo(() => {
-    const query = reachoutSearchQuery.trim().toLowerCase();
+    const query = deferredReachoutSearchQuery.trim().toLowerCase();
     const countryFiltered = reachoutCountryFilter === 'All'
       ? reachoutBuyers
       : reachoutBuyers.filter((buyer) => buyerCountry(buyer) === reachoutCountryFilter);
@@ -834,7 +866,7 @@ export const Dashboard: React.FC = () => {
       }
       return a.company_name.localeCompare(b.company_name);
     });
-  }, [reachoutBuyers, reachoutSearchQuery, reachoutCountryFilter, reachoutSortKey, clientPhones, clientCountries]);
+  }, [reachoutBuyers, deferredReachoutSearchQuery, reachoutCountryFilter, reachoutSortKey, clientPhones, clientCountries]);
 
   const visibleReachoutBuyers = useMemo(() => filteredReachoutBuyers.slice(0, reachoutVisibleCount), [filteredReachoutBuyers, reachoutVisibleCount]);
 
@@ -866,21 +898,37 @@ export const Dashboard: React.FC = () => {
     }> = {};
 
     clients.forEach((client) => {
-      const cQuotes = quotes.filter((quote) => quote.client_id === client.id);
-      const cInvoices = invoices.filter((invoice) => invoice.client_id === client.id && invoice.payment_status !== 'Paid');
-      const cShipments = shipments.filter((shipment) => shipment.client_id === client.id);
-      const cTasks = tasks.filter((task) => task.client_id === client.id && task.status !== 'Done');
-      const cLastActivity = activities.find((activity) => activity.client_id === client.id);
-
-      const receivableValue = cInvoices.reduce((sum, invoice) => sum + Number(invoice.balance_amount || invoice.amount || 0), 0);
-
       map[client.id] = {
-        quotesCount: cQuotes.length,
-        receivableValue,
-        shipmentsCount: cShipments.length,
-        openTasksCount: cTasks.length,
-        lastActivityTitle: cLastActivity?.title || 'No activity logged'
+        quotesCount: 0,
+        receivableValue: 0,
+        shipmentsCount: 0,
+        openTasksCount: 0,
+        lastActivityTitle: 'No activity logged'
       };
+    });
+
+    quotes.forEach((quote) => {
+      if (quote.client_id && map[quote.client_id]) map[quote.client_id].quotesCount += 1;
+    });
+
+    invoices.forEach((invoice) => {
+      if (invoice.client_id && invoice.payment_status !== 'Paid' && map[invoice.client_id]) {
+        map[invoice.client_id].receivableValue += Number(invoice.balance_amount || invoice.amount || 0);
+      }
+    });
+
+    shipments.forEach((shipment) => {
+      if (shipment.client_id && map[shipment.client_id]) map[shipment.client_id].shipmentsCount += 1;
+    });
+
+    tasks.forEach((task) => {
+      if (task.client_id && task.status !== 'Done' && map[task.client_id]) map[task.client_id].openTasksCount += 1;
+    });
+
+    activities.forEach((activity) => {
+      if (activity.client_id && map[activity.client_id] && map[activity.client_id].lastActivityTitle === 'No activity logged') {
+        map[activity.client_id].lastActivityTitle = activity.title;
+      }
     });
 
     return map;
@@ -919,7 +967,7 @@ export const Dashboard: React.FC = () => {
   }, [tasks, leads, invoices, shipments]);
 
   const globalResults = useMemo<{ key: string; label: string; meta: string; tab: TabKey; buyerId?: string }[]>(() => {
-    const search = globalSearch.trim().toLowerCase();
+    const search = deferredGlobalSearch.trim().toLowerCase();
     if (!search) return [];
 
     return [
@@ -930,7 +978,7 @@ export const Dashboard: React.FC = () => {
       ...shipments.map((item) => ({ key: `shipment-${item.id}`, label: item.booking_number || item.vessel_name || 'Shipment', meta: `${item.status} | ETA ${item.eta || 'TBA'}`, tab: 'shipments' as TabKey })),
       ...vendors.map((item) => ({ key: `vendor-${item.id}`, label: item.company_name, meta: `${item.status} | ${item.product_categories || 'Vendor'}`, tab: 'vendors' as TabKey }))
     ].filter((item) => `${item.label} ${item.meta}`.toLowerCase().includes(search)).slice(0, 8);
-  }, [globalSearch, clients, leads, quotes, invoices, shipments, vendors]);
+  }, [deferredGlobalSearch, clients, leads, quotes, invoices, shipments, vendors]);
 
   const communicationClient = clients.find((client) => client.id === selectedCommunicationClientId) || clients[0];
   const communicationQuote = quotes.find((quote) => quote.client_id === communicationClient?.id) || quotes[0];
@@ -1867,8 +1915,7 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const downloadCrmImportTemplate = () => {
-    const headers = [
+  const crmImportHeaders = [
       'ID',
       'Company Name',
       'Contact Person',
@@ -1901,6 +1948,26 @@ export const Dashboard: React.FC = () => {
       'Created At',
       'Updated At'
     ];
+
+  const downloadCsvFile = (filename: string, rows: unknown[][]) => {
+    const csv = rows
+      .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clientAddressValue = (client: Client | undefined, label: string) => {
+    const line = (client?.address || '').split('\n').find((item) => item.toLowerCase().startsWith(`${label.toLowerCase()}:`));
+    return line ? line.slice(line.indexOf(':') + 1).trim() : '';
+  };
+
+  const downloadCrmImportTemplate = () => {
     const today = new Date().toISOString().slice(0, 10);
     const sampleRows = [
       [
@@ -1971,16 +2038,51 @@ export const Dashboard: React.FC = () => {
       ]
     ];
 
-    const csv = [headers, ...sampleRows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'sheshaan-global-crm-import-template.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile('sheshaan-global-crm-import-template.csv', [crmImportHeaders, ...sampleRows]);
+  };
+
+  const exportCrmImportTemplateData = (exportLeads: Lead[]) => {
+    const rows = exportLeads.map((lead, index) => {
+      const client = clients.find((item) => item.id === lead.client_id || item.company_name.toLowerCase() === lead.company_name.toLowerCase());
+      const productParts = (lead.product_interest || '').split(',').map((item) => item.trim()).filter(Boolean);
+      const product = productParts[0] || 'Other';
+      const productCategory = productParts.slice(1).join(', ') || leadNoteValue(lead, 'Product Category') || 'General export product range';
+      return [
+        lead.id || String(index + 1).padStart(3, '0'),
+        lead.company_name,
+        lead.contact_name || client?.contact_name || '',
+        lead.contact_email || client?.contact_email || '',
+        lead.phone || client?.phone || '',
+        clientAddressValue(client, 'Website'),
+        lead.country || clientAddressValue(client, 'Country') || client?.destination_port || '',
+        clientAddressValue(client, 'Market'),
+        product,
+        productCategory,
+        clientAddressValue(client, 'Buyer Type'),
+        leadNoteValue(lead, 'Source') || leadDataSource(lead),
+        leadEmailStatus(lead),
+        lead.priority || 'Medium',
+        lead.stage,
+        lead.estimated_value || '',
+        leadNextAction(lead),
+        leadNoteValue(lead, 'First Email Sent On'),
+        leadNoteValue(lead, 'Last Email Sent On'),
+        leadResponseStatus(lead),
+        leadNoteValue(lead, 'Response Date'),
+        leadNoteValue(lead, 'Follow-up 1 Done') || 'No',
+        leadNoteValue(lead, 'Follow-up 1 Date'),
+        leadNoteValue(lead, 'Follow-up 2 Done') || 'No',
+        leadNoteValue(lead, 'Follow-up 2 Date'),
+        leadNoteValue(lead, 'Follow-up 3 Done') || 'No',
+        leadNoteValue(lead, 'Follow-up 3 Date'),
+        lead.next_follow_up || '',
+        (lead.notes || '').replace(/\r?\n/g, ' | '),
+        lead.created_at || '',
+        lead.updated_at || ''
+      ];
+    });
+
+    downloadCsvFile(`sheshaan-global-crm-export-${new Date().toISOString().slice(0, 10)}.csv`, [crmImportHeaders, ...rows]);
   };
 
   const saveProduct = async (e: React.FormEvent) => {
@@ -2087,7 +2189,7 @@ export const Dashboard: React.FC = () => {
   }, [leads]);
 
   const filteredCrmLeads = useMemo(() => {
-    const query = crmSearchQuery.trim().toLowerCase();
+    const query = deferredCrmSearchQuery.trim().toLowerCase();
     const countryFiltered = crmCountryFilter === 'All'
       ? leads
       : leads.filter((lead) => ((lead.country || 'Uncategorized').trim() || 'Uncategorized') === crmCountryFilter);
@@ -2111,7 +2213,7 @@ export const Dashboard: React.FC = () => {
       }
       return a.company_name.localeCompare(b.company_name);
     });
-  }, [leads, crmSearchQuery, crmCountryFilter, crmSortKey]);
+  }, [leads, deferredCrmSearchQuery, crmCountryFilter, crmSortKey]);
 
   const crmQueues = [
     { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out') },
@@ -2124,7 +2226,7 @@ export const Dashboard: React.FC = () => {
   ];
 
   const sourceFilteredLeads = useMemo(() => {
-    const query = sourceSearchQuery.trim().toLowerCase();
+    const query = deferredSourceSearchQuery.trim().toLowerCase();
     const filtered = leads.filter((lead) => {
       const source = leadDataSource(lead);
       const action = leadActionCategory(lead);
@@ -2166,7 +2268,7 @@ export const Dashboard: React.FC = () => {
       }
       return a.company_name.localeCompare(b.company_name);
     });
-  }, [leads, sourceSearchQuery, sourceTypeFilter, sourceCountryFilter, sourceActionFilter, sourceSortKey]);
+  }, [leads, deferredSourceSearchQuery, sourceTypeFilter, sourceCountryFilter, sourceActionFilter, sourceSortKey]);
 
   const sourceCountries = useMemo(() => {
     return Array.from(new Set(leads
@@ -2184,6 +2286,7 @@ export const Dashboard: React.FC = () => {
     followup: sourceFilteredLeads.filter((lead) => leadActionCategory(lead) === 'Follow-up Due').length,
     reachout: sourceFilteredLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out').length
   }), [leads, sourceFilteredLeads]);
+  const visibleSourceLeads = useMemo(() => sourceFilteredLeads.slice(0, sourceVisibleCount), [sourceFilteredLeads, sourceVisibleCount]);
   const crmBoardColumns = crmQueues.filter((queue) => ['Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix'].includes(queue.label));
   const selectedLeads = leads.filter((lead) => selectedLeadIds.includes(lead.id));
 
@@ -3206,6 +3309,16 @@ export const Dashboard: React.FC = () => {
                               <Download className="h-4 w-4" />
                               Template
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => exportCrmImportTemplateData(filteredCrmLeads)}
+                              disabled={!filteredCrmLeads.length}
+                              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                              title="Export current CRM data using the same import template columns"
+                            >
+                              <Download className="h-4 w-4" />
+                              Export
+                            </button>
                             <div className="relative">
                               <select
                                 aria-label="Import Data Source"
@@ -3344,6 +3457,8 @@ export const Dashboard: React.FC = () => {
                           <div className="grid min-w-[1180px] grid-cols-6 gap-3">
                             {crmBoardColumns.map((column) => {
                               const stageLeads = column.leads;
+                              const visibleCount = crmColumnVisibleCounts[column.label] || crmColumnPageSize;
+                              const visibleStageLeads = stageLeads.slice(0, visibleCount);
                               return (
                                 <div key={column.label} className="rounded-lg border border-slate-200 bg-slate-50 p-3 min-h-[520px]">
                                   <div className="flex items-center justify-between mb-3">
@@ -3354,7 +3469,19 @@ export const Dashboard: React.FC = () => {
                                     <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-slate-500 border border-slate-200">{stageLeads.length}</span>
                                   </div>
                                   <div className="space-y-2 max-h-[68vh] overflow-y-auto pr-1">
-                                    {stageLeads.length === 0 ? <EmptyState text="No leads." /> : stageLeads.map((lead) => renderLeadCard(lead))}
+                                    {stageLeads.length === 0 ? <EmptyState text="No leads." /> : visibleStageLeads.map((lead) => renderLeadCard(lead))}
+                                    {stageLeads.length > visibleStageLeads.length && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setCrmColumnVisibleCounts((current) => ({
+                                          ...current,
+                                          [column.label]: Math.min((current[column.label] || crmColumnPageSize) + crmColumnPageSize, stageLeads.length)
+                                        }))}
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black text-slate-600 hover:bg-slate-100"
+                                      >
+                                        Load More ({stageLeads.length - visibleStageLeads.length})
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -3510,8 +3637,9 @@ export const Dashboard: React.FC = () => {
                 {sourceFilteredLeads.length === 0 ? (
                   <EmptyState text="No source-tagged buyers match this filter." />
                 ) : (
+                  <>
                   <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-3">
-                    {sourceFilteredLeads.map((lead) => {
+                    {visibleSourceLeads.map((lead) => {
                       const source = leadDataSource(lead);
                       const action = leadActionCategory(lead);
                       return (
@@ -3555,6 +3683,18 @@ export const Dashboard: React.FC = () => {
                       );
                     })}
                   </div>
+                  {sourceFilteredLeads.length > visibleSourceLeads.length && (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => setSourceVisibleCount((count) => Math.min(count + sourceListPageSize, sourceFilteredLeads.length))}
+                        className="rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800"
+                      >
+                        Load More Source Data ({sourceFilteredLeads.length - visibleSourceLeads.length})
+                      </button>
+                    </div>
+                  )}
+                  </>
                 )}
               </div>
             </div>
