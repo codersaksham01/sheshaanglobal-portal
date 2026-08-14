@@ -21,6 +21,7 @@ import {
 } from '../lib/types';
 import { InvoicePDF } from './InvoicePDF';
 import { QuoteForm } from './QuoteForm';
+import { SmartCommandCenter, SmartPortalInsight, SmartPortalPulse } from './SmartCommandCenter';
 import { usePortalIdentity } from './AuthGate';
 import { canAccessTab, canManageTable } from '../lib/permissions';
 import {
@@ -1376,8 +1377,6 @@ export const Dashboard: React.FC = () => {
     return map;
   }, [leads, quotes, invoices]);
 
-
-
   const buyerCountry = (client: Client) => clientCountries[client.id] || 'Uncategorized';
 
   const todayStart = new Date().setHours(0, 0, 0, 0);
@@ -1473,6 +1472,232 @@ export const Dashboard: React.FC = () => {
       next_follow_up: shouldScheduleFollowUp ? dateAfterDays(3) : payload.next_follow_up
     };
   };
+
+  const tradeOperatingMetrics = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nextWeek = new Date(today);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    const activeQuoteStatuses: Quote['status'][] = ['Sent', 'Negotiation', 'Approved', 'Invoice Raised', 'Shipped'];
+
+    const receivableBalance = invoices
+      .filter((invoice) => invoice.payment_status !== 'Paid')
+      .reduce((sum, invoice) => sum + Number(invoice.balance_amount || invoice.amount || 0), 0);
+    const overdueReceivables = invoices.filter((invoice) => (
+      invoice.payment_status === 'Overdue' ||
+      (invoice.payment_status !== 'Paid' && invoice.due_date && new Date(invoice.due_date) < today)
+    ));
+    const marginRiskQuotes = quotes.filter((quote) => (
+      activeQuoteStatuses.includes(quote.status) &&
+      Number(quote.margin_per_kg || 0) > 0 &&
+      Number(quote.margin_per_kg || 0) < 8
+    ));
+    const staleQuotes = quotes.filter((quote) => (
+      ['Sent', 'Negotiation'].includes(quote.status) &&
+      quote.created_at &&
+      new Date(quote.created_at).getTime() < today.getTime() - 7 * 86400000
+    ));
+    const followUpDueLeads = leads.filter((lead) => leadActionCategory(lead) === 'Follow-up Due');
+    const reachOutLeads = leads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out');
+    const activeShipments = shipments.filter((shipment) => !['Delivered', 'Arrived'].includes(shipment.status));
+    const shipmentExecutionRisks = activeShipments.filter((shipment) => (
+      !shipment.booking_number ||
+      !shipment.container_number ||
+      !shipment.bl_number ||
+      (shipment.eta && new Date(shipment.eta) <= nextWeek)
+    ));
+    const documentRiskItems = checklists.filter((item) => {
+      const shipment = shipments.find((shipment) => shipment.id === item.shipment_id || shipment.quote_id === item.quote_id);
+      const activeShipment = !shipment || shipment.status !== 'Delivered';
+      const ready = item.commercial_invoice && item.packing_list && item.certificate_origin && item.phytosanitary && item.insurance && item.bill_of_lading;
+      return activeShipment && !ready;
+    });
+    const expiringFreightRates = freightRates.filter((rate) => (
+      rate.validity_date &&
+      new Date(rate.validity_date) >= today &&
+      new Date(rate.validity_date) <= nextWeek
+    ));
+    const preferredVendorCoverage = vendors.filter((vendor) => vendor.status === 'Preferred').length;
+    const readinessItems = [
+      leads.length > 0,
+      quotes.length > 0,
+      invoices.length > 0,
+      shipments.length > 0,
+      checklists.length > 0,
+      freightRates.length > 0,
+      vendors.length > 0,
+      preferredVendorCoverage > 0
+    ];
+    const readinessScore = Math.round((readinessItems.filter(Boolean).length / readinessItems.length) * 100);
+    const riskLoad = (
+      overdueReceivables.length * 12 +
+      marginRiskQuotes.length * 8 +
+      documentRiskItems.length * 7 +
+      shipmentExecutionRisks.length * 6 +
+      followUpDueLeads.length * 4 +
+      expiringFreightRates.length * 3
+    );
+    const operatingHealth = Math.max(5, Math.min(100, readinessScore - riskLoad + Math.min(18, reachOutLeads.length)));
+    const automationCoverage = leads.length > 0
+      ? Math.round((leads.filter((lead) => Boolean(lead.sequence_enrolled) || leadHasOutreach(lead) || Boolean(lead.next_follow_up)).length / leads.length) * 100)
+      : 0;
+
+    return {
+      automationCoverage,
+      documentRiskItems,
+      expiringFreightRates,
+      followUpDueLeads,
+      marginRiskQuotes,
+      operatingHealth,
+      overdueReceivables,
+      reachOutLeads,
+      readinessScore,
+      receivableBalance,
+      shipmentExecutionRisks,
+      staleQuotes
+    };
+  }, [checklists, freightRates, invoices, leads, quotes, shipments, vendors]);
+
+  const lastSyncedLabel = useMemo(() => {
+    const timestamps = [
+      ...clients,
+      ...leads,
+      ...quotes,
+      ...invoices,
+      ...shipments,
+      ...tasks,
+      ...activities
+    ]
+      .map((item) => {
+        const stampedItem = item as { updated_at?: string; created_at?: string };
+        return stampedItem.updated_at || stampedItem.created_at;
+      })
+      .filter(Boolean)
+      .map((value) => new Date(value as string).getTime())
+      .filter((value) => Number.isFinite(value));
+    if (!timestamps.length) return 'Ready';
+    return new Date(Math.max(...timestamps)).toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }, [activities, clients, invoices, leads, quotes, shipments, tasks]);
+
+  const smartPortalPulse: SmartPortalPulse = useMemo(() => ({
+    healthScore: tradeOperatingMetrics.operatingHealth,
+    urgentActions: tradeOperatingMetrics.overdueReceivables.length + tradeOperatingMetrics.documentRiskItems.length + tradeOperatingMetrics.followUpDueLeads.length + tradeOperatingMetrics.shipmentExecutionRisks.length,
+    pipelineMomentum: leads.filter((lead) => ['Contacted', 'Quoted', 'Negotiation'].includes(lead.stage)).length,
+    receivableRisk: formatQuoteCurrency(tradeOperatingMetrics.receivableBalance, 'INR'),
+    automationCoverage: tradeOperatingMetrics.automationCoverage,
+    activeShipments: shipments.filter((shipment) => !['Delivered', 'Arrived'].includes(shipment.status)).length
+  }), [leads, shipments, tradeOperatingMetrics]);
+
+  const smartPortalInsights: SmartPortalInsight[] = useMemo(() => {
+    const insights: SmartPortalInsight[] = [];
+    const firstOverdue = tradeOperatingMetrics.overdueReceivables[0];
+    const firstDocRisk = tradeOperatingMetrics.documentRiskItems[0];
+    const firstMarginRisk = tradeOperatingMetrics.marginRiskQuotes[0];
+    const firstShipmentRisk = tradeOperatingMetrics.shipmentExecutionRisks[0];
+    const firstFreightExpiry = tradeOperatingMetrics.expiringFreightRates[0];
+    const firstFollowUp = tradeOperatingMetrics.followUpDueLeads[0];
+
+    if (firstOverdue) {
+      insights.push({
+        id: `receivable-${firstOverdue.id}`,
+        tone: 'critical',
+        title: 'Collection risk needs action',
+        detail: `${firstOverdue.invoice_number} is unpaid. Prioritize reminder, payment confirmation, or hold further shipment movement.`,
+        evidence: `${firstOverdue.payment_status} | Due ${firstOverdue.due_date || 'not set'} | ${formatQuoteCurrency(Number(firstOverdue.balance_amount || firstOverdue.amount || 0), firstOverdue.currency || 'INR')}`,
+        action: 'Open Accounts',
+        target: 'accounts'
+      });
+    }
+
+    if (firstDocRisk) {
+      const missing = [
+        !firstDocRisk.commercial_invoice && 'Commercial Invoice',
+        !firstDocRisk.packing_list && 'Packing List',
+        !firstDocRisk.certificate_origin && 'COO',
+        !firstDocRisk.phytosanitary && 'Phytosanitary',
+        !firstDocRisk.insurance && 'Insurance',
+        !firstDocRisk.bill_of_lading && 'BL'
+      ].filter(Boolean).join(', ');
+      insights.push({
+        id: `docs-${firstDocRisk.id}`,
+        tone: 'critical',
+        title: 'Export document packet incomplete',
+        detail: `Compliance packet is missing ${missing || 'required documents'} before final dispatch control.`,
+        evidence: `${tradeOperatingMetrics.documentRiskItems.length} checklist item(s) not complete`,
+        action: 'Open Documents',
+        target: 'documents'
+      });
+    }
+
+    if (firstMarginRisk) {
+      insights.push({
+        id: `margin-${firstMarginRisk.id}`,
+        tone: 'warning',
+        title: 'Quote margin guard triggered',
+        detail: `${firstMarginRisk.quote_number} has low margin per kg. Review freight, packaging, and inland haulage before approval.`,
+        evidence: `Margin/kg: ${formatQuoteCurrency(Number(firstMarginRisk.margin_per_kg || 0), firstMarginRisk.currency || 'INR')}`,
+        action: 'Review Quote',
+        target: 'quotes'
+      });
+    }
+
+    if (firstShipmentRisk) {
+      insights.push({
+        id: `ship-${firstShipmentRisk.id}`,
+        tone: 'warning',
+        title: 'Shipment execution data missing',
+        detail: `${firstShipmentRisk.booking_number || firstShipmentRisk.vessel_name || 'Active shipment'} needs booking, container, BL, or ETA validation.`,
+        evidence: `${tradeOperatingMetrics.shipmentExecutionRisks.length} shipment(s) need control data`,
+        action: 'Open Shipments',
+        target: 'shipments'
+      });
+    }
+
+    if (firstFreightExpiry) {
+      insights.push({
+        id: `freight-${firstFreightExpiry.id}`,
+        tone: 'opportunity',
+        title: 'Freight rate expiring soon',
+        detail: `${firstFreightExpiry.destination_port} rate from ${firstFreightExpiry.forwarder || 'forwarder'} should be refreshed before quoting.`,
+        evidence: `Valid until ${firstFreightExpiry.validity_date}`,
+        action: 'Open Rates',
+        target: 'shipments'
+      });
+    }
+
+    if (firstFollowUp) {
+      insights.push({
+        id: `followup-${firstFollowUp.id}`,
+        tone: 'opportunity',
+        title: 'Buyer follow-up due',
+        detail: `${firstFollowUp.company_name} is due for follow-up. Use the saved template and update the next action after sending.`,
+        evidence: `${firstFollowUp.country || 'Country not set'} | ${leadNextAction(firstFollowUp)}`,
+        action: 'Open CRM',
+        target: 'crm'
+      });
+    }
+
+    if (!insights.length) {
+      insights.push({
+        id: 'healthy-trade-os',
+        tone: 'healthy',
+        title: 'Trade OS is in control',
+        detail: 'No urgent receivable, document, shipment, or follow-up exceptions are active right now.',
+        evidence: `Readiness ${tradeOperatingMetrics.readinessScore}% | Automation ${tradeOperatingMetrics.automationCoverage}%`,
+        action: 'Open CRM',
+        target: 'crm'
+      });
+    }
+
+    return insights;
+  }, [tradeOperatingMetrics]);
+
+
 
   const actionQueueItems = useMemo(() => {
     const list: { id: string; tone: 'critical' | 'warning' | 'opportunity' | 'healthy'; title: string; detail: string; evidence: string; action: string; target: TabKey }[] = [];
@@ -1579,6 +1804,60 @@ export const Dashboard: React.FC = () => {
       }
     });
 
+    tradeOperatingMetrics.marginRiskQuotes.forEach((quote) => {
+      list.push({
+        id: `margin-risk-${quote.id}`,
+        tone: 'warning',
+        title: 'Low Margin Quote',
+        detail: `${quote.quote_number} is active with low margin. Recheck freight, packaging, inland haulage, and FX before sending or approving.`,
+        evidence: `Margin/kg: ${formatQuoteCurrency(Number(quote.margin_per_kg || 0), quote.currency || 'INR')}`,
+        action: 'Review Quote',
+        target: 'quotes'
+      });
+    });
+
+    tradeOperatingMetrics.staleQuotes.forEach((quote) => {
+      list.push({
+        id: `stale-quote-${quote.id}`,
+        tone: 'opportunity',
+        title: 'Stale Quote Follow-up',
+        detail: `${quote.quote_number} has been sitting in ${quote.status}. Push a follow-up or close the opportunity.`,
+        evidence: `Created: ${quote.created_at ? new Date(quote.created_at).toLocaleDateString('en-IN') : 'Unknown'}`,
+        action: 'Open Quotes',
+        target: 'quotes'
+      });
+    });
+
+    tradeOperatingMetrics.shipmentExecutionRisks.forEach((shipment) => {
+      const missing = [
+        !shipment.booking_number && 'Booking',
+        !shipment.container_number && 'Container',
+        !shipment.bl_number && 'BL',
+        shipment.eta && 'ETA watch'
+      ].filter(Boolean).join(', ');
+      list.push({
+        id: `shipment-control-${shipment.id}`,
+        tone: 'warning',
+        title: 'Shipment Control Gap',
+        detail: `${shipment.booking_number || shipment.vessel_name || 'Active shipment'} needs logistics validation before dispatch confidence is high.`,
+        evidence: missing || `${shipment.status} | ETA ${shipment.eta || 'TBA'}`,
+        action: 'Open Shipment',
+        target: 'shipments'
+      });
+    });
+
+    tradeOperatingMetrics.expiringFreightRates.forEach((rate) => {
+      list.push({
+        id: `rate-expiry-${rate.id}`,
+        tone: 'opportunity',
+        title: 'Freight Rate Expiring',
+        detail: `${rate.destination_port} rate should be refreshed so sales quotes do not use stale logistics pricing.`,
+        evidence: `${rate.forwarder || 'Forwarder not set'} | Valid until ${rate.validity_date}`,
+        action: 'Open Freight',
+        target: 'shipments'
+      });
+    });
+
     tasks.forEach((t) => {
       const isOverdue = t.status !== 'Done' && t.due_date && new Date(t.due_date).getTime() < new Date().setHours(0, 0, 0, 0);
       if (isOverdue) {
@@ -1596,7 +1875,7 @@ export const Dashboard: React.FC = () => {
 
     const priorityMap = { critical: 0, warning: 1, opportunity: 2, healthy: 3 };
     return list.sort((a, b) => priorityMap[a.tone] - priorityMap[b.tone]);
-  }, [invoices, checklists, shipments, leads, tasks, clients, leadScoreValue]);
+  }, [invoices, checklists, shipments, leads, tasks, clients, leadScoreValue, tradeOperatingMetrics]);
 
   const buyerCountries = useMemo(() => {
     return Array.from(new Set(clients.map((client) => clientCountries[client.id] || 'Uncategorized').filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -4124,6 +4403,14 @@ export const Dashboard: React.FC = () => {
 
                   {activeTab === 'overview' && (
             <div className="space-y-5">
+              <SmartCommandCenter
+                pulse={smartPortalPulse}
+                insights={smartPortalInsights}
+                busy={appBusy}
+                lastSyncedAt={lastSyncedLabel}
+                onNavigate={navigateToTab}
+                onRunAutomation={runFollowUpAutomation}
+              />
               <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
                 <Stat icon={<TrendingUp className="h-5 w-5" />} label="Active Deals" value={quotes.length.toString()} tone="sky" />
                 <Stat icon={<KanbanSquare className="h-5 w-5" />} label="Hot Leads" value={analytics.hotLeads.toString()} tone="indigo" />

@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: process.env.NETLIFY ? undefined : 'standalone',
   poweredByHeader: false,
   compress: true,
   allowedDevOrigins: [

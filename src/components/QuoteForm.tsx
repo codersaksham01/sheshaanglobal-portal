@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Client, Product, Quote, QuoteItem, ShipperDetails, LogisticsSpecs, FreightPreset, BankDetails } from '../lib/types';
 import { Plus, Trash2, Save, Eye, ArrowLeft, Loader2, Download } from 'lucide-react';
@@ -26,6 +26,84 @@ const quoteStatuses: Quote['status'][] = [
   'Lost',
   'Declined'
 ];
+
+const useBufferedText = (value: string, onChange: (value: string) => void, delay = 120) => {
+  const [draft, setDraft] = useState(value);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const commit = React.useCallback((nextValue: string) => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    onChange(nextValue);
+  }, [onChange]);
+
+  const schedule = React.useCallback((nextValue: string) => {
+    setDraft(nextValue);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => commit(nextValue), delay);
+  }, [commit, delay]);
+
+  return { draft, schedule, commit };
+};
+
+const FastInput = ({
+  value,
+  onChange,
+  delay = 120,
+  ...props
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
+  value: string | number;
+  onChange: (value: string) => void;
+  delay?: number;
+}) => {
+  const stringValue = value === null || value === undefined ? '' : String(value);
+  const { draft, schedule, commit } = useBufferedText(stringValue, onChange, delay);
+
+  return (
+    <input
+      {...props}
+      value={draft}
+      onChange={(event) => schedule(event.target.value)}
+      onBlur={() => commit(draft)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') commit(draft);
+        props.onKeyDown?.(event);
+      }}
+    />
+  );
+};
+
+const FastTextarea = ({
+  value,
+  onChange,
+  delay = 120,
+  ...props
+}: Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'> & {
+  value: string;
+  onChange: (value: string) => void;
+  delay?: number;
+}) => {
+  const { draft, schedule, commit } = useBufferedText(value, onChange, delay);
+
+  return (
+    <textarea
+      {...props}
+      value={draft}
+      onChange={(event) => schedule(event.target.value)}
+      onBlur={() => commit(draft)}
+    />
+  );
+};
 
 interface QuoteFormProps {
   quoteId?: string | null;
@@ -537,13 +615,32 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   };
 
   // Calculations
-  const goodsSubtotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-  const internalGoodsCost = lineItems.reduce((sum, item) => sum + item.quantity * Number(item.cost_price || 0), 0);
-  const totalWeight = lineItems.reduce((sum, item) => sum + (item.quantity * (item.weight || 0)), 0);
-  const estimatedMargin = goodsSubtotal - internalGoodsCost;
-  const estimatedMarginPerKg = totalWeight > 0 ? estimatedMargin / totalWeight : 0;
-  const totalFOB = goodsSubtotal + packagingCost + inlandHaulageCost + customsClearanceCost;
-  const totalCIF = totalFOB + freightCost + insuranceCost;
+  const quoteTotals = useMemo(() => {
+    const goods = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+    const internalCost = lineItems.reduce((sum, item) => sum + item.quantity * Number(item.cost_price || 0), 0);
+    const weight = lineItems.reduce((sum, item) => sum + (item.quantity * (item.weight || 0)), 0);
+    const margin = goods - internalCost;
+    const marginPerUnit = weight > 0 ? margin / weight : 0;
+    const fob = goods + packagingCost + inlandHaulageCost + customsClearanceCost;
+    const cif = fob + freightCost + insuranceCost;
+    return {
+      estimatedMargin: margin,
+      estimatedMarginPerKg: marginPerUnit,
+      goodsSubtotal: goods,
+      internalGoodsCost: internalCost,
+      totalCIF: cif,
+      totalFOB: fob,
+      totalWeight: weight
+    };
+  }, [customsClearanceCost, freightCost, inlandHaulageCost, insuranceCost, lineItems, packagingCost]);
+  const {
+    estimatedMargin,
+    estimatedMarginPerKg,
+    goodsSubtotal,
+    internalGoodsCost,
+    totalCIF,
+    totalFOB
+  } = quoteTotals;
 
   const applyFreightPreset = (presetId: string) => {
     setSelectedFreightPresetId(presetId);
@@ -722,8 +819,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     }
   };
 
-  const currentClient = clients.find(c => c.id === selectedClientId);
-  const tempQuoteForPDF: Quote = {
+  const currentClient = useMemo(() => clients.find(c => c.id === selectedClientId), [clients, selectedClientId]);
+  const tempQuoteForPDF: Quote = useMemo(() => ({
     id: quoteId || 'temp',
     quote_number: quoteNumber,
     client_id: selectedClientId,
@@ -751,8 +848,37 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     included_docs: docList,
     logistics_specs: specMap,
     commercial_terms: commercialTerms,
-    created_at: new Date().toISOString()
-  };
+    created_at: quoteId ? undefined : 'preview'
+  }), [
+    bankDetails,
+    commercialNote,
+    commercialTerms,
+    currency,
+    customsClearanceCost,
+    docList,
+    excludedScope,
+    freightCost,
+    includedScope,
+    inlandHaulageCost,
+    insuranceCost,
+    internalNotes,
+    lineItems,
+    loadingPort,
+    marginPerKg,
+    originCountry,
+    packagingCost,
+    paymentTerms,
+    quoteId,
+    quoteNumber,
+    selectedClientId,
+    shipper,
+    shipmentMode,
+    specMap,
+    status,
+    validityDays,
+    currentClient
+  ]);
+  const deferredTempQuoteForPDF = useDeferredValue(tempQuoteForPDF);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
@@ -808,7 +934,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
           </button>
           {isMounted && (
             <PDFDownloadLink
-              document={<QuotePDF quote={tempQuoteForPDF} documentType={previewDocType} />}
+              document={<QuotePDF quote={deferredTempQuoteForPDF} documentType={previewDocType} />}
               fileName={pdfFileName}
               className={downloadButtonClass}
             >
@@ -840,10 +966,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Quote Reference Code</label>
-              <input
+              <FastInput
                 type="text"
                 value={quoteNumber}
-                onChange={(e) => setQuoteNumber(e.target.value)}
+                onChange={setQuoteNumber}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded text-xs font-mono focus:ring-1 focus:ring-sky-500 focus:outline-none"
                 required
               />
@@ -904,10 +1030,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
               <div>
                 <label className="block text-[10px] text-slate-500 mb-1">Signatory Representative (Exporter)</label>
-                <input
+                <FastInput
                   type="text"
                   value={shipper.contact_name}
-                  onChange={(e) => setShipper({ ...shipper, contact_name: e.target.value })}
+                  onChange={(value) => setShipper({ ...shipper, contact_name: value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-sky-500"
                 />
               </div>
@@ -942,55 +1068,56 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
               <div>
                 <label className="block text-slate-500 mb-1">Origin Country</label>
-                <input
+                <FastInput
                   type="text"
                   value={originCountry}
-                  onChange={(e) => setOriginCountry(e.target.value)}
+                  onChange={setOriginCountry}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
               <div>
                 <label className="block text-slate-500 mb-1">Loading Port</label>
-                <input
+                <FastInput
                   type="text"
                   value={loadingPort}
-                  onChange={(e) => setLoadingPort(e.target.value)}
+                  onChange={setLoadingPort}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
               <div>
                 <label className="block text-slate-500 mb-1">Shipment Mode / Container</label>
-                <input
+                <FastInput
                   type="text"
                   value={shipmentMode}
-                  onChange={(e) => setShipmentMode(e.target.value)}
+                  onChange={setShipmentMode}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
               <div>
                 <label className="block text-slate-500 mb-1">Payment Terms</label>
-                <input
+                <FastInput
                   type="text"
                   value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
+                  onChange={setPaymentTerms}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
               <div>
                 <label className="block text-slate-500 mb-1">Discharge Destination Port</label>
-                <input
+                <FastInput
                   type="text"
                   value={currentClient?.destination_port || 'N/A'}
+                  onChange={() => undefined}
                   disabled
                   className="w-full px-3 py-1.5 border border-slate-200 bg-slate-100 text-slate-500 rounded"
                 />
               </div>
               <div>
                 <label className="block text-slate-500 mb-1">Quotation Validity (Days)</label>
-                <input
+                <FastInput
                   type="number"
                   value={validityDays}
-                  onChange={(e) => setValidityDays(parseInt(e.target.value) || 15)}
+                  onChange={(value) => setValidityDays(parseInt(value) || 15)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
@@ -1037,37 +1164,37 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                       <div>
                         <label className="block text-[10px] text-slate-400">SKU</label>
-                        <input
+                        <FastInput
                           type="text"
                           value={item.sku}
-                          onChange={(e) => handleUpdateLineItem(index, { sku: e.target.value })}
+                          onChange={(value) => handleUpdateLineItem(index, { sku: value })}
                           className="w-full px-2 py-1 border rounded bg-white"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400">HS Code</label>
-                        <input
+                        <FastInput
                           type="text"
                           value={item.hs_code || ''}
-                          onChange={(e) => handleUpdateLineItem(index, { hs_code: e.target.value })}
+                          onChange={(value) => handleUpdateLineItem(index, { hs_code: value })}
                           className="w-full px-2 py-1 border rounded bg-white"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400">Packing & Container Specs</label>
-                        <input
+                        <FastInput
                           type="text"
                           value={item.packing_container || ''}
-                          onChange={(e) => handleUpdateLineItem(index, { packing_container: e.target.value })}
+                          onChange={(value) => handleUpdateLineItem(index, { packing_container: value })}
                           className="w-full px-2 py-1 border rounded bg-white"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400">Quantity (kg)</label>
-                        <input
+                        <FastInput
                           type="number"
                           value={item.quantity}
-                          onChange={(e) => handleUpdateLineItem(index, { quantity: parseInt(e.target.value) || 0 })}
+                          onChange={(value) => handleUpdateLineItem(index, { quantity: parseInt(value) || 0 })}
                           className="w-full px-2 py-1 border rounded bg-white"
                         />
                       </div>
@@ -1076,39 +1203,40 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                       <div>
                         <label className="block text-[10px] text-slate-400">Unit Price ({currency}/kg)</label>
-                        <input
+                        <FastInput
                           type="number"
                           step="0.01"
                           value={item.unit_price}
-                          onChange={(e) => handleUpdateLineItem(index, { unit_price: parseFloat(e.target.value) || 0 })}
+                          onChange={(value) => handleUpdateLineItem(index, { unit_price: parseFloat(value) || 0 })}
                           className="w-full px-2 py-1 border rounded bg-white"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400">Internal Cost ({currency}/kg)</label>
-                        <input
+                        <FastInput
                           type="number"
                           step="0.01"
                           value={item.cost_price || ''}
-                          onChange={(e) => handleUpdateLineItem(index, { cost_price: parseFloat(e.target.value) || 0 })}
+                          onChange={(value) => handleUpdateLineItem(index, { cost_price: parseFloat(value) || 0 })}
                           className="w-full px-2 py-1 border rounded bg-white"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400">Unit Weight (kg/bag)</label>
-                        <input
+                        <FastInput
                           type="number"
                           step="0.1"
                           value={item.weight || 0}
-                          onChange={(e) => handleUpdateLineItem(index, { weight: parseFloat(e.target.value) || 0 })}
+                          onChange={(value) => handleUpdateLineItem(index, { weight: parseFloat(value) || 0 })}
                           className="w-full px-2 py-1 border rounded bg-white"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-slate-400">Basis of Calculation</label>
-                        <input
+                        <FastInput
                           type="text"
                           value={item.basis_of_calculation || ''}
+                          onChange={() => undefined}
                           disabled
                           className="w-full px-2 py-1 border rounded bg-slate-100 text-slate-500 font-medium"
                         />
@@ -1117,9 +1245,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
                     <div>
                       <label className="block text-[10px] text-slate-400">Goods Description & Specification (multiline)</label>
-                      <textarea
+                      <FastTextarea
                         value={item.description}
-                        onChange={(e) => handleUpdateLineItem(index, { description: e.target.value })}
+                        onChange={(value) => handleUpdateLineItem(index, { description: value })}
                         className="w-full px-2 py-1 border rounded bg-white h-16 resize-none"
                       />
                     </div>
@@ -1135,55 +1263,55 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
                 <label className="block text-slate-500 mb-1">Export Packaging (1.2)</label>
-                <input
+                <FastInput
                   type="number"
                   step="0.01"
                   value={packagingCost || ''}
-                  onChange={(e) => setPackagingCost(parseFloat(e.target.value) || 0)}
+                  onChange={(value) => setPackagingCost(parseFloat(value) || 0)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded font-medium"
                 />
               </div>
               
               <div>
                 <label className="block text-slate-500 mb-1">Inland Haulage & THC (1.3)</label>
-                <input
+                <FastInput
                   type="number"
                   step="0.01"
                   value={inlandHaulageCost || ''}
-                  onChange={(e) => setInlandHaulageCost(parseFloat(e.target.value) || 0)}
+                  onChange={(value) => setInlandHaulageCost(parseFloat(value) || 0)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded font-medium"
                 />
               </div>
 
               <div>
                 <label className="block text-slate-500 mb-1">Customs Clearance (1.4)</label>
-                <input
+                <FastInput
                   type="number"
                   step="0.01"
                   value={customsClearanceCost || ''}
-                  onChange={(e) => setCustomsClearanceCost(parseFloat(e.target.value) || 0)}
+                  onChange={(value) => setCustomsClearanceCost(parseFloat(value) || 0)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded font-medium"
                 />
               </div>
 
               <div>
                 <label className="block text-slate-500 mb-1">Ocean Freight Cost (C) (2)</label>
-                <input
+                <FastInput
                   type="number"
                   step="0.01"
                   value={freightCost || ''}
-                  onChange={(e) => setFreightCost(parseFloat(e.target.value) || 0)}
+                  onChange={(value) => setFreightCost(parseFloat(value) || 0)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded font-medium"
                 />
               </div>
 
               <div>
                 <label className="block text-slate-500 mb-1">Cargo Transit Insurance (I) (3)</label>
-                <input
+                <FastInput
                   type="number"
                   step="0.01"
                   value={insuranceCost || ''}
-                  onChange={(e) => setInsuranceCost(parseFloat(e.target.value) || 0)}
+                  onChange={(value) => setInsuranceCost(parseFloat(value) || 0)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded font-medium"
                 />
               </div>
@@ -1222,55 +1350,55 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">Beneficiary Bank</label>
-                  <input
+                  <FastInput
                     type="text"
                     value={bankDetails.beneficiary_bank}
-                    onChange={(e) => updateBankDetails({ beneficiary_bank: e.target.value })}
+                    onChange={(value) => updateBankDetails({ beneficiary_bank: value })}
                     className="w-full px-2 py-1 border rounded"
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">Branch Location</label>
-                  <input
+                  <FastInput
                     type="text"
                     value={bankDetails.branch_location}
-                    onChange={(e) => updateBankDetails({ branch_location: e.target.value })}
+                    onChange={(value) => updateBankDetails({ branch_location: value })}
                     className="w-full px-2 py-1 border rounded"
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">Account Holder Name</label>
-                  <input
+                  <FastInput
                     type="text"
                     value={bankDetails.account_holder_name}
-                    onChange={(e) => updateBankDetails({ account_holder_name: e.target.value })}
+                    onChange={(value) => updateBankDetails({ account_holder_name: value })}
                     className="w-full px-2 py-1 border rounded"
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">Account Number</label>
-                  <input
+                  <FastInput
                     type="text"
                     value={bankDetails.account_number}
-                    onChange={(e) => updateBankDetails({ account_number: e.target.value })}
+                    onChange={(value) => updateBankDetails({ account_number: value })}
                     className="w-full px-2 py-1 border rounded"
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">IFSC Code</label>
-                  <input
+                  <FastInput
                     type="text"
                     value={bankDetails.ifsc_code}
-                    onChange={(e) => updateBankDetails({ ifsc_code: e.target.value })}
+                    onChange={(value) => updateBankDetails({ ifsc_code: value })}
                     className="w-full px-2 py-1 border rounded"
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">SWIFT / BIC Code</label>
-                  <input
+                  <FastInput
                     type="text"
                     value={bankDetails.swift_code}
-                    onChange={(e) => updateBankDetails({ swift_code: e.target.value })}
+                    onChange={(value) => updateBankDetails({ swift_code: value })}
                     className="w-full px-2 py-1 border rounded"
                   />
                 </div>
@@ -1288,9 +1416,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Commercial Structure Footnote</label>
-                <textarea
+                <FastTextarea
                   value={commercialNote}
-                  onChange={(e) => setCommercialNote(e.target.value)}
+                  onChange={setCommercialNote}
                   className="w-full p-2 border rounded h-16 resize-none"
                 />
               </div>
@@ -1309,10 +1437,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                 </div>
                 {includedScope.map((item, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
-                    <input
+                    <FastInput
                       type="text"
                       value={item}
-                      onChange={(e) => handleUpdateListValue('included', idx, e.target.value)}
+                      onChange={(value) => handleUpdateListValue('included', idx, value)}
                       className="w-full px-2 py-1 border rounded"
                     />
                     <button
@@ -1339,10 +1467,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                 </div>
                 {excludedScope.map((item, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
-                    <input
+                    <FastInput
                       type="text"
                       value={item}
-                      onChange={(e) => handleUpdateListValue('excluded', idx, e.target.value)}
+                      onChange={(value) => handleUpdateListValue('excluded', idx, value)}
                       className="w-full px-2 py-1 border rounded"
                     />
                     <button
@@ -1370,10 +1498,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                 </div>
                 {docList.map((item, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
-                    <input
+                    <FastInput
                       type="text"
                       value={item}
-                      onChange={(e) => handleUpdateListValue('docs', idx, e.target.value)}
+                      onChange={(value) => handleUpdateListValue('docs', idx, value)}
                       className="w-full px-2 py-1 border rounded"
                     />
                     <button
@@ -1393,46 +1521,46 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] text-slate-400">Shipment Window</label>
-                    <input
+                    <FastInput
                       type="text"
                       value={specMap.shipment_window || ''}
-                      onChange={(e) => setSpecMap({ ...specMap, shipment_window: e.target.value })}
+                      onChange={(value) => setSpecMap({ ...specMap, shipment_window: value })}
                       className="w-full px-2 py-1 border rounded"
                     />
                   </div>
                   <div>
                     <label className="block text-[10px] text-slate-400">Transit Time</label>
-                    <input
+                    <FastInput
                       type="text"
                       value={specMap.transit_time || ''}
-                      onChange={(e) => setSpecMap({ ...specMap, transit_time: e.target.value })}
+                      onChange={(value) => setSpecMap({ ...specMap, transit_time: value })}
                       className="w-full px-2 py-1 border rounded"
                     />
                   </div>
                   <div>
                     <label className="block text-[10px] text-slate-400">Partial/Transshipment</label>
-                    <input
+                    <FastInput
                       type="text"
                       value={specMap.partial_shipment || ''}
-                      onChange={(e) => setSpecMap({ ...specMap, partial_shipment: e.target.value })}
+                      onChange={(value) => setSpecMap({ ...specMap, partial_shipment: value })}
                       className="w-full px-2 py-1 border rounded"
                     />
                   </div>
                   <div>
                     <label className="block text-[10px] text-slate-400">Container Type</label>
-                    <input
+                    <FastInput
                       type="text"
                       value={specMap.container_type || ''}
-                      onChange={(e) => setSpecMap({ ...specMap, container_type: e.target.value })}
+                      onChange={(value) => setSpecMap({ ...specMap, container_type: value })}
                       className="w-full px-2 py-1 border rounded"
                     />
                   </div>
                   <div className="md:col-span-2">
                     <label className="block text-[10px] text-slate-400">Storage Condition</label>
-                    <input
+                    <FastInput
                       type="text"
                       value={specMap.storage_condition || ''}
-                      onChange={(e) => setSpecMap({ ...specMap, storage_condition: e.target.value })}
+                      onChange={(value) => setSpecMap({ ...specMap, storage_condition: value })}
                       className="w-full px-2 py-1 border rounded"
                     />
                   </div>
@@ -1455,9 +1583,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   <div key={idx} className="flex gap-2 items-start">
                     <span className="font-bold py-1 text-slate-500">{idx+1}.</span>
                     <div className="flex-1 flex gap-2">
-                      <textarea
+                      <FastTextarea
                         value={item}
-                        onChange={(e) => handleUpdateListValue('terms', idx, e.target.value)}
+                        onChange={(value) => handleUpdateListValue('terms', idx, value)}
                         className="w-full p-1 border rounded h-14 resize-none"
                       />
                       <button
@@ -1484,11 +1612,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               </div>
               <div className="flex items-center gap-2">
                 <label className="text-amber-800 font-semibold whitespace-nowrap">Target margin / kg</label>
-                <input
+                <FastInput
                   type="number"
                   step="0.01"
                   value={marginPerKg || ''}
-                  onChange={(e) => setMarginPerKg(parseFloat(e.target.value) || 0)}
+                  onChange={(value) => setMarginPerKg(parseFloat(value) || 0)}
                   className="w-28 px-2 py-1 border border-amber-300 rounded bg-white text-right"
                 />
               </div>
@@ -1511,9 +1639,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                 <span className={`font-mono font-bold ${estimatedMarginPerKg >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{formatCurrency(estimatedMarginPerKg)}</span>
               </div>
             </div>
-            <textarea
+            <FastTextarea
               value={internalNotes}
-              onChange={(e) => setInternalNotes(e.target.value)}
+              onChange={setInternalNotes}
               placeholder="Internal notes for negotiation, margins, supplier rate, or follow-up. Not printed."
               className="w-full px-3 py-2 border border-amber-200 rounded h-16 resize-none"
             />
@@ -1581,7 +1709,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <div className="hidden md:block flex-1 p-2 h-[650px] lg:h-auto">
               <PdfPreviewBoundary key={`${previewDocType}-${quoteNumber}`}>
                 <PDFViewer width="100%" height="100%" className="border border-slate-300 rounded shadow-sm bg-slate-50">
-                  <QuotePDF quote={tempQuoteForPDF} documentType={previewDocType} />
+                  <QuotePDF quote={deferredTempQuoteForPDF} documentType={previewDocType} />
                 </PDFViewer>
               </PdfPreviewBoundary>
             </div>

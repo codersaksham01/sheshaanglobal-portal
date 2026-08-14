@@ -1,8 +1,0 @@
-.git
-.next
-node_modules
-npm-debug.log*
-.env*
-!.env.example
-*.tsbuildinfo
-Open Crixy Portal.bat

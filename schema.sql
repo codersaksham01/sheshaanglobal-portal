@@ -164,9 +164,44 @@ create table if not exists public.leads (
   next_follow_up date,
   notes text not null default '',
   client_id text references public.clients(id) on delete set null,
+  sequence_enrolled text not null default '',
+  data_source text not null default 'Custom Researched Data' check (data_source in ('Embassy Data', 'Custom Researched Data', 'Uncategorized')),
+  outreach_status text not null default 'Need Reach Out' check (outreach_status in ('Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix', 'Review', 'Closed')),
+  smart_score integer not null default 30 check (smart_score between 0 and 100),
   created_at timestamptz not null default timezone('utc'::text, now()),
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
+
+alter table public.leads add column if not exists sequence_enrolled text not null default '';
+alter table public.leads add column if not exists data_source text not null default 'Custom Researched Data';
+alter table public.leads add column if not exists outreach_status text not null default 'Need Reach Out';
+alter table public.leads add column if not exists smart_score integer not null default 30;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'leads_data_source_check'
+      and conrelid = 'public.leads'::regclass
+  ) then
+    alter table public.leads add constraint leads_data_source_check check (data_source in ('Embassy Data', 'Custom Researched Data', 'Uncategorized'));
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'leads_outreach_status_check'
+      and conrelid = 'public.leads'::regclass
+  ) then
+    alter table public.leads add constraint leads_outreach_status_check check (outreach_status in ('Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix', 'Review', 'Closed'));
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'leads_smart_score_check'
+      and conrelid = 'public.leads'::regclass
+  ) then
+    alter table public.leads add constraint leads_smart_score_check check (smart_score between 0 and 100);
+  end if;
+end;
+$$;
 
 create table if not exists public.invoices (
   id text primary key default gen_random_uuid()::text,
@@ -284,6 +319,147 @@ create index if not exists invoices_due_status_idx on public.invoices(due_date, 
 create index if not exists shipments_eta_status_idx on public.shipments(eta, status);
 create index if not exists activities_lead_date_idx on public.activities(lead_id, activity_date desc);
 create index if not exists quotes_client_status_idx on public.quotes(client_id, status);
+create index if not exists leads_outreach_status_idx on public.leads(outreach_status);
+create index if not exists leads_smart_score_idx on public.leads(smart_score desc);
+
+create or replace function public.calculate_lead_outreach_status(
+  lead_stage text,
+  lead_email text,
+  lead_next_follow_up date,
+  lead_notes text
+)
+returns text
+language plpgsql
+stable
+as $$
+declare
+  note_text text := lower(coalesce(lead_notes, ''));
+begin
+  if lead_stage in ('Won', 'Lost') then
+    return 'Closed';
+  end if;
+
+  if coalesce(lead_email, '') = '' or note_text like '%invalid email%' or note_text like '%verify email%' then
+    return 'Needs Email Fix';
+  end if;
+
+  if note_text like '%response received: yes%' or note_text like '%responded%' then
+    return 'Responded / Qualify';
+  end if;
+
+  if lead_next_follow_up is not null and lead_next_follow_up <= current_date then
+    return 'Follow-up Due';
+  end if;
+
+  if lead_next_follow_up is not null and lead_next_follow_up > current_date then
+    return 'Next Follow-up';
+  end if;
+
+  if note_text like '%email sent%' or note_text like '%whatsapp sent%' or note_text like '%contacted%' then
+    return 'Waiting Reply';
+  end if;
+
+  return 'Need Reach Out';
+end;
+$$;
+
+create or replace function public.calculate_lead_smart_score(
+  lead_email text,
+  lead_phone text,
+  lead_country text,
+  lead_product text,
+  lead_estimated_value numeric,
+  lead_stage text,
+  lead_next_follow_up date
+)
+returns integer
+language plpgsql
+stable
+as $$
+declare
+  score integer := 30;
+begin
+  if coalesce(lead_email, '') <> '' then score := score + 18; end if;
+  if coalesce(lead_phone, '') <> '' then score := score + 16; end if;
+  if coalesce(lead_country, '') <> '' then score := score + 10; end if;
+  if coalesce(lead_product, '') <> '' then score := score + 12; end if;
+  if coalesce(lead_estimated_value, 0) >= 10000 then score := score + 12; end if;
+  if lead_stage in ('Quoted', 'Negotiation') then score := score + 14; end if;
+  if lead_stage = 'Won' then score := score + 20; end if;
+  if lead_next_follow_up is not null and lead_next_follow_up <= current_date then score := score + 8; end if;
+  return least(100, greatest(0, score));
+end;
+$$;
+
+create or replace function public.normalize_lead_operating_state()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.data_source = case
+    when lower(coalesce(new.notes, '')) like '%data source: embassy%' then 'Embassy Data'
+    when lower(coalesce(new.notes, '')) like '%data source: custom%' then 'Custom Researched Data'
+    when coalesce(new.data_source, '') = '' then 'Custom Researched Data'
+    else new.data_source
+  end;
+
+  new.outreach_status = public.calculate_lead_outreach_status(new.stage, new.contact_email, new.next_follow_up, new.notes);
+  new.smart_score = public.calculate_lead_smart_score(new.contact_email, new.phone, new.country, new.product_interest, new.estimated_value, new.stage, new.next_follow_up);
+
+  return new;
+end;
+$$;
+
+drop trigger if exists normalize_lead_operating_state on public.leads;
+create trigger normalize_lead_operating_state
+before insert or update on public.leads
+for each row execute function public.normalize_lead_operating_state();
+
+create or replace view public.smart_trade_action_queue
+with (security_invoker = true) as
+select
+  'lead-' || id as id,
+  case
+    when outreach_status in ('Follow-up Due', 'Needs Email Fix') then 'warning'
+    when outreach_status = 'Need Reach Out' then 'opportunity'
+    else 'healthy'
+  end as tone,
+  outreach_status as title,
+  company_name as subject,
+  coalesce(country, 'Uncategorized') as market,
+  smart_score,
+  next_follow_up,
+  'crm' as target
+from public.leads
+where outreach_status <> 'Closed'
+union all
+select
+  'invoice-' || id,
+  case when payment_status = 'Overdue' or (payment_status <> 'Paid' and due_date < current_date) then 'critical' else 'warning' end,
+  'Receivable Follow-up',
+  invoice_number,
+  currency,
+  100,
+  due_date,
+  'accounts'
+from public.invoices
+where payment_status <> 'Paid'
+union all
+select
+  'shipment-' || id,
+  'warning',
+  'Shipment Control Gap',
+  coalesce(nullif(booking_number, ''), nullif(vessel_name, ''), 'Shipment'),
+  status,
+  75,
+  eta,
+  'shipments'
+from public.shipments
+where status not in ('Arrived', 'Delivered')
+  and (booking_number = '' or container_number = '' or bl_number = '' or (eta is not null and eta <= current_date + interval '7 days'));
+
+revoke all on public.smart_trade_action_queue from public;
+grant select on public.smart_trade_action_queue to authenticated;
 
 do $$
 declare

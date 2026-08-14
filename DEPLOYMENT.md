@@ -13,16 +13,8 @@ The browser uses only the Supabase anonymous key. Never expose the service-role 
 
 Connect the GitHub repository to Netlify. The included `netlify.toml` uses the supported Next.js build and Node 22. Add both Supabase public environment variables before the first production build. The local `db.json` adapter is for development only and is not persistent on serverless hosting.
 
-## Docker
+## Runtime Architecture
 
-Build with the public Supabase configuration embedded into the client bundle:
+This portal is deployed as a standard Next.js App Router application on Netlify. It does not require containers, container registries, or paid AI API keys. Automation is handled through deterministic TypeScript workflows in the app and Supabase PostgreSQL functions, triggers, Row Level Security, Auth, and Storage.
 
-```sh
-docker build \
-  --build-arg NEXT_PUBLIC_SUPABASE_URL=https://PROJECT.supabase.co \
-  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=PUBLIC_ANON_KEY \
-  -t sheshaan-global-portal .
-docker run --rm -p 3000:3000 sheshaan-global-portal
-```
-
-The container exposes `/api/health` for platform health checks and runs as an unprivileged user.
+Use `/api/health` for Netlify or uptime health checks.
