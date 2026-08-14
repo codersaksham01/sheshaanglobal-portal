@@ -79,10 +79,11 @@ const portalDataCacheVersion = 'crm-pipeline-only-2026-08-14';
 const reachoutListPageSize = 60;
 const missingPhonePageSize = 40;
 
-type TabKey = 'overview' | 'crm' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
+type TabKey = 'overview' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string };
 type ImportProgress = { label: string; processed: number; total: number } | null;
+type ImportDataSource = 'Embassy Data' | 'Custom Researched Data';
 type LeadTrackingAction = 'email_sent' | 'followup_1' | 'followup_2' | 'followup_3' | 'responded' | 'followup_due';
 type BuyerSortKey = 'name' | 'phone_asc' | 'phone_desc' | 'followup_first' | 'reachout_first' | 'waiting_first' | 'responded_first';
 
@@ -406,6 +407,7 @@ export const Dashboard: React.FC = () => {
   const [importingBuyers, setImportingBuyers] = useState(false);
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgress>(null);
+  const [importDataSource, setImportDataSource] = useState<ImportDataSource>('Custom Researched Data');
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
 
   const [quoteSearch, setQuoteSearch] = useState('');
@@ -432,6 +434,10 @@ export const Dashboard: React.FC = () => {
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
   const [crmCountryFilter, setCrmCountryFilter] = useState('All');
   const [crmSortKey, setCrmSortKey] = useState<'action' | 'country'>('action');
+  const [sourceSearchQuery, setSourceSearchQuery] = useState('');
+  const [sourceTypeFilter, setSourceTypeFilter] = useState<'All' | ImportDataSource>('All');
+  const [sourceActionFilter, setSourceActionFilter] = useState('All');
+  const [sourceSortKey, setSourceSortKey] = useState<'source' | 'action' | 'country' | 'followup'>('source');
   const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
   const [activityForm, setActivityForm] = useState<Partial<TimelineActivity>>(blankActivity);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
@@ -642,6 +648,12 @@ export const Dashboard: React.FC = () => {
   const leadEmailStatus = (lead: Lead) => leadNoteValue(lead, 'Email Status') || 'Not tracked';
   const leadResponseStatus = (lead: Lead) => leadNoteValue(lead, 'Response Received') || 'No';
   const leadNextAction = (lead: Lead) => leadNoteValue(lead, 'Next Action') || 'Review lead';
+  const leadDataSource = (lead: Lead): ImportDataSource | 'Uncategorized' => {
+    const source = leadNoteValue(lead, 'Data Source').toLowerCase();
+    if (source.includes('embassy')) return 'Embassy Data';
+    if (source.includes('custom') || source.includes('research')) return 'Custom Researched Data';
+    return 'Uncategorized';
+  };
   const leadHasOutreach = (lead: Lead) => {
     const status = leadEmailStatus(lead).toLowerCase();
     return ['sent', 'follow', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded', 'email'].some((term) => status.includes(term)) || activities.some((activity) => (
@@ -1742,6 +1754,7 @@ export const Dashboard: React.FC = () => {
           contact_email: email,
           destination_port: String(row.Country || '').trim() || 'Not specified',
           address: [
+            `Data Source: ${importDataSource}`,
             String(row.Website || '').trim() && `Website: ${String(row.Website).trim()}`,
             String(row.Country || '').trim() && `Country: ${String(row.Country).trim()}`,
             String(row['Market Category'] || '').trim() && `Market: ${String(row['Market Category']).trim()}`,
@@ -1764,6 +1777,7 @@ export const Dashboard: React.FC = () => {
           owner: 'Sana Zeba',
           next_follow_up: nextFollowUp,
           notes: [
+            `Data Source: ${importDataSource}`,
             `Source: ${String(row.Source || 'Bulk import').trim()}`,
             `Email Status: ${String(row['Email Status'] || '').trim()}`,
             `Next Action: ${String(row['Next Action'] || '').trim()}`,
@@ -1781,7 +1795,7 @@ export const Dashboard: React.FC = () => {
             lead_id: leadId,
             type: 'Email',
             title: `Imported outreach status for ${company}`,
-            details: `Email Status: ${String(row['Email Status'] || 'Imported')}\nFirst Email: ${firstEmail || 'N/A'}\nLast Email: ${lastEmail || 'N/A'}\nFollow-up 1: ${String(row['Follow-up 1 Done'] || 'No')}\nFollow-up 2: ${String(row['Follow-up 2 Done'] || 'No')}\nFollow-up 3: ${String(row['Follow-up 3 Done'] || 'No')}`,
+            details: `Data Source: ${importDataSource}\nEmail Status: ${String(row['Email Status'] || 'Imported')}\nFirst Email: ${firstEmail || 'N/A'}\nLast Email: ${lastEmail || 'N/A'}\nFollow-up 1: ${String(row['Follow-up 1 Done'] || 'No')}\nFollow-up 2: ${String(row['Follow-up 2 Done'] || 'No')}\nFollow-up 3: ${String(row['Follow-up 3 Done'] || 'No')}`,
             activity_date: lastEmail || firstEmail || new Date().toISOString().slice(0, 10),
             owner: 'Sana Zeba'
           });
@@ -1797,7 +1811,7 @@ export const Dashboard: React.FC = () => {
             owner: 'Sana Zeba',
             client_id: clientId,
             lead_id: leadId,
-            notes: `Auto-created from imported CRM sheet. Next action: ${String(row['Next Action'] || 'Follow up')}`
+            notes: `Data Source: ${importDataSource}\nAuto-created from imported CRM sheet. Next action: ${String(row['Next Action'] || 'Follow up')}`
           });
         }
 
@@ -1841,7 +1855,7 @@ export const Dashboard: React.FC = () => {
         activities: activityPayloads.length,
         tasks: taskPayloads.length,
         skipped,
-        message: `Import complete: ${clientPayloads.length} new buyer${clientPayloads.length === 1 ? '' : 's'} added from ${file.name}. ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped.`
+        message: `Import complete: ${clientPayloads.length} new ${importDataSource.toLowerCase()} buyer${clientPayloads.length === 1 ? '' : 's'} added from ${file.name}. ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped.`
       });
     } catch (err) {
       console.warn('Buyer import failed:', err);
@@ -2107,6 +2121,56 @@ export const Dashboard: React.FC = () => {
     { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Needs Email Fix') },
     { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Review') }
   ];
+
+  const sourceFilteredLeads = useMemo(() => {
+    const query = sourceSearchQuery.trim().toLowerCase();
+    const filtered = leads.filter((lead) => {
+      const source = leadDataSource(lead);
+      const action = leadActionCategory(lead);
+      const isSourceTagged = source === 'Embassy Data' || source === 'Custom Researched Data';
+      const searchable = [
+        lead.company_name,
+        lead.contact_name,
+        lead.contact_email,
+        lead.phone,
+        lead.country,
+        lead.product_interest,
+        source,
+        action
+      ].join(' ').toLowerCase();
+      const matchesSource = sourceTypeFilter === 'All' || source === sourceTypeFilter;
+      const matchesAction = sourceActionFilter === 'All' || action === sourceActionFilter;
+      const matchesSearch = !query || searchable.includes(query);
+      return isSourceTagged && matchesSource && matchesAction && matchesSearch;
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (sourceSortKey === 'source') {
+        const sourceCompare = leadDataSource(a).localeCompare(leadDataSource(b));
+        if (sourceCompare !== 0) return sourceCompare;
+      }
+      if (sourceSortKey === 'action') {
+        const actionCompare = leadActionCategory(a).localeCompare(leadActionCategory(b));
+        if (actionCompare !== 0) return actionCompare;
+      }
+      if (sourceSortKey === 'country') {
+        const countryCompare = (a.country || 'Uncategorized').localeCompare(b.country || 'Uncategorized');
+        if (countryCompare !== 0) return countryCompare;
+      }
+      if (sourceSortKey === 'followup') {
+        const dateCompare = (a.next_follow_up || '9999-12-31').localeCompare(b.next_follow_up || '9999-12-31');
+        if (dateCompare !== 0) return dateCompare;
+      }
+      return a.company_name.localeCompare(b.company_name);
+    });
+  }, [leads, sourceSearchQuery, sourceTypeFilter, sourceActionFilter, sourceSortKey]);
+
+  const sourceStats = useMemo(() => ({
+    embassy: leads.filter((lead) => leadDataSource(lead) === 'Embassy Data').length,
+    custom: leads.filter((lead) => leadDataSource(lead) === 'Custom Researched Data').length,
+    followup: sourceFilteredLeads.filter((lead) => leadActionCategory(lead) === 'Follow-up Due').length,
+    reachout: sourceFilteredLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out').length
+  }), [leads, sourceFilteredLeads]);
   const crmBoardColumns = crmQueues.filter((queue) => ['Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix'].includes(queue.label));
   const selectedLeads = leads.filter((lead) => selectedLeadIds.includes(lead.id));
 
@@ -2279,6 +2343,7 @@ export const Dashboard: React.FC = () => {
   const navItems: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
     { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
+    { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, count: sourceFilteredLeads.length },
     { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
     { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
     { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
@@ -2298,9 +2363,9 @@ export const Dashboard: React.FC = () => {
   const activeNavItem = navItems.find((item) => item.key === activeTab);
   const appBusy = loading || importingBuyers;
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
-  const mobilePrimaryNav = navItems.filter((item) => ['overview', 'crm', 'quotes', 'tasks'].includes(item.key));
+  const mobilePrimaryNav = navItems.filter((item) => ['overview', 'crm', 'dataSources', 'tasks'].includes(item.key));
   const navGroups = [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'dataSources', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users'].includes(item.key)) }
   ];
@@ -3128,9 +3193,21 @@ export const Dashboard: React.FC = () => {
                               <Download className="h-4 w-4" />
                               Template
                             </button>
+                            <div className="relative">
+                              <select
+                                aria-label="Import Data Source"
+                                value={importDataSource}
+                                onChange={(event) => setImportDataSource(event.target.value as ImportDataSource)}
+                                className="h-9 appearance-none rounded-lg border border-white/15 bg-white/10 px-3 pr-8 text-xs font-bold text-white outline-none transition hover:bg-white/15 focus:ring-2 focus:ring-sky-300/30"
+                              >
+                                <option className="text-slate-900" value="Custom Researched Data">Custom Researched</option>
+                                <option className="text-slate-900" value="Embassy Data">Embassy Data</option>
+                              </select>
+                              <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-white/70" />
+                            </div>
                             <label className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-sky-500 text-white rounded-lg font-bold cursor-pointer hover:bg-sky-400 transition text-xs">
                               <FileCheck2 className="h-4 w-4" />
-                              {importingBuyers ? 'Importing...' : 'Import'}
+                              {importingBuyers ? 'Importing...' : `Import ${importDataSource === 'Embassy Data' ? 'Embassy' : 'Research'}`}
                               <input
                                 type="file"
                                 accept=".xlsx,.xls,.csv"
@@ -3309,6 +3386,152 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
             </TwoColumnManager>
+          )}
+
+          {activeTab === 'dataSources' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-950 p-4 text-white shadow-sm">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">Imported Source Data</p>
+                    <h3 className="text-xl font-black">Embassy and custom researched buyers</h3>
+                    <p className="mt-1 max-w-3xl text-xs text-slate-300">Imported buyers are separated by source and stay synced with CRM status, follow-up date, response status, and outreach actions.</p>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-950">
+                    <CrmMetric label="Embassy" value={sourceStats.embassy.toString()} helper="Tagged imports" />
+                    <CrmMetric label="Research" value={sourceStats.custom.toString()} helper="Custom data" />
+                    <CrmMetric label="Reach Out" value={sourceStats.reachout.toString()} helper="Needs first contact" />
+                    <CrmMetric label="Follow-up" value={sourceStats.followup.toString()} helper="Due now" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_190px_190px_170px] gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search source data by company, country, email, product, status..."
+                      value={sourceSearchQuery}
+                      onChange={(event) => setSourceSearchQuery(event.target.value)}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-9 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none transition focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/20"
+                    />
+                    {sourceSearchQuery && (
+                      <button type="button" onClick={() => setSourceSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" title="Clear search">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-label="Source Type"
+                      value={sourceTypeFilter}
+                      onChange={(event) => setSourceTypeFilter(event.target.value as typeof sourceTypeFilter)}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                    >
+                      <option value="All">All Sources</option>
+                      <option value="Embassy Data">Embassy Data</option>
+                      <option value="Custom Researched Data">Custom Researched</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-label="Source Action Filter"
+                      value={sourceActionFilter}
+                      onChange={(event) => setSourceActionFilter(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                    >
+                      <option value="All">All Statuses</option>
+                      <option value="Need Reach Out">Need Reach Out</option>
+                      <option value="Follow-up Due">Follow-up Due</option>
+                      <option value="Next Follow-up">Next Follow-up</option>
+                      <option value="Waiting Reply">Waiting Reply</option>
+                      <option value="Responded / Qualify">Responded</option>
+                      <option value="Needs Email Fix">Needs Email Fix</option>
+                      <option value="Review">Needs Review</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-label="Source Sort"
+                      value={sourceSortKey}
+                      onChange={(event) => setSourceSortKey(event.target.value as typeof sourceSortKey)}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                    >
+                      <option value="source">Sort by Source</option>
+                      <option value="action">Sort by Status</option>
+                      <option value="followup">Next Follow-up</option>
+                      <option value="country">Country A-Z</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
+                  <span>Showing <strong className="text-slate-900">{sourceFilteredLeads.length}</strong> source-tagged CRM record{sourceFilteredLeads.length === 1 ? '' : 's'}</span>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setSourceActionFilter('Need Reach Out')} className="rounded-lg bg-sky-50 px-3 py-2 font-black text-sky-700 hover:bg-sky-100">Reach Out</button>
+                    <button type="button" onClick={() => setSourceActionFilter('Follow-up Due')} className="rounded-lg bg-amber-50 px-3 py-2 font-black text-amber-700 hover:bg-amber-100">Follow-up Due</button>
+                    <button type="button" onClick={() => setSourceTypeFilter('Embassy Data')} className="rounded-lg bg-slate-100 px-3 py-2 font-black text-slate-700 hover:bg-slate-200">Embassy</button>
+                    <button type="button" onClick={() => setSourceTypeFilter('Custom Researched Data')} className="rounded-lg bg-slate-100 px-3 py-2 font-black text-slate-700 hover:bg-slate-200">Research</button>
+                  </div>
+                </div>
+                {sourceFilteredLeads.length === 0 ? (
+                  <EmptyState text="No source-tagged buyers match this filter." />
+                ) : (
+                  <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-3">
+                    {sourceFilteredLeads.map((lead) => {
+                      const source = leadDataSource(lead);
+                      const action = leadActionCategory(lead);
+                      return (
+                        <div key={lead.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs shadow-sm">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-black text-slate-950 truncate">{lead.company_name}</div>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${source === 'Embassy Data' ? 'bg-indigo-50 text-indigo-700' : source === 'Custom Researched Data' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{source}</span>
+                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${leadCategoryClass(action)}`}>{action}</span>
+                                {lead.country && <SmallBadge text={lead.country} />}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                editLeadFromCard(lead);
+                                navigateToTab('crm');
+                              }}
+                              className="rounded-lg bg-white px-2.5 py-1.5 text-[10px] font-black text-slate-700 border border-slate-200 hover:bg-slate-100"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <SmallMetric label="Best Email Time" value={bestSendWindowIST(lead.country).replace('Best send: ', '')} />
+                            <SmallMetric label="Next Follow-up" value={lead.next_follow_up || 'Not set'} />
+                            <SmallMetric label="Email" value={lead.contact_email || 'Missing'} />
+                            <SmallMetric label="Phone" value={lead.phone || 'Missing'} />
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => handleLeadEmail(lead, 'First Reach')} className="flex-1 rounded-lg bg-slate-950 px-3 py-2 font-black text-white hover:bg-slate-800">Reach Out Email</button>
+                            <button type="button" onClick={() => handleLeadEmail(lead, 'Follow-up')} className="flex-1 rounded-lg bg-amber-500 px-3 py-2 font-black text-white hover:bg-amber-400">Follow-up Email</button>
+                          </div>
+                          <div className="mt-2 grid grid-cols-3 gap-1.5">
+                            <button type="button" onClick={() => updateLeadTracking(lead, 'email_sent')} className="rounded bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700 hover:bg-sky-100">Contacted</button>
+                            <button type="button" onClick={() => updateLeadTracking(lead, 'followup_due')} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-700 hover:bg-amber-100">Need Follow-up</button>
+                            <button type="button" onClick={() => updateLeadTracking(lead, 'responded')} className="rounded bg-teal-50 px-2 py-1 text-[10px] font-black text-teal-700 hover:bg-teal-100">Responded</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {activeTab === 'communications' && (
