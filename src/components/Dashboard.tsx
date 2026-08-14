@@ -394,6 +394,8 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [reachoutSearchQuery, setReachoutSearchQuery] = useState('');
+  const [reachoutCountryFilter, setReachoutCountryFilter] = useState('All');
+  const [reachoutSortKey, setReachoutSortKey] = useState<'name' | 'country'>('name');
   const [reachoutVisibleCount, setReachoutVisibleCount] = useState(reachoutListPageSize);
   const [missingPhoneVisibleCount, setMissingPhoneVisibleCount] = useState(missingPhonePageSize);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -471,7 +473,7 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     setReachoutVisibleCount(reachoutListPageSize);
     setMissingPhoneVisibleCount(missingPhonePageSize);
-  }, [reachoutSearchQuery]);
+  }, [reachoutSearchQuery, reachoutCountryFilter, reachoutSortKey]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -786,19 +788,36 @@ export const Dashboard: React.FC = () => {
     });
   }, [clients, clientPhones]);
 
+  const reachoutCountries = useMemo(() => {
+    return Array.from(new Set(reachoutBuyers.map((buyer) => buyerCountry(buyer)).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [reachoutBuyers, clientCountries]);
+
   const filteredReachoutBuyers = useMemo(() => {
     const query = reachoutSearchQuery.trim().toLowerCase();
-    if (!query) return reachoutBuyers;
-    return reachoutBuyers.filter((buyer) => {
-      const phone = buyer.phone || clientPhones[buyer.id] || '';
-      return (
-        buyer.company_name.toLowerCase().includes(query) ||
-        (buyer.contact_name || '').toLowerCase().includes(query) ||
-        (buyer.contact_email || '').toLowerCase().includes(query) ||
-        phone.toLowerCase().includes(query)
-      );
+    const countryFiltered = reachoutCountryFilter === 'All'
+      ? reachoutBuyers
+      : reachoutBuyers.filter((buyer) => buyerCountry(buyer) === reachoutCountryFilter);
+    const searched = query
+      ? countryFiltered.filter((buyer) => {
+          const phone = buyer.phone || clientPhones[buyer.id] || '';
+          return (
+            buyer.company_name.toLowerCase().includes(query) ||
+            (buyer.contact_name || '').toLowerCase().includes(query) ||
+            (buyer.contact_email || '').toLowerCase().includes(query) ||
+            buyerCountry(buyer).toLowerCase().includes(query) ||
+            phone.toLowerCase().includes(query)
+          );
+        })
+      : countryFiltered;
+
+    return [...searched].sort((a, b) => {
+      if (reachoutSortKey === 'country') {
+        const countryCompare = buyerCountry(a).localeCompare(buyerCountry(b));
+        if (countryCompare !== 0) return countryCompare;
+      }
+      return a.company_name.localeCompare(b.company_name);
     });
-  }, [reachoutBuyers, reachoutSearchQuery, clientPhones]);
+  }, [reachoutBuyers, reachoutSearchQuery, reachoutCountryFilter, reachoutSortKey, clientPhones, clientCountries]);
 
   const visibleReachoutBuyers = useMemo(() => filteredReachoutBuyers.slice(0, reachoutVisibleCount), [filteredReachoutBuyers, reachoutVisibleCount]);
 
@@ -3394,16 +3413,41 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 {/* Search and Filters */}
-                <div className="mt-4 flex flex-col md:flex-row gap-3">
-                  <div className="relative flex-1">
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px_180px] gap-3">
+                  <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="Search reachout list by company, contact person, or phone number..."
+                      placeholder="Search reachout list by company, country, contact, or phone..."
                       value={reachoutSearchQuery}
                       onChange={(e) => setReachoutSearchQuery(e.target.value)}
                       className="w-full h-10 bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                     />
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-label="Reachout Country Filter"
+                      value={reachoutCountryFilter}
+                      onChange={(event) => setReachoutCountryFilter(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-800 bg-slate-900 px-3 pr-9 text-xs font-bold text-white outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    >
+                      {['All', ...reachoutCountries].map((country) => (
+                        <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-label="Reachout Sort"
+                      value={reachoutSortKey}
+                      onChange={(event) => setReachoutSortKey(event.target.value as typeof reachoutSortKey)}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-800 bg-slate-900 px-3 pr-9 text-xs font-bold text-white outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="name">Company A-Z</option>
+                      <option value="country">Country A-Z</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
                   </div>
                 </div>
               </div>
