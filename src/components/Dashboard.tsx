@@ -82,6 +82,7 @@ const missingPhonePageSize = 40;
 type TabKey = 'overview' | 'crm' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string };
+type ImportProgress = { label: string; processed: number; total: number } | null;
 type LeadTrackingAction = 'email_sent' | 'followup_1' | 'followup_2' | 'followup_3' | 'responded' | 'followup_due';
 type BuyerSortKey = 'name' | 'phone_asc' | 'phone_desc' | 'followup_first' | 'reachout_first' | 'waiting_first' | 'responded_first';
 
@@ -404,6 +405,7 @@ export const Dashboard: React.FC = () => {
   const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
   const [importingBuyers, setImportingBuyers] = useState(false);
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress>(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
 
   const [quoteSearch, setQuoteSearch] = useState('');
@@ -428,6 +430,8 @@ export const Dashboard: React.FC = () => {
   const [leadForm, setLeadForm] = useState<Partial<Lead>>(blankLead);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
+  const [crmCountryFilter, setCrmCountryFilter] = useState('All');
+  const [crmSortKey, setCrmSortKey] = useState<'action' | 'country'>('action');
   const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
   const [activityForm, setActivityForm] = useState<Partial<TimelineActivity>>(blankActivity);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
@@ -1636,6 +1640,9 @@ export const Dashboard: React.FC = () => {
     return Number.isNaN(parsed.getTime()) ? raw.slice(0, 10) : parsed.toISOString().slice(0, 10);
   };
 
+  const normalizeDuplicateValue = (value: unknown) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const normalizePhoneValue = (value: unknown) => String(value || '').replace(/\D/g, '');
+
   const mapImportStage = (stage: string, response: string): Lead['stage'] => {
     const normalized = `${stage} ${response}`.toLowerCase();
     if (normalized.includes('won') || normalized.includes('response received yes')) return 'Won';
@@ -1650,6 +1657,7 @@ export const Dashboard: React.FC = () => {
     if (!file) return;
     setImportingBuyers(true);
     setImportSummary(null);
+    setImportProgress({ label: 'Reading file', processed: 0, total: 100 });
 
     try {
       const parsedRows = file.name.toLowerCase().endsWith('.csv')
@@ -1666,34 +1674,58 @@ export const Dashboard: React.FC = () => {
         throw new Error(`Missing required column "Company Name". Found: ${headers.slice(0, 8).join(', ') || 'no headers'}`);
       }
 
+      setImportProgress({ label: 'Checking duplicates', processed: 0, total: rows.length || 1 });
+
       const clientPayloads: Partial<Client>[] = [];
       const leadPayloads: Partial<Lead>[] = [];
       const activityPayloads: Partial<TimelineActivity>[] = [];
       const taskPayloads: Partial<TaskRecord>[] = [];
       const seen = new Set<string>();
+      const existingKeys = new Set<string>();
+      const importBatchId = Date.now().toString(36);
       let skipped = 0;
+
+      clients.forEach((client) => {
+        const companyKey = normalizeDuplicateValue(client.company_name);
+        const emailKey = normalizeDuplicateValue(client.contact_email);
+        const phoneKey = normalizePhoneValue(client.phone);
+        if (companyKey) existingKeys.add(`company:${companyKey}`);
+        if (emailKey) existingKeys.add(`email:${emailKey}`);
+        if (phoneKey) existingKeys.add(`phone:${phoneKey}`);
+      });
+
+      leads.forEach((lead) => {
+        const companyKey = normalizeDuplicateValue(lead.company_name);
+        const emailKey = normalizeDuplicateValue(lead.contact_email);
+        const phoneKey = normalizePhoneValue(lead.phone);
+        if (companyKey) existingKeys.add(`company:${companyKey}`);
+        if (emailKey) existingKeys.add(`email:${emailKey}`);
+        if (phoneKey) existingKeys.add(`phone:${phoneKey}`);
+      });
 
       rows.forEach((row, index) => {
         const company = String(row['Company Name'] || '').trim();
         const email = String(row.Email || '').trim();
-        if (!company || (!email && seen.has(company.toLowerCase()))) {
+        const phone = String(row.Phone || '').trim();
+        const companyKey = normalizeDuplicateValue(company);
+        const emailKey = normalizeDuplicateValue(email);
+        const phoneKey = normalizePhoneValue(phone);
+        const rowKeys = [
+          companyKey && `company:${companyKey}`,
+          emailKey && `email:${emailKey}`,
+          phoneKey && `phone:${phoneKey}`
+        ].filter(Boolean) as string[];
+
+        if (!company || rowKeys.some((key) => seen.has(key) || existingKeys.has(key))) {
           skipped += 1;
           return;
         }
 
-        const key = email.toLowerCase() || company.toLowerCase();
-        if (seen.has(key)) {
-          skipped += 1;
-          return;
-        }
-        seen.add(key);
-
-        const existing = clients.find((client) =>
-          (email && client.contact_email?.toLowerCase() === email.toLowerCase()) ||
-          client.company_name.toLowerCase() === company.toLowerCase()
-        );
+        rowKeys.forEach((key) => seen.add(key));
         const sourceId = String(row.ID || index + 1).replace(/[^a-zA-Z0-9_-]/g, '');
-        const clientId = existing?.id || `import-client-${sourceId || index + 1}`;
+        const rowId = `${importBatchId}-${sourceId || index + 1}`;
+        const clientId = `import-client-${rowId}`;
+        const leadId = `import-lead-${rowId}`;
         const firstEmail = normalizeImportDate(row['First Email Sent On']);
         const lastEmail = normalizeImportDate(row['Last Email Sent On']);
         const nextFollowUp = normalizeImportDate(row['Next Follow-up Date']);
@@ -1714,16 +1746,16 @@ export const Dashboard: React.FC = () => {
             String(row.Country || '').trim() && `Country: ${String(row.Country).trim()}`,
             String(row['Market Category'] || '').trim() && `Market: ${String(row['Market Category']).trim()}`,
             String(row['Buyer Type'] || '').trim() && `Buyer Type: ${String(row['Buyer Type']).trim()}`,
-            String(row.Phone || '').trim() && `Phone: ${String(row.Phone).trim()}`
+            phone && `Phone: ${phone}`
           ].filter(Boolean).join('\n')
         });
 
         leadPayloads.push({
-          id: `import-lead-${sourceId || index + 1}`,
+          id: leadId,
           company_name: company,
           contact_name: String(row['Contact Person'] || '').trim(),
           contact_email: email,
-          phone: String(row.Phone || '').trim(),
+          phone,
           country: String(row.Country || '').trim(),
           product_interest: product && product !== 'Other' ? product : productCategory || 'General export product range',
           estimated_value: Number(row['Lead Score'] || 0),
@@ -1744,9 +1776,9 @@ export const Dashboard: React.FC = () => {
 
         if (outreachDone) {
           activityPayloads.push({
-            id: `import-activity-${sourceId || index + 1}`,
+            id: `import-activity-${rowId}`,
             client_id: clientId,
-            lead_id: `import-lead-${sourceId || index + 1}`,
+            lead_id: leadId,
             type: 'Email',
             title: `Imported outreach status for ${company}`,
             details: `Email Status: ${String(row['Email Status'] || 'Imported')}\nFirst Email: ${firstEmail || 'N/A'}\nLast Email: ${lastEmail || 'N/A'}\nFollow-up 1: ${String(row['Follow-up 1 Done'] || 'No')}\nFollow-up 2: ${String(row['Follow-up 2 Done'] || 'No')}\nFollow-up 3: ${String(row['Follow-up 3 Done'] || 'No')}`,
@@ -1757,23 +1789,23 @@ export const Dashboard: React.FC = () => {
 
         if (nextFollowUp && !['Won', 'Lost'].includes(stage)) {
           taskPayloads.push({
-            id: `import-task-${sourceId || index + 1}`,
+            id: `import-task-${rowId}`,
             title: `Follow up with ${company}`,
             status: 'Open',
             priority: ['Low', 'Medium', 'High'].includes(String(row.Priority)) ? String(row.Priority) as TaskRecord['priority'] : 'Medium',
             due_date: nextFollowUp,
             owner: 'Sana Zeba',
             client_id: clientId,
-            lead_id: `import-lead-${sourceId || index + 1}`,
+            lead_id: leadId,
             notes: `Auto-created from imported CRM sheet. Next action: ${String(row['Next Action'] || 'Follow up')}`
           });
         }
 
         if (responseDate) {
           activityPayloads.push({
-            id: `import-response-${sourceId || index + 1}`,
+            id: `import-response-${rowId}`,
             client_id: clientId,
-            lead_id: `import-lead-${sourceId || index + 1}`,
+            lead_id: leadId,
             type: 'Status',
             title: `Response recorded for ${company}`,
             details: `Response Received: ${String(row['Response Received'] || '')}`,
@@ -1783,12 +1815,16 @@ export const Dashboard: React.FC = () => {
         }
       });
 
+      setImportProgress({ label: 'Duplicate check complete', processed: rows.length, total: rows.length || 1 });
+
       const insertBatches = async (table: string, payloads: unknown[]) => {
         const chunkSize = 150;
         for (let start = 0; start < payloads.length; start += chunkSize) {
+          setImportProgress({ label: `Saving ${table}`, processed: Math.min(start, payloads.length), total: payloads.length || 1 });
           const chunk = payloads.slice(start, start + chunkSize);
           const { error } = await supabase.from(table).insert(chunk);
           if (error) throw new Error(`${table}: ${error.message || 'insert failed'}`);
+          setImportProgress({ label: `Saving ${table}`, processed: Math.min(start + chunk.length, payloads.length), total: payloads.length || 1 });
         }
       };
 
@@ -1798,19 +1834,21 @@ export const Dashboard: React.FC = () => {
       await insertBatches('tasks', taskPayloads);
 
       await fetchData();
+      setImportProgress({ label: 'Import complete', processed: rows.length, total: rows.length || 1 });
       setImportSummary({
         buyers: clientPayloads.length,
         leads: leadPayloads.length,
         activities: activityPayloads.length,
         tasks: taskPayloads.length,
         skipped,
-        message: `Imported ${clientPayloads.length} buyers from ${file.name}. Outreach and follow-up fields were synced automatically.`
+        message: `Import complete: ${clientPayloads.length} new buyer${clientPayloads.length === 1 ? '' : 's'} added from ${file.name}. ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped.`
       });
     } catch (err) {
       console.warn('Buyer import failed:', err);
       alert(`Could not import this file. ${err instanceof Error ? err.message : 'Please use the same Buyers Excel or CSV template.'}`);
     } finally {
       setImportingBuyers(false);
+      setTimeout(() => setImportProgress(null), 1400);
     }
   };
 
@@ -2029,19 +2067,36 @@ export const Dashboard: React.FC = () => {
 
   // CRM lead helper functions moved to the top of the component to avoid Temporal Dead Zone ReferenceError
 
+  const crmCountries = useMemo(() => {
+    return Array.from(new Set(leads.map((lead) => (lead.country || 'Uncategorized').trim() || 'Uncategorized'))).sort((a, b) => a.localeCompare(b));
+  }, [leads]);
+
   const filteredCrmLeads = useMemo(() => {
     const query = crmSearchQuery.trim().toLowerCase();
-    if (!query) return leads;
-    return leads.filter((lead) => {
-      return (
-        lead.company_name.toLowerCase().includes(query) ||
-        (lead.contact_name || '').toLowerCase().includes(query) ||
-        (lead.contact_email || '').toLowerCase().includes(query) ||
-        (lead.phone || '').toLowerCase().includes(query) ||
-        (lead.product_interest || '').toLowerCase().includes(query)
-      );
+    const countryFiltered = crmCountryFilter === 'All'
+      ? leads
+      : leads.filter((lead) => ((lead.country || 'Uncategorized').trim() || 'Uncategorized') === crmCountryFilter);
+    const searched = query
+      ? countryFiltered.filter((lead) => {
+          return (
+            lead.company_name.toLowerCase().includes(query) ||
+            (lead.contact_name || '').toLowerCase().includes(query) ||
+            (lead.contact_email || '').toLowerCase().includes(query) ||
+            (lead.phone || '').toLowerCase().includes(query) ||
+            (lead.country || '').toLowerCase().includes(query) ||
+            (lead.product_interest || '').toLowerCase().includes(query)
+          );
+        })
+      : countryFiltered;
+
+    return [...searched].sort((a, b) => {
+      if (crmSortKey === 'country') {
+        const countryCompare = (a.country || 'Uncategorized').localeCompare(b.country || 'Uncategorized');
+        if (countryCompare !== 0) return countryCompare;
+      }
+      return a.company_name.localeCompare(b.company_name);
     });
-  }, [leads, crmSearchQuery]);
+  }, [leads, crmSearchQuery, crmCountryFilter, crmSortKey]);
 
   const crmQueues = [
     { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out') },
@@ -2242,6 +2297,7 @@ export const Dashboard: React.FC = () => {
 
   const activeNavItem = navItems.find((item) => item.key === activeTab);
   const appBusy = loading || importingBuyers;
+  const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
   const mobilePrimaryNav = navItems.filter((item) => ['overview', 'crm', 'quotes', 'tasks'].includes(item.key));
   const navGroups = [
     { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
@@ -3114,20 +3170,47 @@ export const Dashboard: React.FC = () => {
 
                       <div className="p-4">
                         <div className="mb-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                          <div className="relative w-full xl:max-w-xl">
-                            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                            <input
-                              type="text"
-                              placeholder="Search pipeline by company, contact, email, phone, country..."
-                              value={crmSearchQuery}
-                              onChange={(e) => setCrmSearchQuery(e.target.value)}
-                              className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition font-semibold"
-                            />
-                            {crmSearchQuery && (
-                              <button type="button" onClick={() => setCrmSearchQuery('')} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition" title="Clear search">
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            )}
+                          <div className="grid w-full xl:max-w-4xl grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px_170px] gap-2">
+                            <div className="relative">
+                              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                              <input
+                                type="text"
+                                placeholder="Search pipeline by company, contact, email, phone, country..."
+                                value={crmSearchQuery}
+                                onChange={(e) => setCrmSearchQuery(e.target.value)}
+                                className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition font-semibold"
+                              />
+                              {crmSearchQuery && (
+                                <button type="button" onClick={() => setCrmSearchQuery('')} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition" title="Clear search">
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            <div className="relative">
+                              <select
+                                aria-label="CRM Country Filter"
+                                value={crmCountryFilter}
+                                onChange={(event) => setCrmCountryFilter(event.target.value)}
+                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                              >
+                                {['All', ...crmCountries].map((country) => (
+                                  <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
+                                ))}
+                              </select>
+                              <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                            </div>
+                            <div className="relative">
+                              <select
+                                aria-label="CRM Sort"
+                                value={crmSortKey}
+                                onChange={(event) => setCrmSortKey(event.target.value as typeof crmSortKey)}
+                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                              >
+                                <option value="action">Action First</option>
+                                <option value="country">Country A-Z</option>
+                              </select>
+                              <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                            </div>
                           </div>
                           <div className="flex flex-wrap gap-2 text-xs">
                             <button type="button" onClick={() => selectLeadGroup(crmQueues[1].leads)} className="px-3 py-2 bg-amber-50 text-amber-700 rounded-lg font-bold hover:bg-amber-100">Select Due</button>
@@ -3142,7 +3225,24 @@ export const Dashboard: React.FC = () => {
                         {importSummary && (
                           <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-slate-700">
                             <span className="font-bold text-slate-900">{importSummary.message}</span>
-                            <span className="ml-2 text-[11px] text-slate-500">Buyers: {importSummary.buyers} | Leads: {importSummary.leads} | Skipped: {importSummary.skipped}</span>
+                            <span className="ml-2 text-[11px] text-slate-500">Buyers: {importSummary.buyers} | Leads: {importSummary.leads} | Activities: {importSummary.activities} | Tasks: {importSummary.tasks} | Skipped duplicates: {importSummary.skipped}</span>
+                          </div>
+                        )}
+                        {importProgress && (
+                          <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                            <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                              <div>
+                                <span className="font-black text-slate-900">{importProgress.label}</span>
+                                <span className="ml-2 text-[11px] font-semibold text-slate-500">{importProgress.processed} / {importProgress.total}</span>
+                              </div>
+                              <span className="font-black text-sky-700">{importProgressPercent}%</span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className="h-full rounded-full bg-sky-500 transition-all duration-500 ease-out"
+                                style={{ width: `${importProgressPercent}%` }}
+                              />
+                            </div>
                           </div>
                         )}
                         <div className="overflow-x-auto pb-2">
