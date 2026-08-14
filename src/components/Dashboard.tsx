@@ -436,6 +436,7 @@ export const Dashboard: React.FC = () => {
   const [crmSortKey, setCrmSortKey] = useState<'action' | 'country'>('action');
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
   const [sourceTypeFilter, setSourceTypeFilter] = useState<'All' | ImportDataSource>('All');
+  const [sourceCountryFilter, setSourceCountryFilter] = useState('All');
   const [sourceActionFilter, setSourceActionFilter] = useState('All');
   const [sourceSortKey, setSourceSortKey] = useState<'source' | 'action' | 'country' | 'followup'>('source');
   const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
@@ -2128,6 +2129,7 @@ export const Dashboard: React.FC = () => {
       const source = leadDataSource(lead);
       const action = leadActionCategory(lead);
       const isSourceTagged = source === 'Embassy Data' || source === 'Custom Researched Data';
+      const country = (lead.country || 'Uncategorized').trim() || 'Uncategorized';
       const searchable = [
         lead.company_name,
         lead.contact_name,
@@ -2139,9 +2141,10 @@ export const Dashboard: React.FC = () => {
         action
       ].join(' ').toLowerCase();
       const matchesSource = sourceTypeFilter === 'All' || source === sourceTypeFilter;
+      const matchesCountry = sourceCountryFilter === 'All' || country === sourceCountryFilter;
       const matchesAction = sourceActionFilter === 'All' || action === sourceActionFilter;
       const matchesSearch = !query || searchable.includes(query);
-      return isSourceTagged && matchesSource && matchesAction && matchesSearch;
+      return isSourceTagged && matchesSource && matchesCountry && matchesAction && matchesSearch;
     });
 
     return [...filtered].sort((a, b) => {
@@ -2163,7 +2166,17 @@ export const Dashboard: React.FC = () => {
       }
       return a.company_name.localeCompare(b.company_name);
     });
-  }, [leads, sourceSearchQuery, sourceTypeFilter, sourceActionFilter, sourceSortKey]);
+  }, [leads, sourceSearchQuery, sourceTypeFilter, sourceCountryFilter, sourceActionFilter, sourceSortKey]);
+
+  const sourceCountries = useMemo(() => {
+    return Array.from(new Set(leads
+      .filter((lead) => {
+        const source = leadDataSource(lead);
+        return source === 'Embassy Data' || source === 'Custom Researched Data';
+      })
+      .map((lead) => (lead.country || 'Uncategorized').trim() || 'Uncategorized')))
+      .sort((a, b) => a.localeCompare(b));
+  }, [leads]);
 
   const sourceStats = useMemo(() => ({
     embassy: leads.filter((lead) => leadDataSource(lead) === 'Embassy Data').length,
@@ -3407,7 +3420,7 @@ export const Dashboard: React.FC = () => {
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_190px_190px_170px] gap-2">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px_180px_160px] gap-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
@@ -3433,6 +3446,19 @@ export const Dashboard: React.FC = () => {
                       <option value="All">All Sources</option>
                       <option value="Embassy Data">Embassy Data</option>
                       <option value="Custom Researched Data">Custom Researched</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-label="Source Country Filter"
+                      value={sourceCountryFilter}
+                      onChange={(event) => setSourceCountryFilter(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                    >
+                      {['All', ...sourceCountries].map((country) => (
+                        <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
+                      ))}
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
                   </div>
@@ -3464,7 +3490,7 @@ export const Dashboard: React.FC = () => {
                       <option value="source">Sort by Source</option>
                       <option value="action">Sort by Status</option>
                       <option value="followup">Next Follow-up</option>
-                      <option value="country">Country A-Z</option>
+                      <option value="country">Sort Country A-Z</option>
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
                   </div>
@@ -3473,7 +3499,7 @@ export const Dashboard: React.FC = () => {
 
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
-                  <span>Showing <strong className="text-slate-900">{sourceFilteredLeads.length}</strong> source-tagged CRM record{sourceFilteredLeads.length === 1 ? '' : 's'}</span>
+                  <span>Showing <strong className="text-slate-900">{sourceFilteredLeads.length}</strong> source-tagged CRM record{sourceFilteredLeads.length === 1 ? '' : 's'}{sourceCountryFilter !== 'All' ? ` in ${sourceCountryFilter}` : ''}</span>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => setSourceActionFilter('Need Reach Out')} className="rounded-lg bg-sky-50 px-3 py-2 font-black text-sky-700 hover:bg-sky-100">Reach Out</button>
                     <button type="button" onClick={() => setSourceActionFilter('Follow-up Due')} className="rounded-lg bg-amber-50 px-3 py-2 font-black text-amber-700 hover:bg-amber-100">Follow-up Due</button>
