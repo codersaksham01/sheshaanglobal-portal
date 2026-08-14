@@ -4,6 +4,8 @@ import { firebaseApp, isFirebaseConfigured } from './firebaseClient';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const portalTables = ['clients', 'vendors', 'products', 'freight_presets', 'quotes', 'quote_items', 'leads', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users'] as const;
+const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 // Decorated Promise that emulates Supabase query chaining.
 function makeChainPromise(promise: Promise<any>, extra: any = {}): any {
@@ -31,13 +33,23 @@ function makeChainPromise(promise: Promise<any>, extra: any = {}): any {
 class ServerFileDB {
   private getLocalDB() {
     if (typeof window === 'undefined') return null;
-    const data = localStorage.getItem('crixy_portal_db');
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = localStorage.getItem('crixy_portal_db');
+      return data ? JSON.parse(data) : null;
+    } catch (error) {
+      console.warn('Ignoring an invalid local database cache:', error);
+      localStorage.removeItem('crixy_portal_db');
+      return null;
+    }
   }
 
   private saveLocalDB(db: any) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem('crixy_portal_db', JSON.stringify(db));
+    try {
+      localStorage.setItem('crixy_portal_db', JSON.stringify(db));
+    } catch (error) {
+      console.warn('Could not update the local database cache:', error);
+    }
   }
 
   private async saveServerRecords(table: string, records: any[]) {
@@ -79,8 +91,13 @@ class ServerFileDB {
         this.saveLocalDB(localDB);
         return localDB[table];
       }
+      if (response.status === 401 || process.env.NODE_ENV === 'production') {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || `Could not load ${table}`);
+      }
     } catch (e) {
       console.error(`Failed to fetch saved data for ${table}`, e);
+      if (process.env.NODE_ENV === 'production') throw e;
     }
     
     return localDB[table] || [];
@@ -240,9 +257,11 @@ class ServerFileDB {
     if (typeof window === 'undefined') return;
     try {
       localStorage.removeItem('crixy_portal_db');
-      await fetch('/api/db?action=seed', { method: 'POST' });
+      const response = await fetch('/api/db?action=seed', { method: 'POST' });
+      if (!response.ok) throw new Error('Could not seed the local database.');
     } catch (e) {
       console.error(e);
+      throw e;
     }
   }
 
@@ -250,18 +269,19 @@ class ServerFileDB {
     if (typeof window === 'undefined') return;
     try {
       localStorage.removeItem('crixy_portal_db');
-      await fetch('/api/db?action=clear', { method: 'POST' });
+      const response = await fetch('/api/db?action=clear', { method: 'POST' });
+      if (!response.ok) throw new Error('Could not clear the local database.');
     } catch (e) {
       console.error(e);
+      throw e;
     }
   }
 }
 
-const isSupabaseConfigured = supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your_supabase_project_url';
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your_supabase_project_url');
 
 class FirebaseDB {
   private db = getFirestore(firebaseApp!);
-  private fallback = new ServerFileDB();
 
   private async fetchRawTable(table: string) {
     const snapshot = await getDocs(collection(this.db, table));
@@ -286,9 +306,8 @@ class FirebaseDB {
       }
 
       return records;
-    } catch {
-      const fallbackResult = await this.fallback.from(table).select();
-      return fallbackResult.data || [];
+    } catch (error) {
+      throw new Error(errorMessage(error, `Could not load ${table} from Firebase.`));
     }
   }
 
@@ -312,8 +331,8 @@ class FirebaseDB {
         }
 
         return { data: saved, error: null };
-      } catch {
-        return await this.fallback.from(table).insert(values);
+      } catch (error) {
+        return { data: [], error: { message: errorMessage(error, `Could not save ${table} to Firebase.`) } };
       }
     };
 
@@ -365,8 +384,8 @@ class FirebaseDB {
             const matches = data.filter((r: any) => r[col] === val);
             if (!matches.length) return { data: [], error: null };
             return writeRecords(matches.map((record: any) => ({ ...record, ...values })));
-          } catch {
-            return await this.fallback.from(table).update(values).eq(col, val);
+          } catch (error) {
+            return { data: [], error: { message: errorMessage(error, `Could not update ${table} in Firebase.`) } };
           }
         })())
       }),
@@ -383,8 +402,8 @@ class FirebaseDB {
             }
 
             return { data: null, error: null };
-          } catch {
-            return await this.fallback.from(table).delete().eq(col, val);
+          } catch (error) {
+            return { data: null, error: { message: errorMessage(error, `Could not delete ${table} from Firebase.`) } };
           }
         })())
       })
@@ -392,11 +411,17 @@ class FirebaseDB {
   }
 
   async seedMockData() {
-    await this.fallback.seedMockData();
+    throw new Error('Demo seeding is only available in local database mode.');
   }
 
   async clearAllData() {
-    await this.fallback.clearAllData();
+    for (const table of portalTables) {
+      const snapshot = await getDocs(collection(this.db, table));
+      for (let start = 0; start < snapshot.docs.length; start += 100) {
+        await Promise.all(snapshot.docs.slice(start, start + 100).map((item) => deleteDoc(doc(this.db, table, item.id))));
+      }
+    }
+    if (typeof window !== 'undefined') localStorage.removeItem('crixy_portal_db');
   }
 }
 

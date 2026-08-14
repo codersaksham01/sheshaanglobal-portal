@@ -12,7 +12,7 @@ export const firebaseConfig = {
 };
 
 export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId);
-export const defaultFirebaseLoginEmail = 'admin@sheshaanglobal.local';
+export const defaultFirebaseLoginEmail = process.env.NEXT_PUBLIC_FIREBASE_LOGIN_EMAIL || 'admin@sheshaanglobal.local';
 export const firebaseApp = isFirebaseConfigured
   ? getApps().length
     ? getApps()[0]

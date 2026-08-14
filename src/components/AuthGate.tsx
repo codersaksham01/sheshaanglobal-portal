@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { LogOut, Loader2 } from 'lucide-react';
 import {
@@ -11,8 +11,20 @@ import {
   signOut
 } from 'firebase/auth';
 import { defaultFirebaseLoginEmail, firebaseAuth, isFirebaseConfigured } from '../lib/firebaseClient';
+import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
-const authStorageKey = 'crixy-authenticated';
+type PortalIdentity = { email: string; firebaseAuthenticated: boolean };
+const PortalIdentityContext = createContext<PortalIdentity>({ email: '', firebaseAuthenticated: false });
+export const usePortalIdentity = () => useContext(PortalIdentityContext);
+
+async function hasActiveSupabaseProfile(userId: string) {
+  const { data, error } = await supabase
+    .from('app_users')
+    .select('id, active')
+    .eq('auth_user_id', userId)
+    .single();
+  return !error && Boolean(data?.active);
+}
 
 export const AuthGate = ({ children }: { children: React.ReactNode }) => {
   const [email, setEmail] = useState(defaultFirebaseLoginEmail);
@@ -21,16 +33,53 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [authenticatedEmail, setAuthenticatedEmail] = useState('');
 
   useEffect(() => {
+    if (isSupabaseConfigured) {
+      supabase.auth.getSession()
+        .then(async ({ data, error }: any) => {
+          if (error) throw error;
+          const session = data.session;
+          const profileActive = session ? await hasActiveSupabaseProfile(session.user.id) : false;
+          if (session && !profileActive) await supabase.auth.signOut();
+          setIsAuthenticated(Boolean(session && profileActive));
+          setAuthenticatedEmail(profileActive ? session?.user?.email || '' : '');
+        })
+        .catch((authError: unknown) => {
+          console.warn('Supabase session check failed:', authError);
+          setIsAuthenticated(false);
+        })
+        .finally(() => setChecking(false));
+
+      const { data: listener } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
+        if (!session) {
+          setIsAuthenticated(false);
+          setAuthenticatedEmail('');
+          setChecking(false);
+          return;
+        }
+        queueMicrotask(async () => {
+          const profileActive = await hasActiveSupabaseProfile(session.user.id);
+          setIsAuthenticated(profileActive);
+          setAuthenticatedEmail(profileActive ? session.user.email || '' : '');
+          setChecking(false);
+        });
+      });
+      return () => listener.subscription.unsubscribe();
+    }
+
     if (!isFirebaseConfigured || !firebaseAuth) {
-      setIsAuthenticated(window.localStorage.getItem(authStorageKey) === 'true');
-      setChecking(false);
+      fetch('/api/login', { cache: 'no-store' })
+        .then((response) => setIsAuthenticated(response.ok))
+        .catch(() => setIsAuthenticated(false))
+        .finally(() => setChecking(false));
       return;
     }
 
     const unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
       setIsAuthenticated(Boolean(user));
+      setAuthenticatedEmail(user?.email || '');
       setChecking(false);
     });
 
@@ -43,6 +92,18 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
     setLoading(true);
 
     try {
+      if (isSupabaseConfigured) {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (authError) throw authError;
+        if (!data.user || !(await hasActiveSupabaseProfile(data.user.id))) {
+          await supabase.auth.signOut();
+          throw new Error('This account is not active in the portal directory.');
+        }
+        setAuthenticatedEmail(data.user?.email || email.trim());
+        setIsAuthenticated(Boolean(data.session));
+        return;
+      }
+
       if (isFirebaseConfigured && firebaseAuth) {
         await setPersistence(firebaseAuth, browserLocalPersistence);
         await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
@@ -61,24 +122,31 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      window.localStorage.setItem(authStorageKey, 'true');
+      setAuthenticatedEmail(email.trim());
       setIsAuthenticated(true);
     } catch (err) {
       console.warn('Login error:', err);
-      setError('Login failed. Check the password and make sure Firebase Email/Password auth user is created.');
+      setError(isSupabaseConfigured
+        ? 'Login failed. Check your email and password or ask an administrator to activate your portal account.'
+        : 'Login failed. Check the password and make sure the configured authentication user exists.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    if (firebaseAuth) {
-      await signOut(firebaseAuth);
+    try {
+      if (isSupabaseConfigured) await supabase.auth.signOut();
+      else if (firebaseAuth) await signOut(firebaseAuth);
+      else await fetch('/api/login', { method: 'DELETE' });
+    } catch (err) {
+      console.warn('Logout error:', err);
+    } finally {
+      setAuthenticatedEmail('');
+      setEmail(defaultFirebaseLoginEmail);
+      setPassword('');
+      setIsAuthenticated(false);
     }
-    window.localStorage.removeItem(authStorageKey);
-    setEmail(defaultFirebaseLoginEmail);
-    setPassword('');
-    setIsAuthenticated(false);
   };
 
   if (checking) {
@@ -101,7 +169,9 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
           <LogOut className="h-4 w-4" />
           Logout
         </button>
-        {children}
+        <PortalIdentityContext.Provider value={{ email: authenticatedEmail || email.trim(), firebaseAuthenticated: Boolean(isFirebaseConfigured || isSupabaseConfigured) }}>
+          {children}
+        </PortalIdentityContext.Provider>
       </>
     );
   }
@@ -115,7 +185,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
           </div>
           <div>
             <h1 className="text-lg font-extrabold text-slate-900">Sheshaan Global Login</h1>
-            <p className="text-xs text-slate-500">Enter password to open the admin portal.</p>
+            <p className="text-xs text-slate-500">Secure access to your commercial operations workspace.</p>
           </div>
         </div>
 

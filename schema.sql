@@ -1,188 +1,378 @@
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
+-- Sheshaan Global production schema for Supabase.
+-- Run in a new Supabase project, then create the first Auth user and matching
+-- app_users row as described at the bottom of this file.
 
--- 1. Clients Table
-create table if not exists clients (
-    id uuid default gen_random_uuid() primary key,
-    company_name text not null,
-    address text,
-    contact_name text,
-    contact_email text,
-    destination_port text not null,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null
+create extension if not exists pgcrypto;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = timezone('utc'::text, now());
+  return new;
+end;
+$$;
+
+create table if not exists public.app_users (
+  id text primary key default gen_random_uuid()::text,
+  auth_user_id uuid unique references auth.users(id) on delete cascade,
+  name text not null,
+  email text not null unique,
+  role text not null default 'Sales' check (role in ('Admin', 'Sales', 'Accounts', 'Operations')),
+  active boolean not null default true,
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- 2. Products Table
-create table if not exists products (
-    id uuid default gen_random_uuid() primary key,
-    sku text unique not null,
-    description text,
-    unit_price numeric(12, 2) not null check (unit_price >= 0),
-    cost_price numeric(12, 2) default 0.00 check (cost_price >= 0),
-    weight numeric(10, 2) check (weight >= 0), -- in kg
-    dimensions text, -- e.g. "50x30x20 cm"
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null
+create or replace function public.has_portal_role(allowed_roles text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.app_users
+    where auth_user_id = auth.uid()
+      and active = true
+      and role = any(allowed_roles)
+  );
+$$;
+
+revoke all on function public.has_portal_role(text[]) from public;
+grant execute on function public.has_portal_role(text[]) to authenticated;
+
+create table if not exists public.clients (
+  id text primary key default gen_random_uuid()::text,
+  company_name text not null,
+  address text not null default '',
+  contact_name text not null default '',
+  contact_email text not null default '',
+  phone text not null default '',
+  destination_port text not null default '',
+  products_dealing text[] not null default '{}',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- 3. Freight & Insurance Presets Table
-create table if not exists freight_presets (
-    id uuid default gen_random_uuid() primary key,
-    name text not null,
-    loading_port text not null,
-    destination_port text not null,
-    shipment_mode text not null,
-    freight_cost numeric(12, 2) default 0.00 not null check (freight_cost >= 0),
-    insurance_cost numeric(12, 2) default 0.00 not null check (insurance_cost >= 0),
-    shipment_window text,
-    transit_time text,
-    partial_shipment text,
-    container_type text,
-    storage_condition text,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+create table if not exists public.products (
+  id text primary key default gen_random_uuid()::text,
+  sku text not null unique,
+  description text not null default '',
+  unit_price numeric(14,2) not null default 0 check (unit_price >= 0),
+  cost_price numeric(14,2) not null default 0 check (cost_price >= 0),
+  weight numeric(14,3) not null default 0 check (weight >= 0),
+  dimensions text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- 4. Quotes Table (Supports transparent CIF cost structure)
-create table if not exists quotes (
-    id uuid default gen_random_uuid() primary key,
-    quote_number text unique not null,
-    client_id uuid references clients(id) on delete set null,
-    
-    -- Currency
-    currency text default 'USD'::text not null check (currency in ('USD', 'INR')),
-    
-    -- CIF Logistics parameters
-    origin_country text default 'India'::text not null,
-    loading_port text default 'Mundra Port, India'::text not null,
-    shipment_mode text default 'Sea Freight (1x20ft FCL)'::text not null,
-    payment_terms text default '50% Advance, 50% vs Shipping Bill'::text not null,
-    validity_days integer default 15 not null,
-    
-    -- Detailed breakdown values
-    packaging_cost numeric(12, 2) default 0.00 not null check (packaging_cost >= 0),
-    inland_haulage_cost numeric(12, 2) default 0.00 not null check (inland_haulage_cost >= 0),
-    customs_clearance_cost numeric(12, 2) default 0.00 not null check (customs_clearance_cost >= 0),
-    freight_cost numeric(12, 2) default 0.00 not null check (freight_cost >= 0),
-    insurance_cost numeric(12, 2) default 0.00 not null check (insurance_cost >= 0),
-    
-    status text default 'Draft'::text not null check (status in ('Draft', 'Sent', 'Negotiation', 'Approved', 'Invoice Raised', 'Shipped', 'Closed', 'Lost', 'Declined')),
-    margin_per_kg numeric(12, 2) default 0.00 check (margin_per_kg >= 0),
-    internal_notes text,
-    shipper_details jsonb, -- Exporter details snapshot
-    bank_details jsonb,    -- Invoice banking instructions snapshot
-    commercial_note text,  -- Note on commercial structure
-    
-    -- Page 2 responsibilities & documentation configuration
-    included_responsibilities text[],
-    excluded_responsibilities text[],
-    included_docs text[],
-    logistics_specs jsonb, -- Shipment window, transit time, container type, storage conditions
-    commercial_terms text[],
-    
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+create table if not exists public.vendors (
+  id text primary key default gen_random_uuid()::text,
+  company_name text not null,
+  contact_name text not null default '',
+  contact_email text not null default '',
+  phone text not null default '',
+  city text not null default '',
+  country text not null default '',
+  product_categories text not null default '',
+  payment_terms text not null default '',
+  rating integer not null default 3 check (rating between 1 and 5),
+  status text not null default 'Active' check (status in ('Active', 'Preferred', 'On Hold')),
+  notes text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- 5. Quote Items Table (Saves historical snapshot of products inside quotes)
-create table if not exists quote_items (
-    id uuid default gen_random_uuid() primary key,
-    quote_id uuid references quotes(id) on delete cascade not null,
-    product_id uuid references products(id) on delete set null,
-    sku text not null,
-    description text,
-    quantity integer not null check (quantity > 0),
-    unit_price numeric(12, 2) not null check (unit_price >= 0),
-    cost_price numeric(12, 2) default 0.00 check (cost_price >= 0),
-    weight numeric(10, 2) check (weight >= 0), -- unit weight in kg
-    
-    -- Specific item offer parameters
-    hs_code text,
-    packing_container text, -- e.g. "325 Jute Bags (40 kg Net / Bag)"
-    basis_of_calculation text -- e.g. "Per kg (13,000 kg)" or "Lump Sum"
+create table if not exists public.freight_presets (
+  id text primary key default gen_random_uuid()::text,
+  name text not null,
+  loading_port text not null,
+  destination_port text not null,
+  shipment_mode text not null,
+  freight_cost numeric(14,2) not null default 0 check (freight_cost >= 0),
+  insurance_cost numeric(14,2) not null default 0 check (insurance_cost >= 0),
+  shipment_window text not null default '',
+  transit_time text not null default '',
+  partial_shipment text not null default '',
+  container_type text not null default '',
+  storage_condition text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- Create simple row level security (optional policies can be added later)
-alter table clients enable row level security;
-alter table products enable row level security;
-alter table freight_presets enable row level security;
-alter table quotes enable row level security;
-alter table quote_items enable row level security;
-
--- For demo/Replit/Netlify convenience, allow anonymous select, insert, update, delete.
-create policy "Allow public read access to clients" on clients for select using (true);
-create policy "Allow public write access to clients" on clients for all using (true);
-
-create policy "Allow public read access to products" on products for select using (true);
-create policy "Allow public write access to products" on products for all using (true);
-
-create policy "Allow public read access to freight_presets" on freight_presets for select using (true);
-create policy "Allow public write access to freight_presets" on freight_presets for all using (true);
-
-create policy "Allow public read access to quotes" on quotes for select using (true);
-create policy "Allow public write access to quotes" on quotes for all using (true);
-
-create policy "Allow public read access to quote_items" on quote_items for select using (true);
-create policy "Allow public write access to quote_items" on quote_items for all using (true);
-
--- 6. Tasks & Reminders Table
-create table if not exists tasks (
-    id uuid default gen_random_uuid() primary key,
-    title text not null,
-    status text default 'Open'::text not null check (status in ('Open', 'In Progress', 'Done')),
-    priority text default 'Medium'::text not null check (priority in ('Low', 'Medium', 'High')),
-    due_date date,
-    owner text,
-    client_id uuid references clients(id) on delete set null,
-    lead_id uuid,
-    quote_id uuid references quotes(id) on delete set null,
-    invoice_id uuid,
-    shipment_id uuid,
-    notes text,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+create table if not exists public.quotes (
+  id text primary key default gen_random_uuid()::text,
+  quote_number text not null unique,
+  client_id text references public.clients(id) on delete set null,
+  currency text not null default 'USD' check (currency in ('USD', 'INR')),
+  origin_country text not null default 'India',
+  loading_port text not null default 'Mundra Port, India',
+  shipment_mode text not null default 'Sea Freight (1x20ft FCL)',
+  payment_terms text not null default '50% Advance, 50% vs Shipping Bill',
+  validity_days integer not null default 15 check (validity_days > 0),
+  packaging_cost numeric(14,2) not null default 0 check (packaging_cost >= 0),
+  inland_haulage_cost numeric(14,2) not null default 0 check (inland_haulage_cost >= 0),
+  customs_clearance_cost numeric(14,2) not null default 0 check (customs_clearance_cost >= 0),
+  freight_cost numeric(14,2) not null default 0 check (freight_cost >= 0),
+  insurance_cost numeric(14,2) not null default 0 check (insurance_cost >= 0),
+  status text not null default 'Draft' check (status in ('Draft', 'Sent', 'Negotiation', 'Approved', 'Invoice Raised', 'Shipped', 'Closed', 'Lost', 'Declined')),
+  margin_per_kg numeric(14,2) not null default 0 check (margin_per_kg >= 0),
+  internal_notes text not null default '',
+  shipper_details jsonb,
+  bank_details jsonb,
+  commercial_note text not null default '',
+  included_responsibilities text[] not null default '{}',
+  excluded_responsibilities text[] not null default '{}',
+  included_docs text[] not null default '{}',
+  logistics_specs jsonb,
+  commercial_terms text[] not null default '{}',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- 7. Mail & Message Templates Table
-create table if not exists message_templates (
-    id uuid default gen_random_uuid() primary key,
-    name text not null,
-    channel text default 'Email'::text not null check (channel in ('Email', 'WhatsApp', 'SMS')),
-    category text default 'General'::text not null check (category in ('Introduction', 'Quote Follow-up', 'Payment Reminder', 'Shipment Update', 'Document Sharing', 'General')),
-    subject text,
-    body text not null,
-    active boolean default true not null,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+create table if not exists public.quote_items (
+  id text primary key default gen_random_uuid()::text,
+  quote_id text not null references public.quotes(id) on delete cascade,
+  product_id text references public.products(id) on delete set null,
+  sku text not null,
+  description text not null default '',
+  quantity numeric(14,3) not null check (quantity > 0),
+  unit_price numeric(14,2) not null check (unit_price >= 0),
+  cost_price numeric(14,2) not null default 0 check (cost_price >= 0),
+  weight numeric(14,3) not null default 0 check (weight >= 0),
+  hs_code text not null default '',
+  packing_container text not null default '',
+  basis_of_calculation text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
-alter table tasks enable row level security;
-alter table message_templates enable row level security;
-
-create policy "Allow public read access to tasks" on tasks for select using (true);
-create policy "Allow public write access to tasks" on tasks for all using (true);
-
-create policy "Allow public read access to message_templates" on message_templates for select using (true);
-create policy "Allow public write access to message_templates" on message_templates for all using (true);
-
--- 8. Suppliers / Vendors Table
-create table if not exists vendors (
-    id uuid default gen_random_uuid() primary key,
-    company_name text not null,
-    contact_name text,
-    contact_email text,
-    phone text,
-    city text,
-    country text,
-    product_categories text,
-    payment_terms text,
-    rating integer default 3 check (rating >= 1 and rating <= 5),
-    status text default 'Active'::text not null check (status in ('Active', 'Preferred', 'On Hold')),
-    notes text,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-    updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+create table if not exists public.leads (
+  id text primary key default gen_random_uuid()::text,
+  company_name text not null,
+  contact_name text not null default '',
+  contact_email text not null default '',
+  phone text not null default '',
+  country text not null default '',
+  product_interest text not null default '',
+  estimated_value numeric(16,2) not null default 0 check (estimated_value >= 0),
+  stage text not null default 'New Lead' check (stage in ('New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost')),
+  priority text not null default 'Medium' check (priority in ('Low', 'Medium', 'High')),
+  owner text not null default '',
+  next_follow_up date,
+  notes text not null default '',
+  client_id text references public.clients(id) on delete set null,
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
-alter table vendors enable row level security;
+create table if not exists public.invoices (
+  id text primary key default gen_random_uuid()::text,
+  quote_id text references public.quotes(id) on delete set null,
+  invoice_number text not null unique,
+  invoice_type text not null default 'Proforma' check (invoice_type in ('Proforma', 'Tax')),
+  client_id text references public.clients(id) on delete set null,
+  amount numeric(16,2) not null default 0 check (amount >= 0),
+  currency text not null default 'INR' check (currency in ('INR', 'USD')),
+  payment_status text not null default 'Pending' check (payment_status in ('Pending', 'Part Paid', 'Paid', 'Overdue')),
+  advance_amount numeric(16,2) not null default 0 check (advance_amount >= 0),
+  balance_amount numeric(16,2) not null default 0 check (balance_amount >= 0),
+  due_date date,
+  notes text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
 
-create policy "Allow public read access to vendors" on vendors for select using (true);
-create policy "Allow public write access to vendors" on vendors for all using (true);
+create table if not exists public.shipments (
+  id text primary key default gen_random_uuid()::text,
+  quote_id text references public.quotes(id) on delete set null,
+  invoice_id text references public.invoices(id) on delete set null,
+  client_id text references public.clients(id) on delete set null,
+  booking_number text not null default '',
+  vessel_name text not null default '',
+  container_number text not null default '',
+  seal_number text not null default '',
+  bl_number text not null default '',
+  etd date,
+  eta date,
+  status text not null default 'Planning' check (status in ('Planning', 'Booked', 'Stuffed', 'Sailed', 'Arrived', 'Delivered')),
+  notes text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create table if not exists public.activities (
+  id text primary key default gen_random_uuid()::text,
+  client_id text references public.clients(id) on delete set null,
+  lead_id text references public.leads(id) on delete set null,
+  quote_id text references public.quotes(id) on delete set null,
+  type text not null check (type in ('Call', 'Email', 'Meeting', 'Quote', 'Invoice', 'Shipment', 'Note', 'Status')),
+  title text not null,
+  details text not null default '',
+  activity_date timestamptz not null default timezone('utc'::text, now()),
+  owner text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create table if not exists public.tasks (
+  id text primary key default gen_random_uuid()::text,
+  title text not null,
+  status text not null default 'Open' check (status in ('Open', 'In Progress', 'Done')),
+  priority text not null default 'Medium' check (priority in ('Low', 'Medium', 'High')),
+  due_date date,
+  owner text not null default '',
+  client_id text references public.clients(id) on delete set null,
+  lead_id text references public.leads(id) on delete set null,
+  quote_id text references public.quotes(id) on delete set null,
+  invoice_id text references public.invoices(id) on delete set null,
+  shipment_id text references public.shipments(id) on delete set null,
+  notes text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create table if not exists public.message_templates (
+  id text primary key default gen_random_uuid()::text,
+  name text not null,
+  channel text not null default 'Email' check (channel in ('Email', 'WhatsApp', 'SMS')),
+  category text not null default 'General' check (category in ('Introduction', 'Quote Follow-up', 'Payment Reminder', 'Shipment Update', 'Document Sharing', 'General')),
+  subject text not null default '',
+  body text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create table if not exists public.freight_rate_history (
+  id text primary key default gen_random_uuid()::text,
+  loading_port text not null,
+  destination_port text not null,
+  shipment_mode text not null,
+  forwarder text not null default '',
+  freight_cost numeric(14,2) not null default 0 check (freight_cost >= 0),
+  insurance_cost numeric(14,2) not null default 0 check (insurance_cost >= 0),
+  currency text not null default 'INR' check (currency in ('INR', 'USD')),
+  effective_date date not null,
+  validity_date date,
+  notes text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create table if not exists public.document_checklists (
+  id text primary key default gen_random_uuid()::text,
+  quote_id text references public.quotes(id) on delete set null,
+  shipment_id text references public.shipments(id) on delete set null,
+  commercial_invoice boolean not null default false,
+  packing_list boolean not null default false,
+  certificate_origin boolean not null default false,
+  phytosanitary boolean not null default false,
+  insurance boolean not null default false,
+  bill_of_lading boolean not null default false,
+  notes text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create index if not exists leads_next_follow_up_idx on public.leads(next_follow_up) where next_follow_up is not null;
+create index if not exists leads_stage_idx on public.leads(stage);
+create index if not exists tasks_due_status_idx on public.tasks(due_date, status);
+create index if not exists invoices_due_status_idx on public.invoices(due_date, payment_status);
+create index if not exists shipments_eta_status_idx on public.shipments(eta, status);
+create index if not exists activities_lead_date_idx on public.activities(lead_id, activity_date desc);
+create index if not exists quotes_client_status_idx on public.quotes(client_id, status);
+
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'app_users', 'clients', 'products', 'vendors', 'freight_presets', 'quotes', 'quote_items',
+    'leads', 'invoices', 'shipments', 'activities', 'tasks', 'message_templates',
+    'freight_rate_history', 'document_checklists'
+  ] loop
+    execute format('drop trigger if exists set_%I_updated_at on public.%I', table_name, table_name);
+    execute format('create trigger set_%I_updated_at before update on public.%I for each row execute function public.set_updated_at()', table_name, table_name);
+    execute format('alter table public.%I enable row level security', table_name);
+  end loop;
+end;
+$$;
+
+-- Remove legacy anonymous policies from earlier demo versions.
+do $$
+declare
+  policy_row record;
+begin
+  for policy_row in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and policyname like 'Allow public%'
+  loop
+    execute format('drop policy if exists %I on %I.%I', policy_row.policyname, policy_row.schemaname, policy_row.tablename);
+  end loop;
+end;
+$$;
+
+-- All active portal users can read shared operational records. Writes are
+-- restricted by department and enforced in the database, not only in the UI.
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'clients', 'products', 'vendors', 'freight_presets', 'quotes', 'quote_items', 'leads',
+    'invoices', 'shipments', 'activities', 'tasks', 'message_templates',
+    'freight_rate_history', 'document_checklists'
+  ] loop
+    execute format('drop policy if exists portal_read on public.%I', table_name);
+    execute format('create policy portal_read on public.%I for select to authenticated using (public.has_portal_role(array[''Admin'', ''Sales'', ''Accounts'', ''Operations'']))', table_name);
+  end loop;
+end;
+$$;
+
+drop policy if exists sales_write on public.clients;
+create policy sales_write on public.clients for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
+drop policy if exists sales_write on public.leads;
+create policy sales_write on public.leads for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
+drop policy if exists sales_write on public.quotes;
+create policy sales_write on public.quotes for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
+drop policy if exists sales_write on public.quote_items;
+create policy sales_write on public.quote_items for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
+drop policy if exists sales_write on public.activities;
+create policy sales_write on public.activities for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
+drop policy if exists sales_write on public.message_templates;
+create policy sales_write on public.message_templates for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
+
+drop policy if exists shared_task_write on public.tasks;
+create policy shared_task_write on public.tasks for all to authenticated using (public.has_portal_role(array['Admin','Sales','Accounts','Operations'])) with check (public.has_portal_role(array['Admin','Sales','Accounts','Operations']));
+drop policy if exists shared_product_write on public.products;
+create policy shared_product_write on public.products for all to authenticated using (public.has_portal_role(array['Admin','Sales','Operations'])) with check (public.has_portal_role(array['Admin','Sales','Operations']));
+
+drop policy if exists accounts_write on public.invoices;
+create policy accounts_write on public.invoices for all to authenticated using (public.has_portal_role(array['Admin','Accounts'])) with check (public.has_portal_role(array['Admin','Accounts']));
+
+drop policy if exists operations_write on public.shipments;
+create policy operations_write on public.shipments for all to authenticated using (public.has_portal_role(array['Admin','Operations'])) with check (public.has_portal_role(array['Admin','Operations']));
+drop policy if exists operations_write on public.document_checklists;
+create policy operations_write on public.document_checklists for all to authenticated using (public.has_portal_role(array['Admin','Operations'])) with check (public.has_portal_role(array['Admin','Operations']));
+drop policy if exists operations_write on public.vendors;
+create policy operations_write on public.vendors for all to authenticated using (public.has_portal_role(array['Admin','Operations'])) with check (public.has_portal_role(array['Admin','Operations']));
+drop policy if exists operations_write on public.freight_presets;
+create policy operations_write on public.freight_presets for all to authenticated using (public.has_portal_role(array['Admin','Operations'])) with check (public.has_portal_role(array['Admin','Operations']));
+drop policy if exists operations_write on public.freight_rate_history;
+create policy operations_write on public.freight_rate_history for all to authenticated using (public.has_portal_role(array['Admin','Operations'])) with check (public.has_portal_role(array['Admin','Operations']));
+
+alter table public.app_users enable row level security;
+drop policy if exists user_directory_read on public.app_users;
+create policy user_directory_read on public.app_users for select to authenticated using (auth_user_id = auth.uid() or public.has_portal_role(array['Admin']));
+drop policy if exists admin_user_write on public.app_users;
+create policy admin_user_write on public.app_users for all to authenticated using (public.has_portal_role(array['Admin'])) with check (public.has_portal_role(array['Admin']));
+
+-- Bootstrap the first administrator after creating them in Supabase Auth:
+-- insert into public.app_users (auth_user_id, name, email, role)
+-- select id, 'Portal Administrator', email, 'Admin'
+-- from auth.users where email = 'your-admin@company.com';

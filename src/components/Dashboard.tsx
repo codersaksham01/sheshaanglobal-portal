@@ -21,6 +21,8 @@ import {
 } from '../lib/types';
 import { InvoicePDF } from './InvoicePDF';
 import { QuoteForm } from './QuoteForm';
+import { usePortalIdentity } from './AuthGate';
+import { canAccessTab, canManageTable } from '../lib/permissions';
 import {
   Anchor,
   BarChart3,
@@ -53,6 +55,13 @@ import {
   Ship,
   Sparkles,
   Trash2,
+  Target,
+  LineChart,
+  CheckCircle2,
+  Sun,
+  Moon,
+  FileText,
+  ArrowRight,
   TrendingUp,
   Users,
   X
@@ -81,9 +90,9 @@ const missingPhonePageSize = 40;
 const sourceListPageSize = 60;
 const crmColumnPageSize = 24;
 
-type TabKey = 'overview' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users';
+type TabKey = 'overview' | 'actionQueue' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
-type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string };
+type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
 type ImportDataSource = 'Embassy Data' | 'Custom Researched Data';
 type LeadTrackingAction = 'email_sent' | 'followup_1' | 'followup_2' | 'followup_3' | 'responded' | 'followup_due';
@@ -148,7 +157,8 @@ const blankLead: Partial<Lead> = {
   priority: 'Medium',
   owner: 'Sana Zeba',
   next_follow_up: '',
-  notes: ''
+  notes: '',
+  sequence_enrolled: ''
 };
 
 const blankActivity: Partial<TimelineActivity> = {
@@ -378,6 +388,469 @@ const bestSendWindowIST = (country = '') => {
   return windowStr;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SHIPMENT TRANSIT RADAR — Visual 6-stage progress rail with demurrage clock
+// ─────────────────────────────────────────────────────────────────────────────
+const SHIPMENT_STAGES: ShipmentRecord['status'][] = ['Planning', 'Booked', 'Stuffed', 'Sailed', 'Arrived', 'Delivered'];
+const STAGE_ICONS = ['📋', '🔖', '📦', '🚢', '⚓', '✅'];
+
+const ShipmentRadar = ({
+  shipments,
+  clients,
+  onSelectShipment,
+}: {
+  shipments: ShipmentRecord[];
+  clients: Client[];
+  onSelectShipment: (id: string) => void;
+}) => {
+  const active = shipments.filter(s => !['Delivered'].includes(s.status)).slice(0, 6);
+  const [now, setNow] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  if (active.length === 0) return null;
+
+  const msPerDay = 86400000;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-1">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+          <Ship className="h-4 w-4 text-sky-500" />
+          Live Shipment Transit Radar
+          <span className="sbadge sbadge-sky">{active.length} Active</span>
+        </h3>
+      </div>
+      <div className="space-y-4">
+        {active.map(s => {
+          const activeIdx = SHIPMENT_STAGES.indexOf(s.status);
+          const client = clients.find(c => c.id === s.client_id);
+          const etaDays = s.eta && now ? Math.ceil((new Date(s.eta).getTime() - now) / msPerDay) : null;
+          const demurrage = s.status === 'Sailed' && etaDays !== null && etaDays <= 3;
+
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onSelectShipment(s.id)}
+              className="w-full text-left group"
+            >
+              <div className="flex items-center justify-between mb-1.5 gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-[11px] font-black text-slate-700 truncate">{client?.company_name || 'Shipment'}</span>
+                  {s.booking_number && <span className="text-[10px] text-slate-400 font-mono shrink-0">{s.booking_number}</span>}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {demurrage && (
+                    <span className="sbadge sbadge-red animate-pulse">
+                      ⚠ ETA {etaDays}d
+                    </span>
+                  )}
+                  {!demurrage && etaDays !== null && (
+                    <span className="sbadge sbadge-slate">ETA {etaDays > 0 ? `+${etaDays}d` : 'Today'}</span>
+                  )}
+                  <span className={`sbadge ${activeIdx >= 3 ? 'sbadge-sky' : activeIdx >= 1 ? 'sbadge-amber' : 'sbadge-slate'}`}>{s.status}</span>
+                </div>
+              </div>
+              {/* Progress Rail */}
+              <div className="flex items-center gap-0">
+                {SHIPMENT_STAGES.map((stage, i) => {
+                  const done = i < activeIdx;
+                  const active = i === activeIdx;
+                  const future = i > activeIdx;
+                  return (
+                    <React.Fragment key={stage}>
+                      {/* Node */}
+                      <div className={`relative flex items-center justify-center h-7 w-7 rounded-full text-[10px] shrink-0 transition-all ${
+                        done ? 'bg-emerald-500 text-white shadow-sm' :
+                        active ? 'bg-sky-500 text-white shadow-md ring-2 ring-sky-200' :
+                        'bg-slate-100 text-slate-400'
+                      }`}>
+                        {done ? '✓' : STAGE_ICONS[i]}
+                        {active && <span className="absolute inset-0 rounded-full bg-sky-400 animate-ping opacity-30" />}
+                      </div>
+                      {/* Connector */}
+                      {i < SHIPMENT_STAGES.length - 1 && (
+                        <div className={`flex-1 h-[2px] mx-0.5 ${done ? 'bg-emerald-400' : 'bg-slate-100'}`} />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between mt-1 px-0.5">
+                {SHIPMENT_STAGES.map((stage, i) => (
+                  <span key={stage} className={`text-[8px] font-semibold ${i === activeIdx ? 'text-sky-600' : 'text-slate-300'} ${i === 0 ? 'text-left' : i === SHIPMENT_STAGES.length - 1 ? 'text-right' : 'text-center'} w-7`} style={{minWidth: 0}}>
+                    {stage.slice(0, 4)}
+                  </span>
+                ))}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARGIN GUARD — Deterministic live margin calculator + container fill optimizer
+// ─────────────────────────────────────────────────────────────────────────────
+const MarginGuard = ({
+  quote,
+  fxRate,
+  fxRateLoading,
+}: {
+  quote: Partial<Quote> & { items?: NonNullable<Quote['items']> };
+  fxRate: number;
+  fxRateLoading: boolean;
+}) => {
+  const MARGIN_FLOOR = 8;
+
+  const totalRevenue = useMemo(() => {
+    const items = (quote.items || []).reduce((sum, it) => sum + (Number(it.unit_price || 0) * Number(it.quantity || 0)), 0);
+    return items + Number(quote.packaging_cost || 0) + Number(quote.inland_haulage_cost || 0) +
+      Number(quote.customs_clearance_cost || 0) + Number(quote.freight_cost || 0) + Number(quote.insurance_cost || 0);
+  }, [quote]);
+
+  const totalCost = useMemo(() => {
+    const items = (quote.items || []).reduce((sum, it) => sum + (Number(it.cost_price || 0) * Number(it.quantity || 0)), 0);
+    return items + Number(quote.packaging_cost || 0) + Number(quote.inland_haulage_cost || 0) +
+      Number(quote.customs_clearance_cost || 0) + Number(quote.freight_cost || 0) + Number(quote.insurance_cost || 0);
+  }, [quote]);
+
+  const netMarginPct = totalRevenue > 0 ? Math.round(((totalRevenue - totalCost) / totalRevenue) * 100) : 0;
+  const gaugeColor = netMarginPct >= 15 ? '#10b981' : netMarginPct >= 8 ? '#f59e0b' : '#ef4444';
+  const gaugeBg = netMarginPct >= 15 ? '#f0fdf4' : netMarginPct >= 8 ? '#fffbeb' : '#fef2f2';
+
+  const totalWeightKg = useMemo(() =>
+    (quote.items || []).reduce((sum, it) => sum + (Number(it.weight || 0) * Number(it.quantity || 0)), 0),
+  [quote.items]);
+
+  const fillPct20ft = Math.min(100, Math.round((totalWeightKg / 26500) * 100));
+  const fillPct40ft = Math.min(100, Math.round((totalWeightKg / 28000) * 100));
+
+  const revenueINR = quote.currency === 'USD' ? totalRevenue * fxRate : totalRevenue;
+  const costINR    = quote.currency === 'USD' ? totalCost    * fxRate : totalCost;
+
+  if (totalRevenue === 0) return null;
+
+  return (
+    <div className="rounded-xl border p-4 space-y-3" style={{ background: gaugeBg, borderColor: gaugeColor + '33' }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-4 w-4" style={{ color: gaugeColor }} />
+          <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider">Margin Guard</span>
+          {fxRateLoading && <span className="text-[9px] text-slate-400 animate-pulse">Updating FX…</span>}
+        </div>
+        <span className="text-xl font-black" style={{ color: gaugeColor }}>{netMarginPct}%</span>
+      </div>
+
+      {/* Gauge bar */}
+      <div className="margin-gauge-track">
+        <div
+          className="margin-gauge-fill"
+          style={{ width: `${Math.min(100, Math.max(0, netMarginPct))}%`, backgroundColor: gaugeColor }}
+        />
+      </div>
+
+      {netMarginPct < MARGIN_FLOOR && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+          <span className="text-red-600 text-[10px] font-bold">⚠ Margin below floor ({MARGIN_FLOOR}%). Increase price or reduce cost before sending quote.</span>
+        </div>
+      )}
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-white/70 rounded-lg p-2">
+          <p className="text-[9px] text-slate-500 font-bold uppercase">Revenue</p>
+          <p className="text-[11px] font-black text-slate-900">₹{(revenueINR / 1000).toFixed(0)}k</p>
+        </div>
+        <div className="bg-white/70 rounded-lg p-2">
+          <p className="text-[9px] text-slate-500 font-bold uppercase">Cost</p>
+          <p className="text-[11px] font-black text-slate-900">₹{(costINR / 1000).toFixed(0)}k</p>
+        </div>
+        <div className="bg-white/70 rounded-lg p-2">
+          <p className="text-[9px] text-slate-500 font-bold uppercase">USD/INR</p>
+          <p className="text-[11px] font-black text-emerald-600">₹{fxRate.toFixed(1)}</p>
+        </div>
+      </div>
+
+      {/* Container fill optimizer */}
+      {totalWeightKg > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider">Container Fill ({(totalWeightKg / 1000).toFixed(1)} MT)</p>
+          <div>
+            <div className="flex justify-between text-[9px] text-slate-500 mb-0.5">
+              <span>20ft FCL</span><span>{fillPct20ft}% of 26.5 MT</span>
+            </div>
+            <div className="margin-gauge-track">
+              <div className="margin-gauge-fill" style={{ width: `${fillPct20ft}%`, backgroundColor: fillPct20ft > 90 ? '#10b981' : fillPct20ft > 60 ? '#f59e0b' : '#94a3b8' }} />
+            </div>
+          </div>
+          <div>
+            <div className="flex justify-between text-[9px] text-slate-500 mb-0.5">
+              <span>40ft HQ</span><span>{fillPct40ft}% of 28.0 MT</span>
+            </div>
+            <div className="margin-gauge-track">
+              <div className="margin-gauge-fill" style={{ width: `${fillPct40ft}%`, backgroundColor: fillPct40ft > 90 ? '#10b981' : fillPct40ft > 60 ? '#f59e0b' : '#94a3b8' }} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PipelineChart = ({ leads }: { leads: Lead[] }) => {
+  const stages = ['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost'];
+  const stageCounts = stages.map((stage) => {
+    return {
+      stage,
+      count: leads.filter((lead) => lead.stage === stage).length
+    };
+  });
+  const maxCount = Math.max(...stageCounts.map(d => d.count), 1);
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+      <h3 className="font-extrabold text-slate-900 text-sm mb-4 relative pb-2 border-b border-slate-100 flex items-center">
+        <span className="absolute bottom-[-1px] left-0 h-[2px] w-8 bg-indigo-500 rounded"></span>
+        CRM Pipeline Funnel
+      </h3>
+      <div className="w-full flex items-center justify-center">
+        <svg viewBox="0 0 420 180" className="w-full h-auto">
+          <line x1="40" y1="20" x2="400" y2="20" stroke="#f8fafc" strokeWidth="1" />
+          <line x1="40" y1="75" x2="400" y2="75" stroke="#f8fafc" strokeWidth="1" />
+          <line x1="40" y1="130" x2="400" y2="130" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+
+          {stageCounts.map((d, i) => {
+            const x = 50 + i * 60;
+            const barHeight = (d.count / maxCount) * 110;
+            const y = 130 - barHeight;
+            const colors = [
+              ['#38bdf8', '#0284c7'],
+              ['#818cf8', '#4f46e5'],
+              ['#fb7185', '#e11d48'],
+              ['#fbbf24', '#d97706'],
+              ['#34d399', '#059669'],
+              ['#94a3b8', '#475569']
+            ];
+            const [gradStart, gradEnd] = colors[i % colors.length];
+
+            return (
+              <g key={d.stage} className="group">
+                <defs>
+                  <linearGradient id={`grad-${i}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor={gradStart} />
+                    <stop offset="100%" stopColor={gradEnd} />
+                  </linearGradient>
+                </defs>
+                <rect
+                  x={x}
+                  y={y}
+                  width="36"
+                  height={Math.max(barHeight, 2)}
+                  rx="4"
+                  fill={`url(#grad-${i})`}
+                  className="transition-all duration-300 hover:opacity-90 cursor-pointer"
+                />
+                <text
+                  x={x + 18}
+                  y={y - 6}
+                  textAnchor="middle"
+                  className="fill-slate-700 text-[10px] font-extrabold"
+                >
+                  {d.count}
+                </text>
+                <text
+                  x={x + 18}
+                  y="150"
+                  textAnchor="middle"
+                  className="fill-slate-400 text-[8px] font-bold tracking-tight uppercase"
+                >
+                  {d.stage.split(' ')[0]}
+                </text>
+              </g>
+            );
+          })}
+          <line x1="30" y1="130" x2="410" y2="130" stroke="#cbd5e1" strokeWidth="1.5" />
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+const RevenueTrendChart = ({ quotes, formatQuoteCurrency }: { quotes: Quote[]; formatQuoteCurrency: (val: number, cur: 'INR') => string }) => {
+  const months = useMemo(() => {
+    const list: { monthLabel: string; value: number }[] = [];
+    const now = new Date();
+    for (let i = 4; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const monthIdx = d.getMonth();
+      const monthLabel = d.toLocaleString('en-US', { month: 'short' });
+
+      const monthQuotes = quotes.filter((q) => {
+        const qDate = new Date(q.created_at || q.updated_at || now);
+        return qDate.getFullYear() === year && qDate.getMonth() === monthIdx;
+      });
+
+      const totalValue = monthQuotes.reduce((acc, q) => {
+        const freight = Number(q.freight_cost || 0);
+        const ins = Number(q.insurance_cost || 0);
+        const pack = Number(q.packaging_cost || 0);
+        const haul = Number(q.inland_haulage_cost || 0);
+        const custom = Number(q.customs_clearance_cost || 0);
+
+        let itemsSum = 0;
+        if (q.items) {
+          itemsSum = q.items.reduce((sum, item) => sum + (Number(item.unit_price || 0) * Number(item.quantity || 0)), 0);
+        }
+        return acc + freight + ins + pack + haul + custom + itemsSum;
+      }, 0);
+
+      list.push({ monthLabel, value: totalValue });
+    }
+    return list;
+  }, [quotes]);
+
+  const maxVal = Math.max(...months.map((m) => m.value), 1);
+  const points = months.map((m, i) => {
+    const x = 50 + i * 80;
+    const y = 130 - (m.value / maxVal) * 90;
+    return { x, y };
+  });
+
+  const linePath = points.reduce((acc, p, i) => {
+    return acc + `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`;
+  }, '');
+
+  const areaPath = points.length > 0
+    ? `${linePath} L ${points[points.length - 1].x} 130 L ${points[0].x} 130 Z`
+    : '';
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+      <h3 className="font-extrabold text-slate-900 text-sm mb-4 relative pb-2 border-b border-slate-100 flex items-center">
+        <span className="absolute bottom-[-1px] left-0 h-[2px] w-8 bg-emerald-500 rounded"></span>
+        Revenue Value Trend
+      </h3>
+      <div className="w-full flex items-center justify-center">
+        <svg viewBox="0 0 420 180" className="w-full h-auto">
+          <defs>
+            <linearGradient id="areaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+
+          <line x1="40" y1="40" x2="380" y2="40" stroke="#f8fafc" strokeWidth="1" />
+          <line x1="40" y1="85" x2="380" y2="85" stroke="#f8fafc" strokeWidth="1" />
+          <line x1="40" y1="130" x2="380" y2="130" stroke="#f1f5f9" strokeWidth="1" />
+
+          {areaPath && <path d={areaPath} fill="url(#areaGrad)" />}
+          {linePath && <path d={linePath} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+
+          {points.map((p, i) => (
+            <g key={i} className="group">
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r="4.5"
+                fill="#ffffff"
+                stroke="#10b981"
+                strokeWidth="2.5"
+                className="transition-all duration-300 hover:r-6 cursor-pointer"
+              />
+              <text
+                x={p.x}
+                y={p.y - 10}
+                textAnchor="middle"
+                className="fill-slate-800 text-[8px] font-extrabold opacity-75 group-hover:opacity-100 transition-opacity"
+              >
+                {months[i].value > 100000
+                  ? `₹${(months[i].value / 100000).toFixed(1)}L`
+                  : months[i].value > 1000
+                  ? `₹${(months[i].value / 1000).toFixed(0)}k`
+                  : `₹${months[i].value.toFixed(0)}`}
+              </text>
+              <text
+                x={p.x}
+                y="152"
+                textAnchor="middle"
+                className="fill-slate-400 text-[9px] font-black uppercase tracking-wider"
+              >
+                {months[i].monthLabel}
+              </text>
+            </g>
+          ))}
+          <line x1="30" y1="130" x2="390" y2="130" stroke="#cbd5e1" strokeWidth="1.5" />
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+const LogisticsCompletionGauge = ({ completionRate, totalCount }: { completionRate: number; totalCount: number }) => {
+  const radius = 50;
+  const strokeWidth = 8;
+  const normalizedRadius = radius - strokeWidth * 2;
+  const circumference = normalizedRadius * 2 * Math.PI;
+  const strokeDashoffset = circumference - (completionRate / 100) * circumference;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+      <h3 className="font-extrabold text-slate-900 text-sm mb-4 relative pb-2 border-b border-slate-100 flex items-center">
+        <span className="absolute bottom-[-1px] left-0 h-[2px] w-8 bg-sky-500 rounded"></span>
+        Logistics Compliance Gauge
+      </h3>
+      <div className="flex items-center gap-6 py-2">
+        <div className="relative flex items-center justify-center shrink-0">
+          <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
+            <circle
+              stroke="#f1f5f9"
+              fill="transparent"
+              strokeWidth={strokeWidth}
+              r={normalizedRadius}
+              cx={radius}
+              cy={radius}
+            />
+            <circle
+              stroke="#0ea5e9"
+              fill="transparent"
+              strokeWidth={strokeWidth}
+              strokeDasharray={circumference + ' ' + circumference}
+              style={{ strokeDashoffset }}
+              strokeLinecap="round"
+              r={normalizedRadius}
+              cx={radius}
+              cy={radius}
+              className="transition-all duration-500 ease-out"
+            />
+          </svg>
+          <div className="absolute flex flex-col items-center justify-center">
+            <span className="text-[11px] font-black text-slate-900 leading-none">{completionRate}%</span>
+            <span className="text-[6px] font-black uppercase text-slate-400 mt-0.5 tracking-tighter">Done</span>
+          </div>
+        </div>
+        <div className="space-y-1.5 min-w-0">
+          <p className="text-[11px] text-slate-500 leading-snug">
+            Out of <strong className="text-slate-800 font-bold">{totalCount} Active Checklists</strong>, export documents are compiled to complete standards.
+          </p>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-ping shrink-0" />
+            <span className="text-[9px] font-black text-sky-700 bg-sky-50 px-2 py-0.5 rounded uppercase tracking-wider">Compliance Active</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Dashboard: React.FC = () => {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -411,6 +884,238 @@ export const Dashboard: React.FC = () => {
   const [importProgress, setImportProgress] = useState<ImportProgress>(null);
   const [importDataSource, setImportDataSource] = useState<ImportDataSource>('Custom Researched Data');
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+
+  // Next-Generation Enterprise Upgrade States
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandSearch, setCommandSearch] = useState('');
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [copilotMessage, setCopilotMessage] = useState('');
+  const [copilotLog, setCopilotLog] = useState<{ sender: 'ai' | 'user'; text: string; action?: { label: string; tab: TabKey } }[]>([
+    { sender: 'ai', text: 'Sheshaan AI Copilot ready. Ask to "add lead Nestle Switzerland Peanuts", "create quote", "analytics", or search items.' }
+  ]);
+  const [autoDocShipmentId, setAutoDocShipmentId] = useState<string>('');
+  const [autoDocType, setAutoDocType] = useState<'invoice' | 'packing_list'>('invoice');
+  const { email: authEmail } = usePortalIdentity();
+  const currentRole = useMemo(() => {
+    if (!authEmail) return 'Admin';
+    const matchedUser = users.find((u) => u.email.toLowerCase() === authEmail.toLowerCase());
+    return matchedUser?.role || 'Admin';
+  }, [users, authEmail]);
+
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ message, type });
+  };
+
+  const alert = (msg: string) => {
+    const isErr = msg.toLowerCase().includes('failed') ||
+                  msg.toLowerCase().includes('error') ||
+                  msg.toLowerCase().includes('not') ||
+                  msg.toLowerCase().includes('denied') ||
+                  msg.toLowerCase().includes('please') ||
+                  msg.toLowerCase().includes('invalid');
+    showToast(msg, isErr ? 'error' : 'success');
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    setTheme(savedTheme as 'light' | 'dark');
+    if (savedTheme === 'dark') {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem('theme', nextTheme);
+    if (nextTheme === 'dark') {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+    }
+    showToast(`Theme switched to ${nextTheme} mode!`, 'info');
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // ── FX Rate State & Fetcher ──────────────────────────────────────────
+  const [fxRate, setFxRate] = useState<number>(84); // fallback: ₹84 per $1
+  const [fxRateLoading, setFxRateLoading] = useState(false);
+  const [fxRateFetchedAt, setFxRateFetchedAt] = useState<string>('');
+
+  useEffect(() => {
+    const FX_CACHE_KEY = 'fx_cache_usd_inr';
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    try {
+      const cached = localStorage.getItem(FX_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const age = Date.now() - new Date(parsed.fetched_at).getTime();
+        if (age < TWO_HOURS_MS && parsed.rate > 0) {
+          setFxRate(parsed.rate);
+          setFxRateFetchedAt(parsed.fetched_at);
+          return;
+        }
+      }
+    } catch {}
+    // Fetch fresh rate from Frankfurter (free, no API key)
+    setFxRateLoading(true);
+    fetch('https://api.frankfurter.app/latest?base=USD&symbols=INR')
+      .then(r => r.json())
+      .then(data => {
+        const rate = data?.rates?.INR;
+        if (rate && rate > 0) {
+          const now = new Date().toISOString();
+          setFxRate(rate);
+          setFxRateFetchedAt(now);
+          localStorage.setItem('fx_cache_usd_inr', JSON.stringify({ rate, base: 'USD', target: 'INR', fetched_at: now }));
+        }
+      })
+      .catch(() => { /* Keep fallback ₹84 */ })
+      .finally(() => setFxRateLoading(false));
+  }, []);
+
+  // ── Enterprise Grid: Row Density & Multi-Select ──────────────────────
+  const [rowDensity, setRowDensity] = useState<'compact' | 'default' | 'comfortable'>('default');
+  const [selectedQuoteIds, setSelectedQuoteIds] = useState<string[]>([]);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [selectedLeadIdsGrid, setSelectedLeadIdsGrid] = useState<string[]>([]);
+  const [quoteSortCol, setQuoteSortCol] = useState<string>('created_at');
+  const [quoteSortDir, setQuoteSortDir] = useState<'asc' | 'desc'>('desc');
+  const [dossierQuoteId, setDossierQuoteId] = useState<string>('');
+  const [dossierOpen, setDossierOpen] = useState(false);
+
+  // ── Trigger Engine: State-Transition Rule-Based Task Auto-Creator ─────
+  const prevInvoicesRef = React.useRef<typeof invoices>([]);
+  const prevQuotesRef   = React.useRef<typeof quotes>([]);
+  const prevShipmentsRef = React.useRef<typeof shipments>([]);
+  const prevLeadsRef    = React.useRef<typeof leads>([]);
+  const prevChecklistsRef = React.useRef<typeof checklists>([]);
+  const triggerEngineRef = React.useRef(false);
+
+  const autoCreateTask = React.useCallback(async (
+    title: string,
+    priority: 'High' | 'Medium' | 'Low',
+    dueDays: number,
+    links: Partial<Pick<TaskRecord, 'quote_id' | 'invoice_id' | 'shipment_id' | 'client_id' | 'lead_id'>>,
+    existingTasks: TaskRecord[]
+  ) => {
+    // Deduplicate: skip if open task with same title+link already exists
+    const linkKey = Object.entries(links).find(([, v]) => v)?.[1] || '';
+    const dupe = existingTasks.some(t =>
+      t.status !== 'Done' &&
+      t.title === title &&
+      Object.entries(links).every(([k, v]) => (t as unknown as Record<string,unknown>)[k] === v)
+    );
+    if (dupe) return;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + dueDays);
+    const newTask: Partial<TaskRecord> = {
+      title,
+      status: 'Open',
+      priority,
+      due_date: dueDate.toISOString().slice(0, 10),
+      owner: 'Sana Zeba',
+      notes: `[AUTO] Generated by Trigger Engine${linkKey ? ` | ref: ${linkKey}` : ''}`,
+      ...links,
+    };
+    const { data } = await supabase.from('tasks').insert([newTask]).select();
+    if (data?.[0]) setTasks(prev => [data[0] as TaskRecord, ...prev]);
+  }, []);
+
+  useEffect(() => {
+    if (!triggerEngineRef.current) { triggerEngineRef.current = true; return; } // skip first mount
+
+    const prevInv  = prevInvoicesRef.current;
+    const prevQts  = prevQuotesRef.current;
+    const prevShps = prevShipmentsRef.current;
+    const prevLds  = prevLeadsRef.current;
+    const prevChks = prevChecklistsRef.current;
+
+    // Rule 1: Invoice → Paid → create "Book Shipment" task
+    invoices.forEach(inv => {
+      const prev = prevInv.find(p => p.id === inv.id);
+      if (prev && prev.payment_status !== 'Paid' && inv.payment_status === 'Paid') {
+        const clientName = clients.find(c => c.id === inv.client_id)?.company_name || 'Client';
+        autoCreateTask(`Book Shipment for ${clientName}`, 'High', 1, { invoice_id: inv.id, client_id: inv.client_id || undefined }, tasks);
+      }
+      if (prev && prev.payment_status !== 'Overdue' && inv.payment_status === 'Overdue') {
+        const clientName = clients.find(c => c.id === inv.client_id)?.company_name || 'Client';
+        autoCreateTask(`Chase overdue payment from ${clientName}`, 'High', 0, { invoice_id: inv.id, client_id: inv.client_id || undefined }, tasks);
+      }
+    });
+
+    // Rule 2: Quote status transitions
+    quotes.forEach(q => {
+      const prev = prevQts.find(p => p.id === q.id);
+      if (prev && prev.status !== 'Approved' && q.status === 'Approved') {
+        autoCreateTask(`Raise Invoice for Quote ${q.quote_number}`, 'High', 2, { quote_id: q.id, client_id: q.client_id }, tasks);
+      }
+      if (prev && prev.status !== 'Sent' && q.status === 'Sent') {
+        autoCreateTask(`Follow up on Quote ${q.quote_number}`, 'Medium', 4, { quote_id: q.id, client_id: q.client_id }, tasks);
+      }
+    });
+
+    // Rule 3: Shipment status transitions
+    shipments.forEach(s => {
+      const prev = prevShps.find(p => p.id === s.id);
+      if (prev && prev.status !== 'Sailed' && s.status === 'Sailed') {
+        const clientName = clients.find(c => c.id === s.client_id)?.company_name || 'Client';
+        autoCreateTask(`Share Bill of Lading copy with ${clientName}`, 'High', 1, { shipment_id: s.id, client_id: s.client_id || undefined }, tasks);
+      }
+      if (prev && prev.status !== 'Arrived' && s.status === 'Arrived') {
+        autoCreateTask(`Arrange customs clearance & delivery`, 'High', 0, { shipment_id: s.id, client_id: s.client_id || undefined }, tasks);
+      }
+    });
+
+    // Rule 4: Lead Won → Onboard task
+    leads.forEach(l => {
+      const prev = prevLds.find(p => p.id === l.id);
+      if (prev && prev.stage !== 'Won' && l.stage === 'Won') {
+        autoCreateTask(`Onboard ${l.company_name} as active client`, 'High', 3, { lead_id: l.id, client_id: l.client_id || undefined }, tasks);
+      }
+    });
+
+    // Rule 5: All 6 checklist docs complete → submit to forwarder task
+    checklists.forEach(c => {
+      const prev = prevChks.find(p => p.id === c.id);
+      const allDone = c.commercial_invoice && c.packing_list && c.certificate_origin && c.phytosanitary && c.insurance && c.bill_of_lading;
+      const prevAllDone = prev && prev.commercial_invoice && prev.packing_list && prev.certificate_origin && prev.phytosanitary && prev.insurance && prev.bill_of_lading;
+      if (allDone && !prevAllDone) {
+        autoCreateTask(`Submit full dossier to freight forwarder`, 'High', 1, { shipment_id: c.shipment_id || undefined }, tasks);
+      }
+    });
+
+    prevInvoicesRef.current  = invoices;
+    prevQuotesRef.current    = quotes;
+    prevShipmentsRef.current = shipments;
+    prevLeadsRef.current     = leads;
+    prevChecklistsRef.current = checklists;
+  }, [invoices, quotes, shipments, leads, checklists]);
+
+
 
   const [quoteSearch, setQuoteSearch] = useState('');
   const [quoteStatusFilter, setQuoteStatusFilter] = useState<'All' | Quote['status']>('All');
@@ -618,7 +1323,7 @@ export const Dashboard: React.FC = () => {
   }, [quotes, invoices, shipments, checklists, freightRates, tasks, leads]);
 
   const quoteClient = (quote: Quote) => quote.client || clients.find((client) => client.id === quote.client_id);
-  
+
   const clientCountries = useMemo(() => {
     const map: Record<string, string> = {};
     clients.forEach((client) => {
@@ -647,8 +1352,34 @@ export const Dashboard: React.FC = () => {
     return map;
   }, [clients, leads]);
 
+  const leadScoreValue = useMemo(() => {
+    const calculateScore = (l: Lead) => {
+      let score = 30; // base score
+      if (l.phone && l.phone.trim().length > 0) score += 20;
+      if (l.contact_email && l.contact_email.trim().length > 0) score += 20;
+      if (l.country) score += 10;
+      if (l.product_interest) score += 10;
+
+      const hasQuotes = quotes.some(q => q.client_id === l.client_id || q.client?.company_name.toLowerCase() === l.company_name.toLowerCase());
+      if (hasQuotes) score += 10;
+
+      const hasInvoices = invoices.some(i => i.client_id === l.client_id && i.payment_status === 'Paid');
+      if (hasInvoices) score += 10;
+
+      return Math.min(100, Math.max(0, score));
+    };
+
+    const map: Record<string, number> = {};
+    leads.forEach(l => {
+      map[l.id] = calculateScore(l);
+    });
+    return map;
+  }, [leads, quotes, invoices]);
+
+
+
   const buyerCountry = (client: Client) => clientCountries[client.id] || 'Uncategorized';
-  
+
   const todayStart = new Date().setHours(0, 0, 0, 0);
   const todayEnd = new Date().setHours(23, 59, 59, 999);
   const leadNoteValue = (lead: Lead, label: string) => {
@@ -743,6 +1474,130 @@ export const Dashboard: React.FC = () => {
     };
   };
 
+  const actionQueueItems = useMemo(() => {
+    const list: { id: string; tone: 'critical' | 'warning' | 'opportunity' | 'healthy'; title: string; detail: string; evidence: string; action: string; target: TabKey }[] = [];
+
+    invoices.forEach((inv) => {
+      const isOverdue = inv.payment_status === 'Overdue' ||
+                        (inv.payment_status !== 'Paid' && inv.due_date && new Date(inv.due_date).getTime() < new Date().setHours(0, 0, 0, 0));
+      if (isOverdue) {
+        const clientName = clients.find(c => c.id === inv.client_id)?.company_name || 'Client';
+        list.push({
+          id: `inv-${inv.id}`,
+          tone: 'critical',
+          title: 'Invoice Payment Overdue',
+          detail: `Invoice ${inv.invoice_number} for ${clientName} is past its due date. Amount: ${formatQuoteCurrency(inv.amount || 0, inv.currency || 'INR')}.`,
+          evidence: `Due: ${inv.due_date || 'Not set'} | Bal: ${formatQuoteCurrency(inv.balance_amount || inv.amount || 0, inv.currency || 'INR')}`,
+          action: 'Send Reminder',
+          target: 'accounts'
+        });
+      }
+    });
+
+    checklists.forEach((item) => {
+      const missing = [];
+      if (!item.commercial_invoice) missing.push('Invoice');
+      if (!item.packing_list) missing.push('Packing List');
+      if (!item.certificate_origin) missing.push('COO');
+      if (!item.phytosanitary) missing.push('Phytosanitary');
+      if (!item.insurance) missing.push('Insurance');
+      if (!item.bill_of_lading) missing.push('Bill of Lading');
+
+      if (missing.length > 0) {
+        const shipment = shipments.find(s => s.id === item.shipment_id || s.quote_id === item.quote_id);
+        const ref = shipment?.booking_number || item.quote_id || 'Shipment';
+        list.push({
+          id: `doc-${item.id}`,
+          tone: 'warning',
+          title: 'Missing Cargo Documents',
+          detail: `Compliance checklist for ${ref} is missing required papers: ${missing.join(', ')}.`,
+          evidence: `${missing.length} documents missing from checklist`,
+          action: 'Upload Docs',
+          target: 'documents'
+        });
+      }
+    });
+
+    leads.forEach((l) => {
+      if (l.sequence_enrolled) {
+        const emailStatus = leadEmailStatus(l).toLowerCase();
+        if (l.sequence_enrolled === 'Intro Sequence') {
+          if (emailStatus.includes('not sent') || emailStatus === 'new') {
+            list.push({
+              id: `seq-intro-1-${l.id}`,
+              tone: 'critical',
+              title: 'Sequence: Intro Day 1',
+              detail: `Send introductory email presentation to ${l.company_name} as enrolled in Intro Sequence.`,
+              evidence: `Sequence: Intro Sequence | Enrolled`,
+              action: 'Send Intro',
+              target: 'crm'
+            });
+          } else {
+            list.push({
+              id: `seq-intro-3-${l.id}`,
+              tone: 'warning',
+              title: 'Sequence: Intro Day 3 Follow-up',
+              detail: `Follow up on introductory offer with ${l.company_name}. Check if catalog was reviewed.`,
+              evidence: `Prior outreach sent | Score: ${leadScoreValue[l.id] || 0}`,
+              action: 'Draft Follow-up',
+              target: 'crm'
+            });
+          }
+        } else if (l.sequence_enrolled === 'Warm Follow-Up') {
+          list.push({
+            id: `seq-warm-${l.id}`,
+            tone: 'opportunity',
+            title: 'Sequence: Warm Follow-up',
+            detail: `Reach out to warm contact ${l.company_name} with custom quotation or revised rates.`,
+            evidence: `Sequence: Warm Follow-up | Score: ${leadScoreValue[l.id] || 0}`,
+            action: 'Send Message',
+            target: 'crm'
+          });
+        }
+      } else if (leadActionCategory(l) === 'Need Reach Out') {
+        const score = leadScoreValue[l.id] || 0;
+        list.push({
+          id: `lead-${l.id}`,
+          tone: 'opportunity',
+          title: 'Uncontacted Lead (Outreach Opportunity)',
+          detail: `New lead registered for ${l.company_name} dealing in ${l.product_interest || 'unspecified'}.`,
+          evidence: `Smart Lead Score: ${score}/100`,
+          action: 'Initiate Outreach',
+          target: 'crm'
+        });
+      } else if (leadActionCategory(l) === 'Follow-up Due') {
+        const score = leadScoreValue[l.id] || 0;
+        list.push({
+          id: `lead-followup-${l.id}`,
+          tone: 'warning',
+          title: 'Follow-up Due',
+          detail: `Scheduled follow-up is due for ${l.company_name} dealing in ${l.product_interest || 'unspecified'}.`,
+          evidence: `Next Action: ${leadNextAction(l)} | Score: ${score}/100`,
+          action: 'Send Follow-up',
+          target: 'crm'
+        });
+      }
+    });
+
+    tasks.forEach((t) => {
+      const isOverdue = t.status !== 'Done' && t.due_date && new Date(t.due_date).getTime() < new Date().setHours(0, 0, 0, 0);
+      if (isOverdue) {
+        list.push({
+          id: `task-${t.id}`,
+          tone: 'warning',
+          title: 'Overdue Operational Task',
+          detail: `Task "${t.title}" is pending assignment or completion.`,
+          evidence: `Due: ${t.due_date} | Priority: ${t.priority}`,
+          action: 'Complete Task',
+          target: 'tasks'
+        });
+      }
+    });
+
+    const priorityMap = { critical: 0, warning: 1, opportunity: 2, healthy: 3 };
+    return list.sort((a, b) => priorityMap[a.tone] - priorityMap[b.tone]);
+  }, [invoices, checklists, shipments, leads, tasks, clients, leadScoreValue]);
+
   const buyerCountries = useMemo(() => {
     return Array.from(new Set(clients.map((client) => clientCountries[client.id] || 'Uncategorized').filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [clients, clientCountries]);
@@ -781,13 +1636,13 @@ export const Dashboard: React.FC = () => {
   };
 
   const filteredBuyers = useMemo(() => {
-    const countryList = buyerCountryFilter === 'All' 
-      ? clients 
+    const countryList = buyerCountryFilter === 'All'
+      ? clients
       : clients.filter((client) => (clientCountries[client.id] || 'Uncategorized') === buyerCountryFilter);
     const list = buyerActionFilter === 'All'
       ? countryList
       : countryList.filter((client) => buyerActionCategory(client) === buyerActionFilter);
-    
+
     const query = deferredBuyerSearchQuery.trim().toLowerCase();
     const searchedList = query
       ? list.filter((client) => {
@@ -1435,14 +2290,14 @@ export const Dashboard: React.FC = () => {
       const isNew = !editingId;
       const payloadObj = finalPayload as any;
       const leadCompany = payloadObj.company_name;
-      
+
       if (leadCompany) {
         const client = clients.find(c => c.company_name.toLowerCase() === leadCompany.toLowerCase());
-        
+
         if (isNew) {
           const insertedLead = Array.isArray(data) ? data[0] : data;
           const leadId = insertedLead?.id || payloadObj.id;
-          
+
           if (!client) {
             const newClientPayload = {
               company_name: payloadObj.company_name,
@@ -1453,10 +2308,10 @@ export const Dashboard: React.FC = () => {
               phone: payloadObj.phone || '',
               products_dealing: payloadObj.product_interest ? [payloadObj.product_interest] : []
             };
-            
+
             const { data: insertedClient } = await supabase.from('clients').insert([newClientPayload]).select().single();
             const newClientId = insertedClient?.id;
-            
+
             if (leadId && newClientId) {
               await supabase.from('leads').update({
                 client_id: newClientId
@@ -1493,6 +2348,34 @@ export const Dashboard: React.FC = () => {
           stage: 'Won'
         }).eq('id', lead.id);
       }
+    }
+
+    // Buyer Lifecycle Automation
+    try {
+      if (table === 'clients' && !editingId) {
+        const clientRecord = Array.isArray(data) ? data[0] : data;
+        if (clientRecord?.id) {
+          await supabase.from('clients').update({ lifecycle_status: 'Prospect' }).eq('id', clientRecord.id);
+        }
+      } else if (table === 'quotes') {
+        const qRecord = Array.isArray(data) ? data[0] : data || finalPayload;
+        if (qRecord?.client_id) {
+          await supabase.from('clients').update({ lifecycle_status: 'Qualified' }).eq('id', qRecord.client_id);
+        }
+      } else if (table === 'invoices') {
+        const invRecord = Array.isArray(data) ? data[0] : data || finalPayload;
+        if (invRecord?.client_id) {
+          const status = invRecord.payment_status === 'Paid' ? 'Completed Cycle' : 'Customer';
+          await supabase.from('clients').update({ lifecycle_status: status }).eq('id', invRecord.client_id);
+        }
+      } else if (table === 'shipments') {
+        const shipRecord = Array.isArray(data) ? data[0] : data || finalPayload;
+        if (shipRecord?.client_id) {
+          await supabase.from('clients').update({ lifecycle_status: 'Active Sourcing' }).eq('id', shipRecord.client_id);
+        }
+      }
+    } catch (lifecycleErr) {
+      console.warn('Lifecycle transition automation failed:', lifecycleErr);
     }
 
     reset();
@@ -1596,8 +2479,8 @@ export const Dashboard: React.FC = () => {
           contact_email: payload.contact_email,
           phone: payload.phone,
           country: payload.destination_port,
-          product_interest: payload.products_dealing && payload.products_dealing.length > 0 
-            ? payload.products_dealing.join(', ') 
+          product_interest: payload.products_dealing && payload.products_dealing.length > 0
+            ? payload.products_dealing.join(', ')
             : 'General export product range',
           estimated_value: 0,
           stage: 'New Lead',
@@ -1745,6 +2628,7 @@ export const Dashboard: React.FC = () => {
       const existingKeys = new Set<string>();
       const importBatchId = Date.now().toString(36);
       let skipped = 0;
+      const skippedCompanies: string[] = [];
 
       clients.forEach((client) => {
         const companyKey = normalizeDuplicateValue(client.company_name);
@@ -1779,6 +2663,7 @@ export const Dashboard: React.FC = () => {
 
         if (!company || rowKeys.some((key) => seen.has(key) || existingKeys.has(key))) {
           skipped += 1;
+          if (company) skippedCompanies.push(company);
           return;
         }
 
@@ -1904,7 +2789,8 @@ export const Dashboard: React.FC = () => {
         activities: activityPayloads.length,
         tasks: taskPayloads.length,
         skipped,
-        message: `Import complete: ${clientPayloads.length} new ${importDataSource.toLowerCase()} buyer${clientPayloads.length === 1 ? '' : 's'} added from ${file.name}. ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped.`
+        message: `Import complete: ${clientPayloads.length} new ${importDataSource.toLowerCase()} buyer${clientPayloads.length === 1 ? '' : 's'} added from ${file.name}. ${skipped} duplicate${skipped === 1 ? '' : 's'} skipped.`,
+        skippedList: skippedCompanies
       });
     } catch (err) {
       console.warn('Buyer import failed:', err);
@@ -2216,13 +3102,15 @@ export const Dashboard: React.FC = () => {
   }, [leads, deferredCrmSearchQuery, crmCountryFilter, crmSortKey]);
 
   const crmQueues = [
-    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out') },
-    { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Follow-up Due') },
-    { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
-    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Waiting Reply') },
-    { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Responded / Qualify') },
-    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Needs Email Fix') },
-    { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: filteredCrmLeads.filter((lead) => leadActionCategory(lead) === 'Review') }
+    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Need Reach Out') },
+    { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Follow-up Due') },
+    { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
+    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Waiting Reply') },
+    { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Responded / Qualify') },
+    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Needs Email Fix') },
+    { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Review') },
+    { label: 'Won / Approved', description: 'Pipeline deals successfully won', tone: 'emerald' as const, leads: filteredCrmLeads.filter((lead) => lead.stage === 'Won') },
+    { label: 'Lost / Declined', description: 'Pipeline deals lost/declined', tone: 'rose' as const, leads: filteredCrmLeads.filter((lead) => lead.stage === 'Lost') }
   ];
 
   const sourceFilteredLeads = useMemo(() => {
@@ -2287,7 +3175,7 @@ export const Dashboard: React.FC = () => {
     reachout: sourceFilteredLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out').length
   }), [leads, sourceFilteredLeads]);
   const visibleSourceLeads = useMemo(() => sourceFilteredLeads.slice(0, sourceVisibleCount), [sourceFilteredLeads, sourceVisibleCount]);
-  const crmBoardColumns = crmQueues.filter((queue) => ['Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix'].includes(queue.label));
+  const crmBoardColumns = crmQueues.filter((queue) => ['Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix', 'Won / Approved', 'Lost / Declined'].includes(queue.label));
   const selectedLeads = leads.filter((lead) => selectedLeadIds.includes(lead.id));
 
   const toggleLeadSelection = (leadId: string, checked: boolean) => {
@@ -2456,8 +3344,9 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const navItems: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
+  const allNavItems: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
+    { key: 'actionQueue', label: 'Action Queue', icon: <Target className="h-4 w-4" />, count: actionQueueItems.length },
     { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
     { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, count: sourceFilteredLeads.length },
     { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
@@ -2473,18 +3362,27 @@ export const Dashboard: React.FC = () => {
     { key: 'freight', label: 'Freight Presets', icon: <Anchor className="h-4 w-4" />, count: freightPresets.length },
     { key: 'rates', label: 'Rate History', icon: <History className="h-4 w-4" />, count: freightRates.length },
     { key: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-4 w-4" /> },
-    { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, count: users.length }
+    { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, count: users.length },
+    { key: 'manager', label: 'Manager Dashboard', icon: <LineChart className="h-4 w-4" /> }
   ];
+
+  const navItems = useMemo(() => {
+    return allNavItems.filter((item) => canAccessTab(currentRole, item.key));
+  }, [leads.length, sourceFilteredLeads.length, reachoutBuyers.length, quotes.length, activities.length, templates.length, tasks, invoices.length, shipments.length, checklists.length, products.length, vendors.length, freightPresets.length, freightRates.length, users.length, currentRole, actionQueueItems.length]);
 
   const activeNavItem = navItems.find((item) => item.key === activeTab);
   const appBusy = loading || importingBuyers;
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
-  const mobilePrimaryNav = navItems.filter((item) => ['overview', 'crm', 'dataSources', 'tasks'].includes(item.key));
-  const navGroups = [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'dataSources', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
+  const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'dataSources', 'tasks'].includes(item.key)), [navItems]);
+  const navGroups = useMemo(() => [
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
-    { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users'].includes(item.key)) }
-  ];
+    { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'manager'].includes(item.key)) }
+  ], [navItems]);
+
+  const hasAccessToActiveTab = useMemo(() => {
+    return canAccessTab(currentRole, activeTab);
+  }, [currentRole, activeTab]);
   const navigateToTab = (tab: TabKey) => {
     setActiveTab(tab);
     setShowMobileMenu(false);
@@ -2507,6 +3405,79 @@ export const Dashboard: React.FC = () => {
     if (leadNextActionRequiresFollowUp(lead) || leadFollowUpDue(lead) || leadHasOutreach(lead)) return 'Follow-up';
     return 'First Reach';
   };
+  const handleSendCopilotMessage = () => {
+    if (!copilotMessage.trim()) return;
+    const msg = copilotMessage.trim();
+    setCopilotLog((prev) => [...prev, { sender: 'user', text: msg }]);
+    setCopilotMessage('');
+
+    setTimeout(() => {
+      const lower = msg.toLowerCase();
+
+      if (lower.startsWith('add lead') || lower.startsWith('create lead')) {
+        const parts = msg.split(/\s+/).slice(2);
+        const company = parts[0] || 'Nestle';
+        const country = parts[1] || 'Switzerland';
+        const product = parts.slice(2).join(' ') || 'Peanuts';
+
+        setLeadForm({
+          ...blankLead,
+          company_name: company,
+          country: country,
+          product_interest: product
+        });
+        setEditingLeadId(null);
+        setActiveTab('crm');
+
+        setCopilotLog((prev) => [...prev, {
+          sender: 'ai',
+          text: `I have pre-populated the CRM form for "${company}" (from ${country}) interested in "${product}". Fill in remaining details on the left.`,
+          action: { label: 'Go to CRM', tab: 'crm' }
+        }]);
+        return;
+      }
+
+      if (lower.includes('quote') || lower.includes('create quote')) {
+        setActiveTab('quotes');
+        setCopilotLog((prev) => [...prev, {
+          sender: 'ai',
+          text: 'Navigated to the Quote Automation workspace. Click "Create New Quote" to begin.',
+          action: { label: 'Go to Quotes', tab: 'quotes' }
+        }]);
+        return;
+      }
+
+      if (lower.includes('analytics') || lower.includes('chart') || lower.includes('reports') || lower.includes('overview')) {
+        setActiveTab('overview');
+        setCopilotLog((prev) => [...prev, {
+          sender: 'ai',
+          text: 'Switched to the Command Center overview. You can inspect operational metrics and trends here.',
+          action: { label: 'Go to Command Center', tab: 'overview' }
+        }]);
+        return;
+      }
+
+      if (lower.startsWith('find') || lower.startsWith('search')) {
+        const query = msg.split(/\s+/).slice(1).join(' ');
+        if (query) {
+          setCrmSearchQuery(query);
+          setActiveTab('crm');
+          setCopilotLog((prev) => [...prev, {
+            sender: 'ai',
+            text: `Filtered CRM board by "${query}".`,
+            action: { label: 'Go to CRM', tab: 'crm' }
+          }]);
+          return;
+        }
+      }
+
+      setCopilotLog((prev) => [...prev, {
+        sender: 'ai',
+        text: `I understood your command "${msg}". Try saying: "add lead Nestle Switzerland Peanuts", "create quote", or search for records.`
+      }]);
+    }, 600);
+  };
+
   const editLeadFromCard = (lead: Lead) => {
     setEditingLeadId(lead.id);
     setLeadForm(lead);
@@ -2555,11 +3526,19 @@ export const Dashboard: React.FC = () => {
             <div className="text-[10px] text-slate-500 truncate">{lead.product_interest || 'General export product range'}</div>
           </div>
         </div>
-        <RowActions onEdit={() => editLeadFromCard(lead)} onDelete={() => deleteRecord('leads', lead.id, 'lead')} />
+        <RowActions currentRole={currentRole} onEdit={() => editLeadFromCard(lead)} onDelete={() => deleteRecord('leads', lead.id, 'lead')} />
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
         <span className={`inline-block px-2 py-0.5 rounded-full border text-[10px] font-extrabold ${leadCategoryClass(actionCategory)}`}>{actionCategory}</span>
         <SmallBadge text={lead.priority || 'Medium'} />
+        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+          (leadScoreValue[lead.id] || 0) >= 70 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+          (leadScoreValue[lead.id] || 0) >= 50 ? 'bg-sky-50 text-sky-800 border border-sky-200' :
+          'bg-slate-50 text-slate-800 border border-slate-200'
+        }`}>Score: {leadScoreValue[lead.id] || 0}</span>
+        {lead.sequence_enrolled && (
+          <span className="inline-block px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100 text-[10px] font-extrabold">Seq: {lead.sequence_enrolled}</span>
+        )}
         <SmallBadge text={leadEmailStatus(lead)} />
         {leadResponded(lead) && <span className="inline-block px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[10px] font-bold">Responded</span>}
         {leadFollowUpDue(lead) && <span className="inline-block px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold">Due</span>}
@@ -2615,53 +3594,95 @@ export const Dashboard: React.FC = () => {
           <div className="h-full w-1/2 animate-loading-bar bg-sky-500 shadow-[0_0_18px_rgba(14,165,233,0.65)]" />
         </div>
       )}
-      <div className="mx-auto max-w-[1500px] p-3 lg:p-5">
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4">
-          <aside className="hidden lg:block bg-white/95 backdrop-blur rounded-lg border border-slate-200 shadow-sm overflow-hidden lg:sticky lg:top-5 lg:h-[calc(100vh-40px)] animate-fade-up">
-            <div className="p-4 border-b border-slate-200 bg-slate-950 text-white">
-              <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded bg-white flex items-center justify-center overflow-hidden border border-white/10">
-                  <Image src="/logo.png" alt="Sheshaan Global logo" width={44} height={44} className="h-full w-full object-contain" />
-                </div>
-                <div>
-                  <h1 className="text-sm font-extrabold tracking-wide">Sheshaan Global</h1>
-                  <p className="text-[11px] text-slate-400">Admin Portal</p>
-                </div>
+      <div className="w-full">
+        <div className="flex flex-col lg:flex-row">
+          <aside
+            data-sidebar="true"
+            className="hidden lg:flex flex-col w-[280px] h-screen fixed top-0 left-0 bg-zinc-950 border-r border-zinc-800 overflow-hidden z-40 animate-fade-up"
+          >
+            {/* Brand Header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-800/80 shrink-0">
+              <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center overflow-hidden shadow-inner shrink-0">
+                <Image src="/logo.png" alt="Sheshaan Global" width={36} height={36} className="h-full w-full object-contain" />
               </div>
+              <div className="min-w-0">
+                <h1 className="text-[13px] font-extrabold text-white tracking-tight leading-none truncate">Sheshaan Global</h1>
+                <p className="text-[10px] text-zinc-500 font-semibold mt-0.5 uppercase tracking-wider">Trade Portal</p>
+              </div>
+            </div>
+
+            {/* New Quote CTA */}
+            <div className="px-4 pt-4 pb-2 shrink-0">
               <button
-                onClick={() => {
-                  setEditingQuoteId(null);
-                  setShowMobileMenu(false);
-                }}
-                className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 bg-white text-slate-950 text-xs font-bold rounded shadow transition hover:bg-slate-100"
+                onClick={() => { setEditingQuoteId(null); setShowMobileMenu(false); navigateToTab('quotes'); }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-white text-[11px] font-bold rounded-lg shadow-sm shadow-sky-500/20 transition-all duration-150"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5" />
                 New Quote
               </button>
             </div>
-            <nav className="hidden lg:block p-2 overflow-y-auto h-[calc(100%-130px)] bg-white">
+
+            {/* Nav Groups */}
+            <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1 space-y-5">
               {navGroups.map((group) => (
-                <div key={group.label} className="mb-3 last:mb-0">
-                  <p className="px-3 pb-1.5 pt-2 text-[9px] font-extrabold uppercase tracking-wider text-slate-400">{group.label}</p>
-                  <div className="space-y-1">
-                    {group.items.map((item) => (
-                      <button
-                        key={item.key}
-                        onClick={() => navigateToTab(item.key)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left text-xs font-semibold transition-all duration-200 ${activeTab === item.key ? 'bg-slate-900 text-white shadow-sm translate-x-0.5' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`}
-                      >
-                        {item.icon}
-                        <span className="flex-1">{item.label}</span>
-                        {typeof item.count === 'number' && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === item.key ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'}`}>{item.count}</span>}
-                      </button>
-                    ))}
+                <div key={group.label}>
+                  <p className="px-2 pb-1.5 pt-1 text-[9px] font-extrabold uppercase tracking-widest text-zinc-600">{group.label}</p>
+                  <div className="space-y-0.5">
+                    {group.items.map((item) => {
+                      const isActive = activeTab === item.key;
+                      return (
+                        <button
+                          key={item.key}
+                          onClick={() => navigateToTab(item.key)}
+                          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-[11.5px] font-semibold transition-all duration-150 relative group ${
+                            isActive
+                              ? 'bg-zinc-800 text-white'
+                              : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100'
+                          }`}
+                        >
+                          {/* Active accent bar */}
+                          {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-sky-400 rounded-r-full" />}
+                          <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
+                          <span className="flex-1 truncate">{item.label}</span>
+                          {typeof item.count === 'number' && item.count > 0 && (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+                              isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
+                            }`}>
+                              {item.count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
             </nav>
+
+            {/* Sidebar Footer: Role Badge + FX Rate */}
+            <div className="border-t border-zinc-800 px-4 py-3 shrink-0 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="h-6 w-6 rounded-full bg-sky-500/20 border border-sky-500/30 flex items-center justify-center shrink-0">
+                    <span className="text-[9px] font-black text-sky-400">{(authEmail || 'A')[0].toUpperCase()}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-zinc-300 truncate">{authEmail || 'Admin'}</p>
+                    <p className="text-[9px] text-zinc-600 font-semibold">{currentRole}</p>
+                  </div>
+                </div>
+                <span className="sbadge sbadge-sky text-[8px] shrink-0">{currentRole}</span>
+              </div>
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[9px] text-zinc-600 font-semibold">USD/INR</span>
+                <span className={`text-[10px] font-black ${fxRateLoading ? 'text-zinc-600 animate-pulse' : 'text-emerald-400'}`}>
+                  ₹{fxRate.toFixed(2)}
+                </span>
+              </div>
+            </div>
           </aside>
 
-          <section className="space-y-4 min-w-0">
+          <section className="flex-1 lg:ml-[280px] space-y-4 min-w-0 p-3 lg:p-5">
             <div className="lg:hidden sticky top-2 z-30 bg-white/95 backdrop-blur rounded-lg border border-slate-200 shadow-sm overflow-hidden animate-fade-up">
               <div className="px-3 py-2 flex items-center justify-between gap-3">
                 <button
@@ -2714,9 +3735,9 @@ export const Dashboard: React.FC = () => {
             <div className="lg:hidden sticky top-[4.75rem] z-20 bg-white/95 backdrop-blur rounded-lg border border-slate-200 shadow-sm p-3 animate-fade-up">
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input
+                <SmoothInput
                   value={globalSearch}
-                  onChange={(e) => setGlobalSearch(e.target.value)}
+                  onChange={setGlobalSearch}
                   placeholder="Search portal..."
                   className="w-full h-9 rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
@@ -2773,9 +3794,9 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div className="relative w-full xl:max-w-md">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input
+                  <SmoothInput
                     value={globalSearch}
-                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    onChange={setGlobalSearch}
                     placeholder="Search buyers, leads, quotes, invoices, shipments..."
                     className="w-full h-9 rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
@@ -2800,6 +3821,18 @@ export const Dashboard: React.FC = () => {
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => setCommandOpen(true)} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-500 text-xs font-semibold flex items-center gap-2 hover:bg-slate-50 transition shadow-inner">
+                    <Search className="h-4 w-4 text-slate-400" />
+                    <span className="hidden md:inline">Search console...</span>
+                    <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-black bg-slate-100 border border-slate-200 rounded text-slate-400">Ctrl+K</kbd>
+                  </button>
+                  <button type="button" onClick={() => setCopilotOpen(true)} className="h-9 px-3 rounded-md border border-sky-200 bg-sky-50 text-sky-700 text-xs font-bold flex items-center gap-2 hover:bg-sky-100 transition shadow-sm">
+                    <Sparkles className="h-4 w-4" />
+                    <span>AI Copilot</span>
+                  </button>
+                  <button type="button" onClick={toggleTheme} className="h-9 w-9 rounded-md border border-slate-200 bg-white text-slate-600 flex items-center justify-center hover:bg-slate-50 transition" title="Toggle Theme">
+                    {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-amber-500" />}
+                  </button>
                   <button type="button" onClick={runFollowUpAutomation} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
                     <Sparkles className="h-4 w-4" />
                     Automate
@@ -2827,7 +3860,7 @@ export const Dashboard: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  {(isMock || isFirebase) && (
+                  {(isMock || isFirebase) && currentRole === 'Admin' && (
                     <div className="relative">
                       <button type="button" onClick={() => setShowDevMenu((v) => !v)} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
                         <Database className="h-4 w-4 text-sky-600 shrink-0" />
@@ -2873,13 +3906,233 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
             <div key={activeTab} className="bg-white/95 rounded-lg border border-slate-200 shadow-sm p-3 sm:p-5 min-w-0 animate-panel-in">
-          {activeTab === 'overview' && (
+              {!hasAccessToActiveTab ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center bg-slate-50 rounded-xl border border-slate-200/60 shadow-inner animate-fade-in my-6">
+                  <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center border border-red-100 mb-4 animate-pulse">
+                    <Lock className="h-6 w-6 text-red-500" />
+                  </div>
+                  <h3 className="text-sm font-extrabold text-slate-900">Access Denied</h3>
+                  <p className="text-xs text-slate-500 mt-1.5 max-w-sm leading-relaxed">Your account role (<span className="font-bold text-red-600">{currentRole}</span>) does not have permission to access the <strong>{activeNavItem?.label || activeTab}</strong> workspace.</p>
+                  <button type="button" onClick={() => setActiveTab('overview')} className="mt-5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow active:scale-98 transition">
+                    Return to Overview
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {activeTab === 'manager' && (
+                    <div className="space-y-6">
+                      <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
+                        <div>
+                          <h2 className="text-lg font-black text-slate-900">Manager Dashboard</h2>
+                          <p className="text-xs text-slate-500">Commercial overview, pipeline conversion rates, and revenue forecasts.</p>
+                        </div>
+                        <div className="text-xs font-bold text-slate-400">
+                          Real-time Database Sync
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="p-4 bg-slate-950 text-white rounded-xl border border-slate-800 shadow-sm">
+                          <p className="text-[10px] font-extrabold uppercase text-slate-400">Total Pipeline Value</p>
+                          <p className="text-2xl font-black mt-1">
+                            {formatQuoteCurrency(
+                              quotes.reduce((acc, q) => acc + (q.status !== 'Lost' ? quoteValue(q) : 0), 0),
+                              'USD'
+                            )}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-1">Sum of active quote values (USD)</p>
+                        </div>
+                        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+                          <p className="text-[10px] font-extrabold uppercase text-slate-400">CRM Conversion Rate</p>
+                          <p className="text-2xl font-black mt-1 text-slate-900">
+                            {leads.length > 0 ? Math.round((leads.filter(l => l.stage === 'Won').length / leads.length) * 100) : 0}%
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-1">Won leads vs total inquiries</p>
+                        </div>
+                        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+                          <p className="text-[10px] font-extrabold uppercase text-slate-500">Active Sequences</p>
+                          <p className="text-2xl font-black mt-1 text-slate-900">
+                            {leads.filter(l => l.sequence_enrolled).length} Enrolled
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-1">Leads in automated follow-ups</p>
+                        </div>
+                        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+                          <p className="text-[10px] font-extrabold uppercase text-slate-500">Outstanding Invoices</p>
+                          <p className="text-2xl font-black mt-1 text-red-600">
+                            {formatQuoteCurrency(
+                              invoices.reduce((acc, inv) => acc + (inv.payment_status !== 'Paid' ? (inv.balance_amount || inv.amount || 0) : 0), 0),
+                              'USD'
+                            )}
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-1">Uncollected operational balances</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                          <h3 className="text-xs font-black text-slate-900 mb-3 uppercase tracking-wider">Product Demand Analysis</h3>
+                          <div className="space-y-3">
+                            {Array.from(new Set(leads.map(l => l.product_interest).filter(Boolean))).slice(0, 5).map((prod) => {
+                              const count = leads.filter(l => l.product_interest === prod).length;
+                              const pct = Math.round((count / Math.max(1, leads.length)) * 100);
+                              return (
+                                <div key={prod} className="space-y-1">
+                                  <div className="flex justify-between text-xs font-bold text-slate-800">
+                                    <span>{prod}</span>
+                                    <span>{count} Inquir{count === 1 ? 'y' : 'ies'} ({pct}%)</span>
+                                  </div>
+                                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                    <div className="h-full bg-sky-500 rounded-full" style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {leads.filter(l => l.product_interest).length === 0 && (
+                              <p className="text-xs text-slate-400 font-semibold italic">No product interest records found in database.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                          <h3 className="text-xs font-black text-slate-900 mb-3 uppercase tracking-wider">Team Activity & Performance</h3>
+                          <div className="grid grid-cols-3 gap-3 text-center">
+                            <div className="p-3 bg-slate-50 rounded-lg">
+                              <p className="text-[10px] font-extrabold text-slate-500">Emails Logged</p>
+                              <p className="text-lg font-black text-slate-800 mt-1">
+                                {activities.filter(a => a.type === 'Email').length}
+                              </p>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-lg">
+                              <p className="text-[10px] font-extrabold text-slate-500">Calls Logged</p>
+                              <p className="text-lg font-black text-slate-800 mt-1">
+                                {activities.filter(a => a.type === 'Call').length}
+                              </p>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-lg">
+                              <p className="text-[10px] font-extrabold text-slate-500">Tasks Completed</p>
+                              <p className="text-lg font-black text-slate-800 mt-1">
+                                {tasks.filter(t => t.status === 'Done').length}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-4 border-t border-slate-100 pt-3">
+                            <p className="text-[10px] font-extrabold uppercase text-slate-400">Database User Profiles</p>
+                            <div className="mt-2 space-y-1.5 max-h-[120px] overflow-y-auto pr-1">
+                              {users.map(u => (
+                                <div key={u.id} className="flex justify-between items-center text-xs font-semibold text-slate-600 bg-slate-50 px-2.5 py-1.5 rounded border border-slate-100">
+                                  <span className="truncate">{u.name} ({u.role})</span>
+                                  <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${u.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {u.active ? 'Active' : 'Inactive'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                        <h3 className="text-xs font-black text-slate-900 mb-3 uppercase tracking-wider">Vendor Performance Matrix</h3>
+                        <div className="overflow-x-auto min-w-0 w-full">
+                          <table className="min-w-full text-left text-xs text-slate-700">
+                            <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                              <tr>
+                                <th className="px-4 py-2">Company</th>
+                                <th className="px-4 py-2">Categories</th>
+                                <th className="px-4 py-2">Rating</th>
+                                <th className="px-4 py-2">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {vendors.slice(0, 8).map(v => (
+                                <tr key={v.id} className="hover:bg-slate-50">
+                                  <td className="px-4 py-2.5 font-bold text-slate-900 truncate max-w-[150px]">{v.company_name}</td>
+                                  <td className="px-4 py-2.5 text-slate-500 truncate max-w-[150px]">{v.product_categories || 'N/A'}</td>
+                                  <td className="px-4 py-2.5 font-bold text-amber-500">⭐ {v.rating || 'N/A'}/5</td>
+                                  <td className="px-4 py-2.5">
+                                    <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                      v.status === 'Preferred' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                      v.status === 'Active' ? 'bg-sky-50 text-sky-700 border border-sky-200' :
+                                      'bg-slate-100 text-slate-600'
+                                    }`}>{v.status}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                              {vendors.length === 0 && (
+                                <tr>
+                                  <td colSpan={4} className="px-4 py-6 text-center text-slate-400 font-semibold italic">No vendor records found.</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'actionQueue' && (
+                    <div className="space-y-4">
+                      <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
+                        <div>
+                          <h2 className="text-lg font-black text-slate-900">Unified Action Queue</h2>
+                          <p className="text-xs text-slate-500">Real-time prioritized operational actions based on database triggers.</p>
+                        </div>
+                        <div className="text-xs bg-slate-100 text-slate-700 font-extrabold px-3 py-1 rounded-full">
+                          {actionQueueItems.length} Pending Actions
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        {actionQueueItems.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center p-12 text-center bg-slate-50 border border-slate-100 rounded-xl">
+                            <CheckCircle2 className="h-8 w-8 text-emerald-500 mb-2" />
+                            <p className="text-xs font-bold text-slate-800">Operational Plan Healthy</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">No critical issues or exceptions detected in database.</p>
+                          </div>
+                        ) : (
+                          actionQueueItems.map((item) => (
+                            <div key={item.id} className={`p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-3 transition hover:shadow-sm ${
+                              item.tone === 'critical' ? 'bg-red-50/60 border-red-200/60 text-red-950' :
+                              item.tone === 'warning' ? 'bg-amber-50/60 border-amber-200/60 text-amber-950' :
+                              'bg-sky-50/60 border-sky-200/60 text-sky-950'
+                            }`}>
+                              <div className="min-w-0 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                                    item.tone === 'critical' ? 'bg-red-200 text-red-900' :
+                                    item.tone === 'warning' ? 'bg-amber-200 text-amber-900' :
+                                    'bg-sky-200 text-sky-900'
+                                  }`}>{item.tone}</span>
+                                  <span className="font-extrabold text-xs text-slate-900">{item.title}</span>
+                                </div>
+                                <p className="text-xs text-slate-700 leading-relaxed font-semibold">{item.detail}</p>
+                                <p className="text-[10px] text-slate-400 font-bold">Signal: {item.evidence}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => navigateToTab(item.target)}
+                                className="shrink-0 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-lg shadow-sm active:scale-98 transition"
+                              >
+                                {item.action}
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'overview' && (
             <div className="space-y-5">
               <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
                 <Stat icon={<TrendingUp className="h-5 w-5" />} label="Active Deals" value={quotes.length.toString()} tone="sky" />
                 <Stat icon={<KanbanSquare className="h-5 w-5" />} label="Hot Leads" value={analytics.hotLeads.toString()} tone="indigo" />
                 <Stat icon={<ClipboardList className="h-5 w-5" />} label="Overdue Tasks" value={analytics.overdueTasks.toString()} tone="slate" />
                 <Stat icon={<Ship className="h-5 w-5" />} label="Active Shipments" value={analytics.activeShipments.toString()} tone="teal" />
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <PipelineChart leads={leads} />
+                <RevenueTrendChart quotes={quotes} formatQuoteCurrency={formatQuoteCurrency} />
               </div>
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                 <SimplePanel title="Today Focus" rows={[
@@ -2888,7 +4141,7 @@ export const Dashboard: React.FC = () => {
                   ['Open tasks', tasks.filter((task) => task.status !== 'Done').length.toString()],
                   ['Missing documents', checklists.filter((item) => [item.commercial_invoice, item.packing_list, item.certificate_origin, item.phytosanitary, item.insurance, item.bill_of_lading].some((flag) => !flag)).length.toString()]
                 ]} />
-                <SimplePanel title="Pipeline Health" rows={['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost'].map((stage) => [stage, leads.filter((lead) => lead.stage === stage).length.toString()])} />
+                <LogisticsCompletionGauge completionRate={analytics.docCompletion} totalCount={checklists.length} />
                 <SimplePanel title="Financial Snapshot" rows={[
                   ['Total quoted', formatQuoteCurrency(analytics.totalQuoted, 'INR')],
                   ['Won value', formatQuoteCurrency(analytics.wonValue, 'INR')],
@@ -2914,7 +4167,7 @@ export const Dashboard: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 text-xs">
                 <label className="lg:col-span-2 relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input value={quoteSearch} onChange={(e) => setQuoteSearch(e.target.value)} placeholder="Search quote, buyer, email, port, shipment..." className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500 focus:outline-none" />
+                  <SmoothInput value={quoteSearch} onChange={setQuoteSearch} placeholder="Search quote, buyer, email, port, shipment..." className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500 focus:outline-none" />
                 </label>
                 <select value={quoteStatusFilter} onChange={(e) => setQuoteStatusFilter(e.target.value as any)} className="px-3 py-2 border border-slate-300 rounded">
                   <option value="All">All Statuses</option>
@@ -2936,27 +4189,50 @@ export const Dashboard: React.FC = () => {
               </div>
 
               {loading && quotes.length === 0 ? (
-                <EmptyState text="Loading records..." />
+                <TableSkeleton />
               ) : filteredQuotes.length === 0 ? (
                 <EmptyState text="No quotes match the current filters." />
               ) : (
+                <>
+                  {/* MarginGuard: show for top/newest quote in filtered list */}
+                  {filteredQuotes[0] && (
+                    <MarginGuard
+                      quote={filteredQuotes[0]}
+                      fxRate={fxRate}
+                      fxRateLoading={fxRateLoading}
+                    />
+                  )}
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full text-left border-collapse text-xs">
+                  <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{filteredQuotes.length} quotes</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-slate-400 font-semibold">Density:</span>
+                      {(['compact', 'default', 'comfortable'] as const).map(d => (
+                        <button key={d} type="button" onClick={() => setRowDensity(d)}
+                          className={`text-[9px] px-2 py-0.5 rounded font-bold transition ${rowDensity === d ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                          {d.slice(0, 4)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <table className={`data-grid density-${rowDensity}`}>
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px]">
-                        <th className="p-3">Reference</th>
+                      <tr>
+                        <th className="p-3 w-8"><input type="checkbox" onChange={e => setSelectedQuoteIds(e.target.checked ? filteredQuotes.map(q => q.id) : [])} checked={selectedQuoteIds.length === filteredQuotes.length && filteredQuotes.length > 0} className="rounded" /></th>
+                        <th className={`p-3 ${quoteSortCol === 'quote_number' ? quoteSortDir === 'asc' ? 'sort-asc' : 'sort-desc' : ''}`} onClick={() => { setQuoteSortCol('quote_number'); setQuoteSortDir(d => d === 'asc' ? 'desc' : 'asc'); }}>Reference</th>
                         <th className="p-3">Buyer Company</th>
                         <th className="p-3">Destination Port</th>
-                        <th className="p-3 text-right">Freight</th>
+                        <th className={`p-3 text-right ${quoteSortCol === 'freight' ? quoteSortDir === 'asc' ? 'sort-asc' : 'sort-desc' : ''}`} onClick={() => { setQuoteSortCol('freight'); setQuoteSortDir(d => d === 'asc' ? 'desc' : 'asc'); }}>Freight</th>
                         <th className="p-3 text-right">Insurance</th>
-                        <th className="p-3 text-right">Total CIF</th>
+                        <th className={`p-3 text-right ${quoteSortCol === 'value' ? quoteSortDir === 'asc' ? 'sort-asc' : 'sort-desc' : ''}`} onClick={() => { setQuoteSortCol('value'); setQuoteSortDir(d => d === 'asc' ? 'desc' : 'asc'); }}>Total CIF</th>
                         <th className="p-3 text-center">Status</th>
                         <th className="p-3 text-center">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredQuotes.map((q) => (
-                        <tr key={q.id} className="hover:bg-slate-50 transition">
+                        <tr key={q.id} className={`transition ${selectedQuoteIds.includes(q.id) ? 'selected' : 'hover:bg-slate-50'}`}>
+                          <td className="p-3 w-8"><input type="checkbox" checked={selectedQuoteIds.includes(q.id)} onChange={e => setSelectedQuoteIds(prev => e.target.checked ? [...prev, q.id] : prev.filter(id => id !== q.id))} className="rounded" onClick={ev => ev.stopPropagation()} /></td>
                           <td className="p-3 font-mono font-bold text-slate-900">{q.quote_number}</td>
                           <td className="p-3">
                             <span className="font-bold text-slate-800 block">{q.client?.company_name || 'Unassigned'}</span>
@@ -2978,7 +4254,7 @@ export const Dashboard: React.FC = () => {
                               <button onClick={() => createShipmentFromQuote(q)} className="p-1 hover:bg-teal-50 text-slate-500 hover:text-teal-700 rounded transition" title="Auto-create shipment">
                                 <Ship className="h-4 w-4" />
                               </button>
-                              <button onClick={() => handleDeleteQuote(q.id)} className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition" title="Delete Deal">
+                              <button onClick={() => handleDeleteQuote(q.id)} disabled={currentRole !== 'Admin'} className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition disabled:opacity-40 disabled:hover:bg-transparent" title={currentRole === 'Admin' ? "Delete Deal" : "Only Admins can delete"}>
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
@@ -2987,7 +4263,21 @@ export const Dashboard: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
+                  {/* Bulk Action Bar */}
+                  {selectedQuoteIds.length > 0 && (
+                    <div className="bulk-action-bar sticky bottom-0 flex items-center justify-between gap-3 bg-slate-900 text-white px-4 py-2.5 border-t border-slate-700">
+                      <span className="text-xs font-bold">{selectedQuoteIds.length} selected</span>
+                      <div className="flex items-center gap-2">
+                        <select className="text-xs bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white" onChange={async e => { const st = e.target.value as Quote['status']; if (!st) return; await Promise.all(selectedQuoteIds.map(id => supabase.from('quotes').update({ status: st }).eq('id', id))); setQuotes(prev => prev.map(q => selectedQuoteIds.includes(q.id) ? { ...q, status: st } : q)); setSelectedQuoteIds([]); showToast(`Updated ${selectedQuoteIds.length} quotes to ${st}`, 'success'); }}>
+                          <option value="">Bulk Status…</option>
+                          {(['Draft','Sent','Negotiation','Approved','Invoice Raised','Shipped','Closed','Lost'] as Quote['status'][]).map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <button type="button" onClick={() => setSelectedQuoteIds([])} className="text-xs px-3 py-1 rounded bg-slate-700 hover:bg-slate-600 transition">Deselect</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              </>
               )}
             </div>
           )}
@@ -3001,7 +4291,8 @@ export const Dashboard: React.FC = () => {
                 saveRecord<Lead>('leads', editingLeadId, {
                   ...leadForm,
                   estimated_value: Number(leadForm.estimated_value) || 0,
-                  stage: leadForm.stage || 'New Lead'
+                  stage: leadForm.stage || 'New Lead',
+                  sequence_enrolled: leadForm.sequence_enrolled || ''
                 }, resetLeadForm);
               }}
               onCancel={resetLeadForm}
@@ -3016,6 +4307,7 @@ export const Dashboard: React.FC = () => {
                   <TextInput label="Country" placeholder="e.g. Sweden, UAE, France" value={leadForm.country || ''} onChange={(value) => setLeadForm({ ...leadForm, country: value })} />
                   <SelectInput label="Pipeline Stage" value={leadForm.stage || 'New Lead'} onChange={(value) => setLeadForm({ ...leadForm, stage: value as Lead['stage'] })} options={['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost']} />
                   <SelectInput label="Priority" value={leadForm.priority || 'Medium'} onChange={(value) => setLeadForm({ ...leadForm, priority: value as Lead['priority'] })} options={['Low', 'Medium', 'High']} />
+                  <SelectInput label="Enroll in Outreach Sequence" value={leadForm.sequence_enrolled || 'None'} onChange={(value) => setLeadForm({ ...leadForm, sequence_enrolled: value === 'None' ? '' : value })} options={['None', 'Intro Sequence', 'Warm Follow-Up', 'Reactivation Sequence']} />
                   <TextInput label="Product Interest" value={leadForm.product_interest || ''} onChange={(value) => setLeadForm({ ...leadForm, product_interest: value })} />
                   <NumberInput label="Estimated Value" value={Number(leadForm.estimated_value) || 0} onChange={(value) => setLeadForm({ ...leadForm, estimated_value: value })} />
                   <TextInput label="Next Follow-up" type="date" value={leadForm.next_follow_up || ''} onChange={(value) => setLeadForm({ ...leadForm, next_follow_up: value })} />
@@ -3070,9 +4362,19 @@ export const Dashboard: React.FC = () => {
                     <CrmMetric label="Needs Email Fix" value={crmQueues[4].leads.length.toString()} helper="Missing or invalid email" />
                   </div>
                   {importSummary && (
-                    <div className="mt-4 bg-white text-slate-700 border border-white/20 rounded p-3 text-xs">
+                    <div className="mt-4 bg-white text-slate-700 border border-slate-200 rounded-xl p-3.5 text-xs shadow-sm">
                       <div className="font-bold text-slate-900">{importSummary.message}</div>
                       <div className="mt-1 text-[11px] text-slate-500">Buyers: {importSummary.buyers} | Leads: {importSummary.leads} | Activities: {importSummary.activities} | Tasks: {importSummary.tasks} | Skipped: {importSummary.skipped}</div>
+                      {importSummary.skippedList && importSummary.skippedList.length > 0 && (
+                        <div className="mt-2 text-[10px] border-t border-slate-100 pt-2">
+                          <p className="font-bold text-slate-500">Skipped duplicate records (detected in DB by email, name, or phone):</p>
+                          <ul className="list-disc list-inside mt-1 font-semibold text-slate-400 space-y-0.5 max-h-24 overflow-y-auto">
+                            {importSummary.skippedList.map((comp, idx) => (
+                              <li key={idx} className="truncate">{comp}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -3109,11 +4411,11 @@ export const Dashboard: React.FC = () => {
                     </div>
                     <div className="relative w-full md:max-w-md">
                       <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                      <input
+                      <SmoothInput
                         type="text"
                         placeholder="Search by company, contact, email, phone..."
                         value={crmSearchQuery}
-                        onChange={(e) => setCrmSearchQuery(e.target.value)}
+                        onChange={setCrmSearchQuery}
                         className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition shadow-inner font-semibold"
                       />
                       {crmSearchQuery && (
@@ -3140,11 +4442,11 @@ export const Dashboard: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 w-full 2xl:max-w-5xl">
                       <div className="relative">
                         <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                        <input
+                        <SmoothInput
                           type="text"
                           placeholder="Search buyers, phone, product, port..."
                           value={buyerSearchQuery}
-                          onChange={(event) => setBuyerSearchQuery(event.target.value)}
+                          onChange={setBuyerSearchQuery}
                           className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs font-semibold text-slate-800 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
                         />
                         {buyerSearchQuery && (
@@ -3235,7 +4537,7 @@ export const Dashboard: React.FC = () => {
                       const buyerCategory = buyerActionCategory(buyer);
                       return (
                         <div key={buyer.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="font-extrabold text-slate-900 truncate">{buyer.company_name}</div>
                               <div className="mt-1 flex flex-wrap gap-1.5">
@@ -3245,7 +4547,7 @@ export const Dashboard: React.FC = () => {
                                 <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${linkedLead ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700'}`}>{linkedLead ? 'CRM Linked' : 'Create Lead'}</span>
                               </div>
                             </div>
-                            <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5 mt-2 sm:mt-0 sm:justify-end">
                               <button type="button" onClick={() => setSelectedBuyerId(buyer.id)} className="rounded bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700 hover:bg-sky-100">View</button>
                               <button type="button" onClick={() => openBuyerAsCrmLead(buyer)} className="rounded bg-slate-900 px-2 py-1 text-[10px] font-bold text-white hover:bg-slate-800">{linkedLead ? 'Edit Lead' : 'Create Lead'}</button>
                               <button type="button" onClick={() => handleBuyerEmail(buyer, 'First Reach')} className="rounded bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100">Reach Out Email</button>
@@ -3377,11 +4679,11 @@ export const Dashboard: React.FC = () => {
                             <label className="mb-2 block text-[10px] font-black uppercase tracking-wide text-slate-500">Search CRM Buyers</label>
                             <div className="relative">
                               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                              <input
+                              <SmoothInput
                                 type="text"
                                 placeholder="Search by company, contact, email, phone, country, or product..."
                                 value={crmSearchQuery}
-                                onChange={(e) => setCrmSearchQuery(e.target.value)}
+                                onChange={setCrmSearchQuery}
                                 className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-10 text-sm font-semibold text-slate-800 placeholder-slate-400 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                               />
                               {crmSearchQuery && (
@@ -3454,7 +4756,7 @@ export const Dashboard: React.FC = () => {
                           </div>
                         )}
                         <div className="overflow-x-auto pb-2">
-                          <div className="grid min-w-[1180px] grid-cols-6 gap-3">
+                          <div className="grid min-w-[1580px] grid-cols-8 gap-3">
                             {crmBoardColumns.map((column) => {
                               const stageLeads = column.leads;
                               const visibleCount = crmColumnVisibleCounts[column.label] || crmColumnPageSize;
@@ -3550,11 +4852,11 @@ export const Dashboard: React.FC = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px_180px_160px] gap-2">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
+                    <SmoothInput
                       type="text"
                       placeholder="Search source data by company, country, email, product, status..."
                       value={sourceSearchQuery}
-                      onChange={(event) => setSourceSearchQuery(event.target.value)}
+                      onChange={setSourceSearchQuery}
                       className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-9 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none transition focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/20"
                     />
                     {sourceSearchQuery && (
@@ -3742,7 +5044,7 @@ export const Dashboard: React.FC = () => {
                         <div className="font-bold text-slate-900">{activity.title}</div>
                         <div className="text-[10px] text-slate-400">{activity.type} | {activity.activity_date} | {clients.find((client) => client.id === activity.client_id)?.company_name || 'Unlinked'}</div>
                       </div>
-                      <RowActions onEdit={() => { setEditingActivityId(activity.id); setActivityForm(activity); }} onDelete={() => deleteRecord('activities', activity.id, 'activity')} />
+                      <RowActions currentRole={currentRole} onEdit={() => { setEditingActivityId(activity.id); setActivityForm(activity); }} onDelete={() => deleteRecord('activities', activity.id, 'activity')} />
                     </div>
                     {activity.details && <p className="mt-2 text-slate-600">{activity.details}</p>}
                   </div>
@@ -3793,7 +5095,7 @@ export const Dashboard: React.FC = () => {
                           <div className="font-bold text-slate-900">{template.name}</div>
                           <div className="text-[10px] text-slate-400">{template.channel} | {template.category} | {template.active ? 'Active' : 'Inactive'}</div>
                         </div>
-                        <RowActions onEdit={() => { setEditingTemplateId(template.id); setTemplateForm(template); }} onDelete={() => deleteRecord('message_templates', template.id, 'template')} />
+                        <RowActions currentRole={currentRole} onEdit={() => { setEditingTemplateId(template.id); setTemplateForm(template); }} onDelete={() => deleteRecord('message_templates', template.id, 'template')} />
                       </div>
                       {template.subject && <p className="mt-2 font-semibold text-slate-700">{template.subject}</p>}
                       <p className="mt-2 text-slate-600 whitespace-pre-line line-clamp-4">{template.body}</p>
@@ -3853,7 +5155,7 @@ export const Dashboard: React.FC = () => {
                               <div className="font-bold text-slate-900">{task.title}</div>
                               <div className="text-[10px] text-slate-500">{task.priority} | Due {task.due_date || 'Not set'} | {task.owner || 'Unassigned'}</div>
                             </div>
-                            <RowActions onEdit={() => { setEditingTaskId(task.id); setTaskForm(task); }} onDelete={() => deleteRecord('tasks', task.id, 'task')} />
+                            <RowActions currentRole={currentRole} onEdit={() => { setEditingTaskId(task.id); setTaskForm(task); }} onDelete={() => deleteRecord('tasks', task.id, 'task')} />
                           </div>
                           <div className="mt-2 text-[10px] text-slate-400">{clients.find((client) => client.id === task.client_id)?.company_name || 'Unlinked buyer'} | {quotes.find((quote) => quote.id === task.quote_id)?.quote_number || 'No quote'}</div>
                         </div>
@@ -3910,11 +5212,11 @@ export const Dashboard: React.FC = () => {
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px_180px] gap-3">
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                    <input
+                    <SmoothInput
                       type="text"
                       placeholder="Search reachout list by company, country, contact, or phone..."
                       value={reachoutSearchQuery}
-                      onChange={(e) => setReachoutSearchQuery(e.target.value)}
+                      onChange={setReachoutSearchQuery}
                       className="w-full h-10 bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
@@ -3965,7 +5267,7 @@ export const Dashboard: React.FC = () => {
                             const phone = b.phone || clientPhones[b.id] || '';
                             const country = buyerCountry(b);
                             const lastActivity = whatsappActivityByClientId[b.id];
-                            
+
                             return (
                               <div key={b.id} className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
                                 <div className="space-y-1">
@@ -4215,7 +5517,7 @@ export const Dashboard: React.FC = () => {
                           <td className="p-3 text-right font-mono font-bold text-slate-800">{formatQuoteCurrency(Number(p.unit_price || 0), 'INR')}</td>
                           <td className="p-3 text-right font-mono text-slate-500">{formatQuoteCurrency(Number(p.cost_price || 0), 'INR')}</td>
                           <td className="p-3 text-right text-slate-500">{p.weight ? `${p.weight} kg` : 'N/A'}</td>
-                          <td className="p-3"><RowActions onEdit={() => { setEditingProductId(p.id); setProductForm(p); }} onDelete={() => deleteProduct(p.id)} /></td>
+                          <td className="p-3"><RowActions currentRole={currentRole} onEdit={() => { setEditingProductId(p.id); setProductForm(p); }} onDelete={() => deleteProduct(p.id)} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -4256,7 +5558,7 @@ export const Dashboard: React.FC = () => {
                           <div className="font-bold text-slate-900">{vendor.company_name}</div>
                           <div className="text-[10px] text-slate-500">{vendor.city || 'City N/A'}, {vendor.country || 'Country N/A'} | {vendor.status}</div>
                         </div>
-                        <RowActions onEdit={() => { setEditingVendorId(vendor.id); setVendorForm(vendor); }} onDelete={() => deleteRecord('vendors', vendor.id, 'supplier/vendor')} />
+                        <RowActions currentRole={currentRole} onEdit={() => { setEditingVendorId(vendor.id); setVendorForm(vendor); }} onDelete={() => deleteRecord('vendors', vendor.id, 'supplier/vendor')} />
                       </div>
                       <div className="grid grid-cols-2 gap-2 mt-3">
                         <SmallMetric label="Categories" value={vendor.product_categories || 'Not set'} />
@@ -4303,7 +5605,7 @@ export const Dashboard: React.FC = () => {
                     <div key={p.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 text-xs">
                       <div className="flex justify-between gap-3">
                         <h4 className="font-bold text-slate-900">{p.name}</h4>
-                        <RowActions onEdit={() => { setEditingPresetId(p.id); setPresetForm(p); }} onDelete={() => deletePreset(p.id)} />
+                        <RowActions currentRole={currentRole} onEdit={() => { setEditingPresetId(p.id); setPresetForm(p); }} onDelete={() => deletePreset(p.id)} />
                       </div>
                       <p className="font-mono text-slate-600">{p.loading_port} {'->'} {p.destination_port}</p>
                       <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500">
@@ -4357,7 +5659,7 @@ export const Dashboard: React.FC = () => {
                     <td className="p-3 text-right font-mono">{formatQuoteCurrency(Number(rate.freight_cost || 0), rate.currency || 'INR')}</td>
                     <td className="p-3 text-right font-mono">{formatQuoteCurrency(Number(rate.insurance_cost || 0), rate.currency || 'INR')}</td>
                     <td className="p-3">{rate.effective_date || 'N/A'}</td>
-                    <td className="p-3"><RowActions onEdit={() => { setEditingRateId(rate.id); setRateForm(rate); }} onDelete={() => deleteRecord('freight_rate_history', rate.id, 'freight rate')} /></td>
+                    <td className="p-3"><RowActions currentRole={currentRole} onEdit={() => { setEditingRateId(rate.id); setRateForm(rate); }} onDelete={() => deleteRecord('freight_rate_history', rate.id, 'freight rate')} /></td>
                   </tr>
                 ))}
               </DataTable>
@@ -4418,7 +5720,7 @@ export const Dashboard: React.FC = () => {
                         >
                           {({ loading: pdfLoading }) => pdfLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                         </PDFDownloadLink>
-                        <RowActions onEdit={() => { setEditingInvoiceId(invoice.id); setInvoiceForm(invoice); }} onDelete={() => deleteRecord('invoices', invoice.id, 'invoice')} />
+                        <RowActions currentRole={currentRole} onEdit={() => { setEditingInvoiceId(invoice.id); setInvoiceForm(invoice); }} onDelete={() => deleteRecord('invoices', invoice.id, 'invoice')} />
                       </div>
                     </td>
                   </tr>
@@ -4450,6 +5752,11 @@ export const Dashboard: React.FC = () => {
                 </>
               }
             >
+              <ShipmentRadar
+                shipments={shipments}
+                clients={clients}
+                onSelectShipment={(id) => { const s = shipments.find(sh => sh.id === id); if (s) { setEditingShipmentId(s.id); setShipmentForm(s); } }}
+              />
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
                 <Stat icon={<Ship className="h-5 w-5" />} label="Planning" value={shipments.filter((shipment) => shipment.status === 'Planning').length.toString()} tone="sky" />
                 <Stat icon={<Package className="h-5 w-5" />} label="Booked/Stuffed" value={shipments.filter((shipment) => ['Booked', 'Stuffed'].includes(shipment.status)).length.toString()} tone="indigo" />
@@ -4466,7 +5773,7 @@ export const Dashboard: React.FC = () => {
                     <td className="p-3">{shipment.etd || 'N/A'}</td>
                     <td className="p-3">{shipment.eta || 'N/A'}</td>
                     <td className="p-3"><SmallBadge text={shipment.status} /></td>
-                    <td className="p-3"><RowActions onEdit={() => { setEditingShipmentId(shipment.id); setShipmentForm(shipment); }} onDelete={() => deleteRecord('shipments', shipment.id, 'shipment')} /></td>
+                    <td className="p-3"><RowActions currentRole={currentRole} onEdit={() => { setEditingShipmentId(shipment.id); setShipmentForm(shipment); }} onDelete={() => deleteRecord('shipments', shipment.id, 'shipment')} /></td>
                   </tr>
                 ))}
               </DataTable>
@@ -4499,9 +5806,19 @@ export const Dashboard: React.FC = () => {
                   const done = [item.commercial_invoice, item.packing_list, item.certificate_origin, item.phytosanitary, item.insurance, item.bill_of_lading].filter(Boolean).length;
                   return (
                     <div key={item.id} className="bg-white border border-slate-200 rounded-lg p-4 text-xs shadow-sm">
-                      <div className="flex justify-between">
+                      <div className="flex justify-between items-start gap-2">
                         <div className="font-bold text-slate-900">Checklist {done}/6 complete</div>
-                        <RowActions onEdit={() => { setEditingChecklistId(item.id); setChecklistForm(item); }} onDelete={() => deleteRecord('document_checklists', item.id, 'document checklist')} />
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => { setDossierQuoteId(item.quote_id || ''); setDossierOpen(true); }}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded transition"
+                          >
+                            <FileText className="h-3 w-3" />
+                            Compile Dossier
+                          </button>
+                          <RowActions currentRole={currentRole} onEdit={() => { setEditingChecklistId(item.id); setChecklistForm(item); }} onDelete={() => deleteRecord('document_checklists', item.id, 'document checklist')} />
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 mt-3 text-slate-600">
                         {[
@@ -4511,11 +5828,437 @@ export const Dashboard: React.FC = () => {
                           ['Phytosanitary', item.phytosanitary],
                           ['Insurance', item.insurance],
                           ['Bill of Lading', item.bill_of_lading]
-                        ].map(([label, checked]) => <span key={String(label)}>{checked ? 'Done' : 'Pending'} - {label}</span>)}
+                        ].map(([label, checked]) => <span key={String(label)} className={checked ? 'text-emerald-600 font-semibold' : 'text-slate-400'}>{checked ? '✓' : '○'} {label}</span>)}
                       </div>
                     </div>
                   );
                 })}
+              </div>
+
+              {/* ── 6-Document Cargo Dossier Modal ─────────────────────────────── */}
+              {dossierOpen && (() => {
+                const q = quotes.find(qt => qt.id === dossierQuoteId) || quotes[0];
+                const client = q ? (q.client || clients.find(c => c.id === q.client_id)) : null;
+                const shipment = q ? shipments.find(s => s.quote_id === q.id) : null;
+                const shipper = q?.shipper_details;
+                const bank = q?.bank_details;
+                const items = q?.items || [];
+                const totalVal = items.reduce((s, it) => s + Number(it.quantity || 0) * Number(it.unit_price || 0), 0);
+                const totalWt = items.reduce((s, it) => s + Number(it.weight || 0) * Number(it.quantity || 0), 0);
+                const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+                const invoiceNo = `CI-${(q?.quote_number || 'DRAFT').replace('Q-', '')}`;
+                return (
+                  <div className="fixed inset-0 z-[80] bg-slate-950/80 flex items-start justify-center overflow-y-auto py-8 px-4 doc-no-print">
+                    <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden">
+                      {/* Modal Header */}
+                      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-950 text-white">
+                        <div className="flex items-center gap-3">
+                          <FileText className="h-5 w-5 text-sky-400" />
+                          <div>
+                            <p className="font-extrabold text-sm">Full Export Cargo Dossier</p>
+                            <p className="text-[10px] text-slate-400">{q?.quote_number} · {client?.company_name} · 6 Documents</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => window.print()} className="flex items-center gap-1.5 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold rounded-lg transition">
+                            <Download className="h-3.5 w-3.5" /> Print All (6 Docs)
+                          </button>
+                          <button type="button" onClick={() => setDossierOpen(false)} className="h-9 w-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Printable Dossier Content */}
+                      <div id="cargo-dossier-print" className="p-8 space-y-0 font-serif text-[11px] text-slate-900 leading-relaxed">
+
+                        {/* ── DOC 1: Commercial Invoice ─────────────────────── */}
+                        <div className="doc-page-break pb-10">
+                          <div className="border-2 border-slate-900 p-6">
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <h2 className="text-base font-black uppercase tracking-widest text-slate-900">Commercial Invoice</h2>
+                                <p className="text-[10px] text-slate-500">Original · For Export Only</p>
+                              </div>
+                              <div className="text-right">
+                                <p><strong>Invoice No.:</strong> {invoiceNo}</p>
+                                <p><strong>Date:</strong> {today}</p>
+                                <p><strong>Quote Ref.:</strong> {q?.quote_number || 'N/A'}</p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-6 border-t border-b border-slate-300 py-4 mb-4">
+                              <div>
+                                <p className="font-black text-[9px] uppercase tracking-wider text-slate-500 mb-1">Shipper / Exporter</p>
+                                <p className="font-bold">{shipper?.company_name || 'SHESHAAN GLOBAL PVT LTD'}</p>
+                                <p>{shipper?.address || 'India'}</p>
+                                <p>IEC: {shipper?.tax_id || 'XXXXXXXXXX'}</p>
+                              </div>
+                              <div>
+                                <p className="font-black text-[9px] uppercase tracking-wider text-slate-500 mb-1">Consignee / Buyer</p>
+                                <p className="font-bold">{client?.company_name || 'N/A'}</p>
+                                <p>{client?.address || 'N/A'}</p>
+                                <p>{client?.contact_email || ''}</p>
+                              </div>
+                            </div>
+                            <table className="w-full text-[10px] mb-4">
+                              <thead><tr className="border-b-2 border-slate-900"><th className="text-left py-1">Description</th><th className="text-center py-1">HS Code</th><th className="text-right py-1">Qty</th><th className="text-right py-1">Unit Price</th><th className="text-right py-1">Amount</th></tr></thead>
+                              <tbody>
+                                {items.map((it, i) => <tr key={i} className="border-b border-slate-200"><td className="py-1.5">{it.description} {it.packing_container ? `— ${it.packing_container}` : ''}</td><td className="text-center py-1.5 font-mono">{it.hs_code || '—'}</td><td className="text-right py-1.5">{it.quantity} kg</td><td className="text-right py-1.5">{q?.currency === 'USD' ? '$' : '₹'}{Number(it.unit_price || 0).toFixed(2)}</td><td className="text-right py-1.5 font-bold">{q?.currency === 'USD' ? '$' : '₹'}{(Number(it.quantity || 0) * Number(it.unit_price || 0)).toFixed(2)}</td></tr>)}
+                                <tr className="border-t-2 border-slate-900 font-black"><td colSpan={4} className="text-right py-2">TOTAL CFR VALUE:</td><td className="text-right py-2">{q?.currency === 'USD' ? '$' : '₹'}{totalVal.toFixed(2)}</td></tr>
+                              </tbody>
+                            </table>
+                            <div className="grid grid-cols-2 gap-6 text-[10px]">
+                              <div><p className="font-black text-[9px] uppercase text-slate-500 mb-1">Bank Details</p><p><strong>Bank:</strong> {bank?.beneficiary_bank || '—'}</p><p><strong>A/C:</strong> {bank?.account_number || '—'}</p><p><strong>SWIFT:</strong> {bank?.swift_code || '—'}</p><p><strong>IFSC:</strong> {bank?.ifsc_code || '—'}</p></div>
+                              <div><p className="font-black text-[9px] uppercase text-slate-500 mb-1">Shipment Terms</p><p><strong>Incoterms:</strong> {q?.shipment_mode || 'CFR'}</p><p><strong>Payment:</strong> {q?.payment_terms || 'TT in advance'}</p><p><strong>Port of Loading:</strong> {q?.loading_port || '—'}</p><p><strong>Destination:</strong> {client?.destination_port || '—'}</p></div>
+                            </div>
+                            <div className="mt-6 border-t border-slate-300 pt-3 text-[9px] text-slate-500">
+                              <p>Declaration: We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
+                              <div className="flex justify-between mt-4 font-black text-slate-900"><span>For SHESHAAN GLOBAL PVT LTD</span><span className="border-t border-slate-400 pt-1 w-32 text-center text-[9px]">Authorized Signatory</span></div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* ── DOC 2: Packing List ───────────────────────────── */}
+                        <div className="doc-page-break pb-10">
+                          <div className="border-2 border-slate-900 p-6">
+                            <div className="flex justify-between items-start mb-4">
+                              <div><h2 className="text-base font-black uppercase tracking-widest">Export Packing List</h2><p className="text-[10px] text-slate-500">Original · For Customs Use</p></div>
+                              <div className="text-right"><p><strong>PL No.:</strong> PL-{(q?.quote_number || 'DRAFT').replace('Q-', '')}</p><p><strong>Date:</strong> {today}</p></div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 border-t border-b border-slate-300 py-3 mb-4 text-[10px]">
+                              <div><strong>Vessel:</strong> {shipment?.vessel_name || '—'}</div>
+                              <div><strong>Container No.:</strong> {shipment?.container_number || '—'}</div>
+                              <div><strong>Seal No.:</strong> {shipment?.seal_number || '—'}</div>
+                              <div><strong>BL No.:</strong> {shipment?.bl_number || '—'}</div>
+                              <div><strong>ETD:</strong> {shipment?.etd || '—'}</div>
+                              <div><strong>ETA:</strong> {shipment?.eta || '—'}</div>
+                            </div>
+                            <table className="w-full text-[10px] mb-4">
+                              <thead><tr className="border-b-2 border-slate-900"><th className="text-left py-1">Description</th><th className="text-center py-1">Packing</th><th className="text-right py-1">Net Wt (kg)</th><th className="text-right py-1">Gross Wt (kg)</th></tr></thead>
+                              <tbody>
+                                {items.map((it, i) => { const netWt = Number(it.weight || 0) * Number(it.quantity || 0); return <tr key={i} className="border-b border-slate-200"><td className="py-1.5">{it.description}</td><td className="text-center py-1.5">{it.packing_container || '—'}</td><td className="text-right py-1.5">{netWt.toFixed(0)}</td><td className="text-right py-1.5">{(netWt * 1.02).toFixed(0)}</td></tr>; })}
+                                <tr className="border-t-2 border-slate-900 font-black"><td colSpan={2} className="py-2">TOTAL</td><td className="text-right py-2">{totalWt.toFixed(0)} kg</td><td className="text-right py-2">{(totalWt * 1.02).toFixed(0)} kg</td></tr>
+                              </tbody>
+                            </table>
+                            <div className="flex justify-between mt-6 font-black text-slate-900 text-[9px]"><span>For SHESHAAN GLOBAL PVT LTD</span><span className="border-t border-slate-400 pt-1 w-32 text-center">Authorized Signatory</span></div>
+                          </div>
+                        </div>
+
+                        {/* ── DOC 3: Certificate of Origin Draft ───────────── */}
+                        <div className="doc-page-break pb-10">
+                          <div className="border-2 border-slate-900 p-6">
+                            <h2 className="text-base font-black uppercase tracking-widest text-center mb-4">Certificate of Origin — Application Draft</h2>
+                            <p className="text-[10px] text-slate-500 text-center mb-4">(To be submitted to APEDA / Chamber of Commerce for endorsement)</p>
+                            <div className="space-y-3 text-[11px]">
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Exporter Name:</strong> {shipper?.company_name || 'SHESHAAN GLOBAL PVT LTD'}</div><div><strong>Country of Origin:</strong> {q?.origin_country || 'India'}</div></div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Consignee:</strong> {client?.company_name || '—'}</div><div><strong>Destination Country:</strong> {client?.destination_port || '—'}</div></div>
+                              <div><strong>Description of Goods:</strong> {items.map(it => it.description).join(', ')}</div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Total Net Weight:</strong> {totalWt.toFixed(0)} kg</div><div><strong>Invoice Ref.:</strong> {invoiceNo}</div></div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Vessel / Flight:</strong> {shipment?.vessel_name || '—'}</div><div><strong>Port of Loading:</strong> {q?.loading_port || '—'}</div></div>
+                            </div>
+                            <div className="mt-8 border-t border-slate-300 pt-4 text-[9px] text-slate-500">Declaration: The undersigned hereby declares that the above details and statements are correct; that all the goods were produced in India.</div>
+                            <div className="flex justify-between mt-6 font-black text-slate-900 text-[9px]"><span>Exporter Signature & Stamp</span><span className="border-t border-slate-400 pt-1 w-40 text-center">Chamber / APEDA Endorsement</span></div>
+                          </div>
+                        </div>
+
+                        {/* ── DOC 4: Phytosanitary Declaration ─────────────── */}
+                        <div className="doc-page-break pb-10">
+                          <div className="border-2 border-slate-900 p-6">
+                            <h2 className="text-base font-black uppercase tracking-widest text-center mb-2">Phytosanitary Inspection Declaration</h2>
+                            <p className="text-[10px] text-slate-500 text-center mb-4">(For submission to Plant Quarantine Authority, Govt. of India)</p>
+                            <div className="space-y-2 text-[11px]">
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Exporter:</strong> {shipper?.company_name || 'SHESHAAN GLOBAL PVT LTD'}</div><div><strong>Consignee:</strong> {client?.company_name || '—'}</div></div>
+                              <div><strong>Commodity:</strong> {items.map(it => it.description).join(', ')}</div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Quantity:</strong> {totalWt.toFixed(0)} kg Net</div><div><strong>Country of Destination:</strong> {client?.destination_port || '—'}</div></div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Means of Conveyance:</strong> Sea Freight</div><div><strong>Port of Entry:</strong> {client?.destination_port || '—'}</div></div>
+                              <div><strong>Declaration:</strong> The consignment described above has been inspected according to appropriate official procedures and is considered to be free from quarantine pests.</div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Treatment Method:</strong> Fumigation (Methyl Bromide / Phosphine)</div><div><strong>Treatment Date:</strong> ___________</div></div>
+                            </div>
+                            <div className="flex justify-between mt-8 font-black text-slate-900 text-[9px]"><span>Authorized Inspector Signature</span><span className="border-t border-slate-400 pt-1 w-40 text-center">Plant Quarantine Official Stamp</span></div>
+                          </div>
+                        </div>
+
+                        {/* ── DOC 5: Marine Insurance Certificate Draft ─────── */}
+                        <div className="doc-page-break pb-10">
+                          <div className="border-2 border-slate-900 p-6">
+                            <h2 className="text-base font-black uppercase tracking-widest text-center mb-2">Marine Cargo Insurance Certificate</h2>
+                            <p className="text-[10px] text-slate-500 text-center mb-4">(Draft — to be finalized by insurer)</p>
+                            <div className="space-y-2 text-[11px]">
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Insured:</strong> {shipper?.company_name || 'SHESHAAN GLOBAL PVT LTD'}</div><div><strong>Certificate No.:</strong> MIC-{today.replace(/\s/g,'')}</div></div>
+                              <div><strong>Description of Goods:</strong> {items.map(it => it.description).join(', ')}</div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Sum Insured:</strong> {q?.currency === 'USD' ? '$' : '₹'}{(totalVal * 1.1).toFixed(2)} (CIF + 10%)</div><div><strong>Voyage:</strong> {q?.loading_port || 'India'} to {client?.destination_port || '—'}</div></div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Vessel:</strong> {shipment?.vessel_name || '—'}</div><div><strong>BL No.:</strong> {shipment?.bl_number || '—'}</div></div>
+                              <div><strong>Coverage:</strong> Institute Cargo Clauses (A) · All Risks · Including War & Strike Clauses</div>
+                            </div>
+                            <div className="flex justify-between mt-8 font-black text-slate-900 text-[9px]"><span>Insurer Authorized Signature</span><span className="border-t border-slate-400 pt-1 w-40 text-center">Insurer Official Stamp</span></div>
+                          </div>
+                        </div>
+
+                        {/* ── DOC 6: Shipping Instructions ─────────────────── */}
+                        <div className="pb-10">
+                          <div className="border-2 border-slate-900 p-6">
+                            <h2 className="text-base font-black uppercase tracking-widest mb-2">Shipping Instructions</h2>
+                            <p className="text-[10px] text-slate-500 mb-4">To: Freight Forwarder / NVOCC</p>
+                            <div className="space-y-2 text-[11px]">
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Shipper:</strong> {shipper?.company_name || 'SHESHAAN GLOBAL PVT LTD'}<br/>{shipper?.address || ''}</div><div><strong>Consignee:</strong> {client?.company_name || '—'}<br/>{client?.address || ''}</div></div>
+                              <div><strong>Notify Party:</strong> {client?.company_name || '—'} · {client?.contact_email || ''}</div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Port of Loading:</strong> {q?.loading_port || '—'}</div><div><strong>Port of Discharge:</strong> {client?.destination_port || '—'}</div></div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Container Type:</strong> {q?.logistics_specs?.container_type || '20ft FCL Dry'}</div><div><strong>ETD Requested:</strong> {shipment?.etd || '—'}</div></div>
+                              <div><strong>Cargo Description:</strong> {items.map(it => `${it.description} (${it.quantity} kg, HS: ${it.hs_code || '—'})`).join('; ')}</div>
+                              <div className="grid grid-cols-2 gap-4"><div><strong>Total Net Weight:</strong> {totalWt.toFixed(0)} kg</div><div><strong>Gross Weight:</strong> {(totalWt * 1.02).toFixed(0)} kg</div></div>
+                              <div><strong>Special Instructions:</strong> {q?.logistics_specs?.storage_condition || 'Store in cool, dry place. Handle with care.'}</div>
+                              <div><strong>Freight Terms:</strong> {q?.payment_terms || 'Prepaid'} · {q?.shipment_mode || 'Sea Freight'}</div>
+                            </div>
+                            <div className="flex justify-between mt-8 font-black text-slate-900 text-[9px]"><span>Sheshaan Global — Authorized Representative</span><span className="border-t border-slate-400 pt-1 w-40 text-center">Date: {today}</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* AI Commercial Document Compiler */}
+              <div className="mt-8 border-t border-slate-200 pt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <FileText className="h-5 w-5 text-indigo-600" />
+                  <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider">AI Commercial Document Compiler</h3>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  {/* Options Panel */}
+                  <div className="space-y-4 text-xs font-semibold">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-1">Select Reference Shipment</label>
+                      <select
+                        value={autoDocShipmentId}
+                        onChange={(e) => setAutoDocShipmentId(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 font-bold text-slate-800 shadow-sm"
+                      >
+                        <option value="">-- Choose Shipment --</option>
+                        {shipments.map((s) => (
+                          <option key={s.id} value={s.id}>{s.booking_number || 'Shipment'} ({s.status})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-1">Document Type</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAutoDocType('invoice')}
+                          className={`h-9 font-bold rounded-lg border transition ${autoDocType === 'invoice' ? 'bg-indigo-600 text-white border-indigo-600 shadow' : 'bg-white text-slate-700 border-slate-200'}`}
+                        >
+                          Commercial Invoice
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAutoDocType('packing_list')}
+                          className={`h-9 font-bold rounded-lg border transition ${autoDocType === 'packing_list' ? 'bg-indigo-600 text-white border-indigo-600 shadow' : 'bg-white text-slate-700 border-slate-200'}`}
+                        >
+                          Packing List
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-lg border space-y-2 text-[11px] text-slate-600">
+                      <p className="font-bold text-slate-900">Document Settings</p>
+                      <p>Auto-compiles shipper ports, container seals, client addresses, and commodity weights from shipment records.</p>
+                    </div>
+                  </div>
+
+                  {/* Live Preview Panel */}
+                  <div className="lg:col-span-2">
+                    <div className="border border-slate-300 rounded-xl bg-white shadow-md p-6 max-h-[500px] overflow-y-auto font-serif text-[10px] text-slate-900 leading-tight">
+                      {(() => {
+                        const selectedShipment = shipments.find((s) => s.id === autoDocShipmentId);
+                        const relatedQuote = selectedShipment ? quotes.find((q) => q.id === selectedShipment.quote_id) : null;
+                        const relatedClient = relatedQuote ? clients.find((c) => c.id === relatedQuote.client_id) : null;
+
+                        const invoiceNum = relatedQuote ? `IN-${relatedQuote.quote_number}` : 'IN-TEMP-998';
+                        const docDate = new Date().toLocaleDateString();
+                        const clientName = relatedClient?.company_name || 'Acme Trading LLC';
+                        const clientAddr = relatedClient?.contact_name || '102 Industrial Area, Port City';
+                        const containerNo = selectedShipment?.container_number || 'MSKU908234-1';
+                        const sealNo = selectedShipment?.seal_number || 'SL-892348';
+                        const vesselName = selectedShipment?.vessel_name || 'MAERSK MC-KINNEY MOLLER';
+                        const items = ((relatedQuote?.items && relatedQuote.items.length > 0)
+                          ? relatedQuote.items
+                          : [{ description: 'High Grade Raw Peanuts (Bold 40/50)', quantity: 24, unit_price: 1150, packing_container: 'MT' }]) as any[];
+
+                        const currency = relatedQuote?.currency || 'USD';
+                        const totalVal = items.reduce((acc, it) => acc + (it.quantity * (it.unit_price || 0)), 0);
+
+                        if (autoDocType === 'invoice') {
+                          return (
+                            <div className="space-y-4">
+                              <div className="border-b pb-4 flex justify-between">
+                                <div>
+                                  <h1 className="text-sm font-black text-slate-900 uppercase font-sans">Sheshaan Global Pvt Ltd</h1>
+                                  <p className="text-[9px] text-slate-500 font-sans">Exporter of Agro Products | Nhava Sheva, India</p>
+                                </div>
+                                <div className="text-right">
+                                  <h2 className="text-xs font-black uppercase text-indigo-700 font-sans">Commercial Invoice</h2>
+                                  <p className="font-sans">No: {invoiceNum}</p>
+                                  <p className="font-sans">Date: {docDate}</p>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="border p-2 rounded">
+                                  <p className="font-sans font-black text-slate-700">Exporter / Shipper:</p>
+                                  <p className="font-bold">SHESHAAN GLOBAL PVT LTD</p>
+                                  <p>Mumbai Office, MH, India</p>
+                                  <p>IEC: 0312098433 | PAN: AAECS1234F</p>
+                                </div>
+                                <div className="border p-2 rounded">
+                                  <p className="font-sans font-black text-slate-700">Consignee / Buyer:</p>
+                                  <p className="font-bold">{clientName}</p>
+                                  <p>{clientAddr}</p>
+                                  <p>Country: {relatedClient ? buyerCountry(relatedClient) : 'United Kingdom'}</p>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="border p-2 rounded">
+                                  <p className="font-sans font-black text-slate-700">Transport Details:</p>
+                                  <p>Vessel/Voyage: {vesselName}</p>
+                                  <p>Port of Loading: Nhava Sheva (INNSA)</p>
+                                  <p>Port of Discharge: Rotterdam</p>
+                                </div>
+                                <div className="border p-2 rounded">
+                                  <p className="font-sans font-black text-slate-700">Container Details:</p>
+                                  <p>Container No: {containerNo}</p>
+                                  <p>Seal No: {sealNo}</p>
+                                  <p>Payment Terms: L/C at Sight</p>
+                                </div>
+                              </div>
+
+                              <table className="w-full border-collapse border border-slate-300">
+                                <thead>
+                                  <tr className="bg-slate-100 font-sans font-bold">
+                                    <th className="border p-1.5 text-left">Description of Goods</th>
+                                    <th className="border p-1.5 text-right">Quantity</th>
+                                    <th className="border p-1.5 text-right">Unit Rate ({currency})</th>
+                                    <th className="border p-1.5 text-right">Total Amount ({currency})</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map((it, idx) => (
+                                    <tr key={idx}>
+                                      <td className="border p-1.5">{it.description}</td>
+                                      <td className="border p-1.5 text-right">{it.quantity} {it.packing_container || 'MT'}</td>
+                                      <td className="border p-1.5 text-right">{formatQuoteCurrency(it.unit_price || 0, currency)}</td>
+                                      <td className="border p-1.5 text-right">{formatQuoteCurrency(it.quantity * (it.unit_price || 0), currency)}</td>
+                                    </tr>
+                                  ))}
+                                  <tr className="font-bold font-sans">
+                                    <td colSpan={3} className="border p-1.5 text-right">Total CFR Value:</td>
+                                    <td className="border p-1.5 text-right">{formatQuoteCurrency(totalVal, currency)}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+
+                              <div className="border-t pt-4 text-[9px] text-slate-500">
+                                <p className="font-bold">Declaration:</p>
+                                <p>We declare that this invoice shows the actual value of the goods and that all particulars are true and correct.</p>
+                                <div className="mt-4 flex justify-between items-center font-sans font-bold text-slate-900">
+                                  <span>For SHESHAAN GLOBAL PVT LTD</span>
+                                  <span className="border-t border-slate-400 pt-1 w-32 text-center">Authorized Signatory</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          const totalQty = items.reduce((acc, it) => acc + it.quantity, 0);
+                          const grossWeight = totalQty * 1000 + 400;
+                          return (
+                            <div className="space-y-4">
+                              <div className="border-b pb-4 flex justify-between">
+                                <div>
+                                  <h1 className="text-sm font-black text-slate-900 uppercase font-sans">Sheshaan Global Pvt Ltd</h1>
+                                  <p className="text-[9px] text-slate-500 font-sans font-bold">Agro Exporter | Mumbai, India</p>
+                                </div>
+                                <div className="text-right">
+                                  <h2 className="text-xs font-black uppercase text-indigo-700 font-sans">Export Packing List</h2>
+                                  <p className="font-sans">No: PL-{invoiceNum}</p>
+                                  <p className="font-sans">Date: {docDate}</p>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="border p-2 rounded">
+                                  <p className="font-sans font-black text-slate-700">Shipper:</p>
+                                  <p className="font-bold">SHESHAAN GLOBAL PVT LTD</p>
+                                  <p>Mumbai Office, MH, India</p>
+                                </div>
+                                <div className="border p-2 rounded">
+                                  <p className="font-sans font-black text-slate-700">Consignee:</p>
+                                  <p className="font-bold">{clientName}</p>
+                                  <p>{clientAddr}</p>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="border p-2 rounded">
+                                  <p className="font-sans font-black text-slate-700">Ocean Voyage Details:</p>
+                                  <p>Vessel: {vesselName}</p>
+                                  <p>Port of Loading: Nhava Sheva (INNSA)</p>
+                                  <p>Container No: {containerNo}</p>
+                                </div>
+                                <div className="border p-2 rounded">
+                                  <p className="font-sans font-black text-slate-700">Packaging Details:</p>
+                                  <p>Total Packages: {totalQty * 20} Bags (50kg PP Bags)</p>
+                                  <p>Container Seal: {sealNo}</p>
+                                  <p>Total Cargo Net Weight: {totalQty * 1000} KGS</p>
+                                </div>
+                              </div>
+
+                              <table className="w-full border-collapse border border-slate-300">
+                                <thead>
+                                  <tr className="bg-slate-100 font-sans font-bold">
+                                    <th className="border p-1.5 text-left">Description of Packages & Goods</th>
+                                    <th className="border p-1.5 text-right">No of Packages</th>
+                                    <th className="border p-1.5 text-right">Net Weight (KG)</th>
+                                    <th className="border p-1.5 text-right">Gross Weight (KG)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map((it, idx) => (
+                                    <tr key={idx}>
+                                      <td className="border p-1.5">{it.description} <br />Packed in 50KG Net PP Bags</td>
+                                      <td className="border p-1.5 text-right">{it.quantity * 20} Bags</td>
+                                      <td className="border p-1.5 text-right">{(it.quantity * 1000).toLocaleString()} KGS</td>
+                                      <td className="border p-1.5 text-right">{(it.quantity * 1000 + 80).toLocaleString()} KGS</td>
+                                    </tr>
+                                  ))}
+                                  <tr className="font-bold font-sans">
+                                    <td className="border p-1.5 text-right">Total:</td>
+                                    <td className="border p-1.5 text-right">{totalQty * 20} Bags</td>
+                                    <td className="border p-1.5 text-right">{(totalQty * 1000).toLocaleString()} KGS</td>
+                                    <td className="border p-1.5 text-right">{grossWeight.toLocaleString()} KGS</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+
+                              <div className="border-t pt-4 flex justify-between items-center font-sans font-bold text-slate-900">
+                                <span>For SHESHAAN GLOBAL PVT LTD</span>
+                                <button
+                                  type="button"
+                                  onClick={() => window.print()}
+                                  className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded font-sans text-[9px]"
+                                >
+                                  Print / Export Document
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+                      })()}
+                    </div>
+                  </div>
+                </div>
               </div>
             </TwoColumnManager>
           )}
@@ -4550,12 +6293,14 @@ export const Dashboard: React.FC = () => {
                     <td className="p-3">{user.email}</td>
                     <td className="p-3">{user.role}</td>
                     <td className="p-3">{user.active ? 'Active' : 'Inactive'}</td>
-                    <td className="p-3"><RowActions onEdit={() => { setEditingUserId(user.id); setUserForm(user); }} onDelete={() => deleteRecord('app_users', user.id, 'user')} /></td>
+                    <td className="p-3"><RowActions currentRole={currentRole} onEdit={() => { setEditingUserId(user.id); setUserForm(user); }} onDelete={() => deleteRecord('app_users', user.id, 'user')} /></td>
                   </tr>
                 ))}
               </DataTable>
             </TwoColumnManager>
           )}
+                </>
+              )}
             </div>
             {selectedBuyer && (
               <BuyerDetailModal
@@ -4653,6 +6398,172 @@ export const Dashboard: React.FC = () => {
           </button>
         </div>
       </nav>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-slide-in-right">
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-[11px] font-black uppercase tracking-wider ${
+            toast.type === 'success' ? 'bg-slate-900 border-slate-800 text-white' :
+            toast.type === 'error' ? 'bg-red-950 border-red-900/60 text-red-200' :
+            toast.type === 'warning' ? 'bg-amber-950 border-amber-900/60 text-amber-200' :
+            'bg-slate-900 border-slate-800 text-white'
+          }`}>
+            <span className="flex-1">{toast.message}</span>
+            <button type="button" onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 transition p-1 hover:bg-white/15 rounded">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Docked Command Console (Ctrl+K Overlay) */}
+      {commandOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4">
+          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setCommandOpen(false)} />
+          <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl animate-fade-up max-h-[70vh] flex flex-col">
+            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+              <Search className="h-5 w-5 text-slate-400" />
+              <SmoothInput
+                type="text"
+                placeholder="Search console (e.g. /crm, /quotes, /manager, or type record name)..."
+                value={commandSearch}
+                onChange={setCommandSearch}
+                className="w-full text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none"
+                autoFocus
+                delay={80}
+              />
+              <button type="button" onClick={() => setCommandOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <kbd className="text-[10px] font-black bg-slate-100 border px-1.5 py-0.5 rounded">ESC</kbd>
+              </button>
+            </div>
+
+            <div className="mt-3 overflow-y-auto flex-1 space-y-2 text-xs">
+              {commandSearch.startsWith('/') || !commandSearch ? (
+                <div>
+                  <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider mb-1.5">Workspace Navigation</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { cmd: '/overview', label: 'Command Center', tab: 'overview' as TabKey },
+                      { cmd: '/actionQueue', label: 'Action Queue', tab: 'actionQueue' as TabKey },
+                      { cmd: '/crm', label: 'CRM Pipeline', tab: 'crm' as TabKey },
+                      { cmd: '/quotes', label: 'Quote Automation', tab: 'quotes' as TabKey },
+                      { cmd: '/tasks', label: 'Tasks & Reminders', tab: 'tasks' as TabKey },
+                      { cmd: '/accounts', label: 'Accounts / Receipts', tab: 'accounts' as TabKey },
+                      { cmd: '/shipments', label: 'Shipment Ops', tab: 'shipments' as TabKey },
+                      { cmd: '/manager', label: 'Manager Dashboard', tab: 'manager' as TabKey }
+                    ].filter(item => item.cmd.includes(commandSearch)).map(item => (
+                      <button
+                        key={item.cmd}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(item.tab);
+                          setCommandOpen(false);
+                          setCommandSearch('');
+                        }}
+                        className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-200 transition text-left"
+                      >
+                        <span className="font-extrabold text-slate-800">{item.label}</span>
+                        <span className="text-[9px] font-black text-sky-700 bg-sky-50 px-1 rounded border border-sky-200">{item.cmd}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {commandSearch && !commandSearch.startsWith('/') ? (
+                <div>
+                  <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider mb-1.5">Record Matches</p>
+                  <div className="space-y-1">
+                    {[
+                      ...clients.map(c => ({ label: c.company_name, meta: 'Buyer Profile', onClick: () => { setActiveTab('crm'); setSelectedBuyerId(c.id); } })),
+                      ...leads.map(l => ({ label: l.company_name, meta: `Lead | ${l.stage}`, onClick: () => { setActiveTab('crm'); setCrmSearchQuery(l.company_name); } })),
+                      ...quotes.map(q => ({ label: q.quote_number, meta: `Quote | ${q.status}`, onClick: () => { setActiveTab('quotes'); setQuoteSearch(q.quote_number); } })),
+                      ...tasks.map(t => ({ label: t.title, meta: `Task | ${t.status}`, onClick: () => { setActiveTab('tasks'); } }))
+                    ].filter(item => item.label.toLowerCase().includes(commandSearch.toLowerCase())).slice(0, 5).map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          item.onClick();
+                          setCommandOpen(false);
+                          setCommandSearch('');
+                        }}
+                        className="w-full flex justify-between items-center p-2 rounded-lg hover:bg-slate-50 transition text-left font-semibold text-slate-700"
+                      >
+                        <span>{item.label}</span>
+                        <span className="text-[9px] text-slate-400 font-extrabold">{item.meta}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Copilot Sidebar Drawer */}
+      {copilotOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden flex justify-end">
+          <div className="fixed inset-0 bg-slate-950/20 backdrop-blur-xs transition-opacity" onClick={() => setCopilotOpen(false)} />
+          <div className="relative w-full max-w-sm bg-white border-l border-slate-200 shadow-2xl flex flex-col h-full animate-slide-over">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-950 text-white">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-sky-400" />
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-sky-400">Sheshaan Copilot</h3>
+                  <p className="text-[10px] text-slate-400 font-medium">B2B Trade AI Assistant</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setCopilotOpen(false)} className="text-slate-400 hover:text-white p-1 hover:bg-white/10 rounded-lg">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {copilotLog.map((log, idx) => (
+                <div key={idx} className={`flex ${log.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`p-3 rounded-2xl text-xs max-w-[85%] leading-relaxed ${
+                    log.sender === 'user'
+                      ? 'bg-slate-900 text-white rounded-tr-none'
+                      : 'bg-slate-50 text-slate-800 border border-slate-100 rounded-tl-none font-semibold'
+                  }`}>
+                    <p>{log.text}</p>
+                    {log.action && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(log.action!.tab);
+                          setCopilotOpen(false);
+                        }}
+                        className="mt-2.5 px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-white rounded font-black text-[10px] flex items-center gap-1 active:scale-98 transition shadow-sm"
+                      >
+                        {log.action.label} <ArrowRight className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 border-t border-slate-100 bg-slate-50 flex gap-2">
+              <input
+                type="text"
+                placeholder="Ask copilot..."
+                value={copilotMessage}
+                onChange={(e) => setCopilotMessage(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendCopilotMessage()}
+                className="flex-1 h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500"
+              />
+              <button
+                type="button"
+                onClick={handleSendCopilotMessage}
+                className="h-9 w-9 bg-slate-900 text-white rounded-lg flex items-center justify-center hover:bg-slate-800 transition active:scale-95"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -4743,14 +6654,16 @@ const DashboardList = ({ title, empty, rows }: { title: string; empty: string; r
   </div>
 );
 
-const RowActions = ({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) => (
+const RowActions = ({ onEdit, onDelete, currentRole = 'Admin' }: { onEdit: () => void; onDelete: () => void; currentRole?: string }) => (
   <div className="flex items-center justify-center gap-1">
     <button type="button" onClick={onEdit} className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-lg transition" title="Edit">
       <Edit2 className="h-4 w-4" />
     </button>
-    <button type="button" onClick={onDelete} className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition" title="Delete">
-      <Trash2 className="h-4 w-4" />
-    </button>
+    {currentRole === 'Admin' && (
+      <button type="button" onClick={onDelete} className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-lg transition" title="Delete">
+        <Trash2 className="h-4 w-4" />
+      </button>
+    )}
   </div>
 );
 
@@ -4795,32 +6708,121 @@ const TwoColumnManager = ({
   </div>
 );
 
+const useBufferedText = (value: string, onChange: (value: string) => void, delay = 140) => {
+  const [draft, setDraft] = React.useState(value);
+  const latestValue = React.useRef(value);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    latestValue.current = value;
+    setDraft(value);
+  }, [value]);
+
+  React.useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const commit = React.useCallback((nextValue: string) => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    latestValue.current = nextValue;
+    onChange(nextValue);
+  }, [onChange]);
+
+  const schedule = React.useCallback((nextValue: string) => {
+    setDraft(nextValue);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => commit(nextValue), delay);
+  }, [commit, delay]);
+
+  return { draft, schedule, commit };
+};
+
+const SmoothInput = ({
+  value,
+  onChange,
+  className,
+  delay = 140,
+  ...props
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
+  value: string;
+  onChange: (value: string) => void;
+  delay?: number;
+}) => {
+  const { draft, schedule, commit } = useBufferedText(value, onChange, delay);
+
+  return (
+    <input
+      {...props}
+      value={draft}
+      onChange={(event) => schedule(event.target.value)}
+      onBlur={() => commit(draft)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') commit(draft);
+        props.onKeyDown?.(event);
+      }}
+      className={className}
+    />
+  );
+};
+
+const SmoothTextarea = ({
+  value,
+  onChange,
+  className,
+  delay = 140,
+  ...props
+}: Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'> & {
+  value: string;
+  onChange: (value: string) => void;
+  delay?: number;
+}) => {
+  const { draft, schedule, commit } = useBufferedText(value, onChange, delay);
+
+  return (
+    <textarea
+      {...props}
+      value={draft}
+      onChange={(event) => schedule(event.target.value)}
+      onBlur={() => commit(draft)}
+      className={className}
+    />
+  );
+};
+
 const TextInput = ({ label, value, onChange, type = 'text', required = false, placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; placeholder?: string }) => (
   <label className="block">
     <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
-    <input 
-      type={type} 
-      value={value} 
-      onChange={(e) => onChange(e.target.value)} 
-      required={required} 
+    <SmoothInput
+      type={type}
+      value={value}
+      onChange={onChange}
+      required={required}
       placeholder={placeholder}
-      className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 placeholder-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm" 
+      delay={type === 'date' ? 0 : 140}
+      className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 placeholder-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm"
     />
   </label>
 );
 
-const NumberInput = ({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) => (
-  <label className="block">
-    <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
-    <input 
-      type="number" 
-      step="0.01" 
-      value={value || ''} 
-      onChange={(e) => onChange(parseFloat(e.target.value) || 0)} 
-      className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm" 
-    />
-  </label>
-);
+const NumberInput = ({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) => {
+  const stringValue = Number.isFinite(value) && value !== 0 ? String(value) : '';
+
+  return (
+    <label className="block">
+      <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
+      <SmoothInput
+        type="number"
+        step="0.01"
+        value={stringValue}
+        onChange={(nextValue) => onChange(parseFloat(nextValue) || 0)}
+        className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm"
+      />
+    </label>
+  );
+};
 
 const SelectInput = ({
   label,
@@ -4838,9 +6840,9 @@ const SelectInput = ({
   <label className="block">
     <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
     <div className="relative">
-      <select 
-        value={value} 
-        onChange={(e) => onChange(e.target.value)} 
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         className="w-full h-10 px-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 appearance-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm"
       >
         {options.map((option) => <option key={option} value={option}>{labels[option] || option || 'None'}</option>)}
@@ -4860,24 +6862,90 @@ const CheckboxInput = ({ label, checked, onChange }: { label: string; checked: b
 const TextArea = ({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) => (
   <label className="block">
     <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
-    <textarea 
-      value={value} 
-      onChange={(e) => onChange(e.target.value)} 
-      className="w-full p-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 min-h-24 resize-y focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm" 
+    <SmoothTextarea
+      value={value}
+      onChange={onChange}
+      className="w-full p-3 border border-slate-200 rounded-lg bg-white text-xs font-semibold text-slate-800 min-h-24 resize-y focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 focus:outline-none transition-all duration-200 shadow-sm"
     />
   </label>
 );
 
-const DataTable = ({ headers, children }: { headers: string[]; children: React.ReactNode }) => (
-  <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm scroll-fade">
-    <table className="w-full text-left border-collapse text-xs">
-      <thead>
-        <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
-          {headers.map((header) => <th key={header} className="p-3.5 whitespace-nowrap">{header}</th>)}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100">{children}</tbody>
-    </table>
+const DataTable = ({ headers, children, pageSize = 8 }: { headers: string[]; children: React.ReactNode; pageSize?: number }) => {
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const rows = React.Children.toArray(children);
+  const totalPages = Math.ceil(rows.length / pageSize);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [rows.length]);
+
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedRows = rows.slice(startIndex, startIndex + pageSize);
+
+  if (rows.length === 0) {
+    return (
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm scroll-fade">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
+              {headers.map((header) => <th key={header} className="p-3.5 whitespace-nowrap">{header}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            <tr>
+              <td colSpan={headers.length} className="p-8 text-center text-slate-400">No records found.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm scroll-fade">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
+              {headers.map((header) => <th key={header} className="p-3.5 whitespace-nowrap">{header}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">{paginatedRows}</tbody>
+        </table>
+      </div>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border border-slate-200 bg-white px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 shadow-sm">
+          <span>Showing <strong className="text-slate-900">{startIndex + 1}</strong> to <strong className="text-slate-900">{Math.min(startIndex + pageSize, rows.length)}</strong> of <strong className="text-slate-900">{rows.length}</strong> records</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(v => Math.max(1, v - 1))}
+              className="px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition active:scale-98"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(v => Math.min(totalPages, v + 1))}
+              className="px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent transition active:scale-98"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const TableSkeleton = () => (
+  <div className="space-y-4 py-4 animate-pulse w-full">
+    <div className="h-10 bg-slate-100/60 rounded-xl w-full" />
+    <div className="h-14 bg-slate-50/60 rounded-xl w-full" />
+    <div className="h-14 bg-slate-50/60 rounded-xl w-full" />
+    <div className="h-14 bg-slate-50/60 rounded-xl w-full" />
   </div>
 );
 
@@ -4927,6 +6995,7 @@ interface BuyerCardProps {
   bestSendWindowIST: (country: string) => string;
   crmLead?: Lead;
   onPushToCrm?: () => void;
+  currentRole?: string;
 }
 
 const BuyerCard: React.FC<BuyerCardProps> = React.memo(({
@@ -4940,7 +7009,8 @@ const BuyerCard: React.FC<BuyerCardProps> = React.memo(({
   formatQuoteCurrency,
   bestSendWindowIST,
   crmLead,
-  onPushToCrm
+  onPushToCrm,
+  currentRole = 'Admin'
 }) => {
   return (
     <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 text-xs">
@@ -4975,7 +7045,7 @@ const BuyerCard: React.FC<BuyerCardProps> = React.memo(({
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={onView} className="px-2 py-1 bg-sky-50 text-sky-700 rounded font-bold hover:bg-sky-100">View</button>
-          <RowActions onEdit={onEdit} onDelete={onDelete} />
+          <RowActions currentRole={currentRole} onEdit={onEdit} onDelete={onDelete} />
         </div>
       </div>
       <p className="text-slate-500 font-mono font-medium">{client.destination_port}</p>

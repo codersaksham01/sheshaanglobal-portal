@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { sessionCookieName, verifySessionToken } from '../../../lib/serverSession';
+
+const isAuthorized = (req: NextRequest) => {
+  if (process.env.NODE_ENV === 'production' && !process.env.APP_LOGIN_PASSWORD) return false;
+  return !process.env.APP_LOGIN_PASSWORD || verifySessionToken(req.cookies.get(sessionCookieName)?.value);
+};
+const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 
 const dbPath = path.join(process.cwd(), 'db.json');
 const emptyDB = {
@@ -49,6 +56,7 @@ function writeDB(data: any) {
 }
 
 export async function GET(req: NextRequest) {
+  if (!isAuthorized(req)) return unauthorized();
   const { searchParams } = new URL(req.url);
   const table = searchParams.get('table');
 
@@ -76,6 +84,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!isAuthorized(req)) return unauthorized();
+  const contentLength = Number(req.headers.get('content-length') || 0);
+  if (contentLength > 10 * 1024 * 1024) {
+    return NextResponse.json({ error: 'Request is too large' }, { status: 413 });
+  }
   const { searchParams } = new URL(req.url);
   const table = searchParams.get('table');
   const action = searchParams.get('action');
@@ -443,8 +456,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid table name' }, { status: 400 });
   }
 
-  const body = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   const valArray = Array.isArray(body) ? body : [body];
+  if (!valArray.length || valArray.some((value) => !value || typeof value !== 'object' || Array.isArray(value))) {
+    return NextResponse.json({ error: 'Expected a record or an array of records' }, { status: 400 });
+  }
   const currentTable = db[table] || [];
   const insertedOrUpdated: any[] = [];
 
@@ -475,6 +496,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!isAuthorized(req)) return unauthorized();
   const { searchParams } = new URL(req.url);
   const table = searchParams.get('table');
   const id = searchParams.get('id');

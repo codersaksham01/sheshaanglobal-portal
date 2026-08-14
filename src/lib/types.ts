@@ -8,6 +8,7 @@ export interface Client {
   created_at?: string;
   phone?: string;
   products_dealing?: string[];
+  lifecycle_status?: 'Prospect' | 'Qualified' | 'Customer' | 'Active Sourcing' | 'Completed Cycle';
 }
 
 export interface Product {
@@ -72,6 +73,8 @@ export interface Lead {
   client_id?: string;
   created_at?: string;
   updated_at?: string;
+  sequence_enrolled?: string;
+  lead_score?: number;
 }
 
 export interface TimelineActivity {
@@ -273,4 +276,19 @@ export interface BankDetails {
   account_number: string;
   ifsc_code: string;
   swift_code: string;
+}
+
+/** Cached FX rate entry stored in localStorage under 'fx_cache_usd_inr' */
+export interface FxRateCache {
+  rate: number;
+  base: 'USD';
+  target: 'INR';
+  fetched_at: string; // ISO timestamp
+}
+
+/** Extended shipment fields used by the Transit Radar and Demurrage Alert */
+export interface ShipmentExtended {
+  port_of_loading?: string;
+  port_of_discharge?: string;
+  free_days?: number; // detention-free days at destination port
 }
