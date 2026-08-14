@@ -3169,23 +3169,27 @@ export const Dashboard: React.FC = () => {
                       </div>
 
                       <div className="p-4">
-                        <div className="mb-4 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                          <div className="grid w-full xl:max-w-4xl grid-cols-1 md:grid-cols-[minmax(0,1fr)_220px_170px] gap-2">
+                        <div className="mb-4 space-y-3">
+                          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                            <label className="mb-2 block text-[10px] font-black uppercase tracking-wide text-slate-500">Search CRM Buyers</label>
                             <div className="relative">
-                              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                               <input
                                 type="text"
-                                placeholder="Search pipeline by company, contact, email, phone, country..."
+                                placeholder="Search by company, contact, email, phone, country, or product..."
                                 value={crmSearchQuery}
                                 onChange={(e) => setCrmSearchQuery(e.target.value)}
-                                className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition font-semibold"
+                                className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-10 text-sm font-semibold text-slate-800 placeholder-slate-400 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                               />
                               {crmSearchQuery && (
-                                <button type="button" onClick={() => setCrmSearchQuery('')} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition" title="Clear search">
-                                  <X className="h-3.5 w-3.5" />
+                                <button type="button" onClick={() => setCrmSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600" title="Clear search">
+                                  <X className="h-4 w-4" />
                                 </button>
                               )}
                             </div>
+                          </div>
+                          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                            <div className="grid w-full xl:max-w-md grid-cols-1 sm:grid-cols-2 gap-2">
                             <div className="relative">
                               <select
                                 aria-label="CRM Country Filter"
@@ -3221,6 +3225,7 @@ export const Dashboard: React.FC = () => {
                             <button type="button" onClick={() => bulkUpdateSelectedLeads('responded')} className="px-3 py-2 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-500 disabled:opacity-40" disabled={!selectedLeads.length}>Responded</button>
                             {selectedLeads.length > 0 && <button type="button" onClick={() => setSelectedLeadIds([])} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200">{selectedLeads.length} selected - Clear</button>}
                           </div>
+                        </div>
                         </div>
                         {importSummary && (
                           <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-slate-700">
