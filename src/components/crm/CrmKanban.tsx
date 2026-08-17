@@ -139,7 +139,7 @@ interface CrmKanbanProps {
   onToggleSelection: (id: string | string[], checked: boolean) => void;
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
-  onMoveLead: (leadId: string, newStage: CrmStage) => void;
+  onMoveLead: (leadId: string, newStage: any) => void;
   onSendEmail: (lead: CrmLead, mode: 'First Reach' | 'Follow-up') => void;
   leadScoreValue: Record<string, number>;
   leadVelocityScore: Record<string, number>;
@@ -147,9 +147,10 @@ interface CrmKanbanProps {
   leadActionCategory: (lead: CrmLead) => string;
 }
 
-const STAGES: { id: CrmStage; title: string; color: string }[] = [
+const COLUMNS: { id: string; title: string; color: string }[] = [
   { id: 'New Lead', title: 'New Leads', color: 'border-t-sky-500 bg-sky-50/10' },
   { id: 'Contacted', title: 'Contacted', color: 'border-t-blue-500 bg-blue-50/10' },
+  { id: 'Follow-up Due', title: 'Follow-up Due', color: 'border-t-amber-600 bg-amber-50/20 border-l border-r border-amber-250 shadow-sm' },
   { id: 'Quoted', title: 'Quoted', color: 'border-t-purple-500 bg-purple-50/10' },
   { id: 'Negotiation', title: 'Negotiating', color: 'border-t-amber-500 bg-amber-50/10' },
   { id: 'Won', title: 'Won Deals', color: 'border-t-emerald-500 bg-emerald-50/10' },
@@ -178,7 +179,7 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
     e.preventDefault();
   };
 
-  const handleDrop = (e: React.DragEvent, targetStage: CrmStage) => {
+  const handleDrop = (e: React.DragEvent, targetStage: any) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('text/plain');
     if (leadId) {
@@ -187,9 +188,19 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3.5 items-start">
-      {STAGES.map((col) => {
-        const colLeads = leads.filter((l) => l.stage === col.id);
+    <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-7 gap-3.5 items-start">
+      {COLUMNS.map((col) => {
+        const colLeads = leads.filter((l) => {
+          const actionCat = leadActionCategory(l);
+          if (col.id === 'Follow-up Due') {
+            return actionCat === 'Follow-up Due' && l.stage !== 'Won' && l.stage !== 'Lost';
+          }
+          // For other columns, exclude if they have follow-up due
+          if (actionCat === 'Follow-up Due' && l.stage !== 'Won' && l.stage !== 'Lost') {
+            return false;
+          }
+          return l.stage === col.id;
+        });
 
         return (
           <div

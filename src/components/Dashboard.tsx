@@ -4125,14 +4125,47 @@ export const Dashboard: React.FC = () => {
     await fetchData();
   }, [selectedLeadIds, fetchData]);
 
-  const handleMoveLeadFromCrm = useCallback(async (leadId: string, newStage: CrmStage) => {
+  const handleMoveLeadFromCrm = useCallback(async (leadId: string, newStage: CrmStage | 'Follow-up Due') => {
+    const today = new Date().toISOString().slice(0, 10);
+    
+    if (newStage === 'Follow-up Due') {
+      setLeads((prevLeads) =>
+        prevLeads.map((l) => (l.id === leadId ? { ...l, next_follow_up: today } : l))
+      );
+      const { error } = await supabase
+        .from('leads')
+        .update({ next_follow_up: today })
+        .eq('id', leadId);
+      if (error) {
+        alert(`Failed to schedule follow-up: ${error.message}`);
+      }
+      await fetchData();
+      return;
+    }
+
     setLeads((prevLeads) =>
-      prevLeads.map((l) => (l.id === leadId ? { ...l, stage: newStage } : l))
+      prevLeads.map((l) => {
+        if (l.id === leadId) {
+          const nextFollowUp = l.next_follow_up && l.next_follow_up <= today
+            ? new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10)
+            : l.next_follow_up;
+          return { ...l, stage: newStage, next_follow_up: nextFollowUp };
+        }
+        return l;
+      })
     );
+
+    const matchLead = leads.find(l => l.id === leadId);
+    const nextFollowUp = matchLead && matchLead.next_follow_up && matchLead.next_follow_up <= today
+      ? new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10)
+      : matchLead?.next_follow_up;
 
     const { error } = await supabase
       .from('leads')
-      .update({ stage: newStage })
+      .update({ 
+        stage: newStage,
+        ...(nextFollowUp ? { next_follow_up: nextFollowUp } : {})
+      })
       .eq('id', leadId);
 
     if (error) {
@@ -4141,7 +4174,7 @@ export const Dashboard: React.FC = () => {
     } else {
       await fetchData();
     }
-  }, [fetchData]);
+  }, [fetchData, leads]);
 
   const handleSaveLeadFromDrawer = useCallback(async (updates: Partial<CrmLead>) => {
     if (!selectedCrmLead) return;
