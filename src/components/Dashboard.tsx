@@ -21,6 +21,11 @@ import {
 } from '../lib/types';
 import { InvoicePDF } from './InvoicePDF';
 import { QuoteForm } from './QuoteForm';
+import { CrmTable } from './crm/CrmTable';
+import { CrmKanban } from './crm/CrmKanban';
+import { LeadInspectorDrawer } from './crm/LeadInspectorDrawer';
+import { CrmLead, CrmStage } from '../lib/types/crm';
+import { useCallback } from 'react';
 import { SmartCommandCenter, SmartPortalInsight, SmartPortalPulse } from './SmartCommandCenter';
 import { usePortalIdentity } from './AuthGate';
 import { canAccessTab, canManageTable } from '../lib/permissions';
@@ -1139,6 +1144,10 @@ export const Dashboard: React.FC = () => {
 
   const [leadForm, setLeadForm] = useState<Partial<Lead>>(blankLead);
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [hasOpenedCrm, setHasOpenedCrm] = useState(false);
+  const [crmVisibleCount, setCrmVisibleCount] = useState(40);
+  const [selectedCrmLead, setSelectedCrmLead] = useState<CrmLead | null>(null);
+  const [crmViewMode, setCrmViewMode] = useState<'table' | 'kanban'>('table');
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
   const [crmCountryFilter, setCrmCountryFilter] = useState('All');
   const [crmSortKey, setCrmSortKey] = useState<'action' | 'country'>('action');
@@ -1204,6 +1213,16 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     setSourceVisibleCount(sourceListPageSize);
   }, [sourceSearchQuery, sourceTypeFilter, sourceCountryFilter, sourceActionFilter, sourceSortKey]);
+
+  useEffect(() => {
+    if (activeTab === 'crm') {
+      setHasOpenedCrm(true);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setCrmVisibleCount(40);
+  }, [crmSearchQuery, crmCountryFilter, crmSortKey]);
 
   useEffect(() => {
     setCrmColumnVisibleCounts({});
@@ -1377,6 +1396,63 @@ export const Dashboard: React.FC = () => {
     return map;
   }, [leads, quotes, invoices]);
 
+  const leadVelocityScore = useMemo(() => {
+    const calculateVelocity = (l: Lead) => {
+      let score = 0;
+
+      const key = normalizeCountryKey(l.country || '');
+      const offset = countryTimezoneOffsets[key] !== undefined ? countryTimezoneOffsets[key] : 5.5;
+      const utcHour = new Date().getUTCHours();
+      const localHour = (utcHour + offset + 24) % 24;
+      const isWorkingHours = localHour >= 9 && localHour <= 18;
+
+      if (isWorkingHours) {
+        score += 40;
+      } else if (localHour >= 18 && localHour <= 22) {
+        score += 20;
+      }
+
+      const val = Number(l.estimated_value) || 0;
+      score += Math.min(val / 10000, 30);
+
+      if (l.stage === 'Negotiation') {
+        score += 20;
+      } else if (l.stage === 'Quoted') {
+        score += 15;
+      } else if (l.stage === 'Contacted') {
+        score += 10;
+      }
+
+      if (l.priority === 'High') {
+        score += 10;
+      } else if (l.priority === 'Medium') {
+        score += 5;
+      }
+
+      return Math.round(score);
+    };
+
+    const map: Record<string, number> = {};
+    leads.forEach(l => {
+      map[l.id] = calculateVelocity(l);
+    });
+    return map;
+  }, [leads]);
+
+  const leadsWithOutreachActivities = useMemo(() => {
+    const set = new Set();
+    activities.forEach((activity) => {
+      if (activity.lead_id && (
+        activity.type === 'Email' || 
+        activity.title.toLowerCase().includes('whatsapp') || 
+        (activity.details || '').toLowerCase().includes('whatsapp')
+      )) {
+        set.add(activity.lead_id);
+      }
+    });
+    return set;
+  }, [activities]);
+
   const buyerCountry = (client: Client) => clientCountries[client.id] || 'Uncategorized';
 
   const todayStart = new Date().setHours(0, 0, 0, 0);
@@ -1404,10 +1480,8 @@ export const Dashboard: React.FC = () => {
   };
   const leadHasOutreach = (lead: Lead) => {
     const status = leadEmailStatus(lead).toLowerCase();
-    return ['sent', 'follow', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded', 'email'].some((term) => status.includes(term)) || activities.some((activity) => (
-      activity.lead_id === lead.id &&
-      (activity.type === 'Email' || activity.title.toLowerCase().includes('whatsapp') || (activity.details || '').toLowerCase().includes('whatsapp'))
-    ));
+    return ['sent', 'follow', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded', 'email'].some((term) => status.includes(term)) 
+      || leadsWithOutreachActivities.has(lead.id);
   };
   const leadResponded = (lead: Lead) => leadResponseStatus(lead).toLowerCase().startsWith('yes');
   const leadFollowUpDue = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() <= todayEnd && !['Won', 'Lost'].includes(lead.stage));
@@ -1425,7 +1499,7 @@ export const Dashboard: React.FC = () => {
       nextAction.includes('send follow up')
     );
   };
-  const leadActionCategory = (lead: Lead) => {
+  const leadActionCategory = useCallback((lead: Lead) => {
     const nextAction = leadNextAction(lead).toLowerCase();
     if (lead.stage === 'Won' || lead.stage === 'Lost') return 'Closed';
     if (leadMissingEmail(lead) || nextAction.includes('fix') || nextAction.includes('verify email')) return 'Needs Email Fix';
@@ -1435,7 +1509,7 @@ export const Dashboard: React.FC = () => {
     if (leadNextFollowUpScheduled(lead)) return 'Next Follow-up';
     if (leadHasOutreach(lead)) return 'Waiting Reply';
     return 'Review';
-  };
+  }, [activities, todayEnd]);
   const dateAfterDays = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
@@ -1472,6 +1546,149 @@ export const Dashboard: React.FC = () => {
       next_follow_up: shouldScheduleFollowUp ? dateAfterDays(3) : payload.next_follow_up
     };
   };
+
+  const resetLeadForm = () => { setEditingLeadId(null); setLeadForm(blankLead); };
+  const resetActivityForm = () => { setEditingActivityId(null); setActivityForm(blankActivity); };
+  const resetTaskForm = () => { setEditingTaskId(null); setTaskForm(blankTask); };
+  const resetTemplateForm = () => { setEditingTemplateId(null); setTemplateForm(blankTemplate); };
+  const resetRateForm = () => { setEditingRateId(null); setRateForm(blankRate); };
+  const resetInvoiceForm = () => { setEditingInvoiceId(null); setInvoiceForm(blankInvoice); };
+  const resetShipmentForm = () => { setEditingShipmentId(null); setShipmentForm(blankShipment); };
+  const resetChecklistForm = () => { setEditingChecklistId(null); setChecklistForm(blankChecklist); };
+  const resetUserForm = () => { setEditingUserId(null); setUserForm(blankUser); };
+
+  const saveRecord = async <T extends { id: string }>(
+    table: string,
+    editingId: string | null,
+    payload: Partial<T>,
+    reset: () => void
+  ) => {
+    const preparedPayload = table === 'leads' ? smartLeadPayload(payload as Partial<Lead>, editingId) : payload;
+    const finalPayload = { ...preparedPayload, id: editingId || preparedPayload.id || undefined };
+    // Auto-populate lead_id for activities and tasks if client_id is provided but lead_id is missing
+    if ((table === 'activities' || table === 'tasks') && (finalPayload as any).client_id && !(finalPayload as any).lead_id) {
+      const linkedLead = leads.find(l => l.client_id === (finalPayload as any).client_id);
+      if (linkedLead) {
+        (finalPayload as any).lead_id = linkedLead.id;
+      }
+    }
+
+    const query = editingId
+      ? supabase.from(table).update(finalPayload).eq('id', editingId)
+      : supabase.from(table).insert([finalPayload]).select().single();
+    const { data, error } = await query as any;
+    if (error) {
+      alert(error.message || `Failed to save ${table}`);
+      return;
+    }
+
+    // Sync CRM lead updates to registered buyer profiles, or automatically create profiles for new leads
+    if (table === 'leads') {
+      const isNew = !editingId;
+      const payloadObj = finalPayload as any;
+      const leadCompany = payloadObj.company_name;
+
+      if (leadCompany) {
+        const client = clients.find(c => c.company_name.toLowerCase() === leadCompany.toLowerCase());
+
+        if (isNew) {
+          const insertedLead = Array.isArray(data) ? data[0] : data;
+          const leadId = insertedLead?.id || payloadObj.id;
+
+          if (!client) {
+            const newClientPayload = {
+              company_name: payloadObj.company_name,
+              contact_name: payloadObj.contact_name || '',
+              contact_email: payloadObj.contact_email || '',
+              destination_port: payloadObj.country || 'Not specified',
+              address: payloadObj.country ? `Country: ${payloadObj.country}` : '',
+              phone: payloadObj.phone || '',
+              products_dealing: payloadObj.product_interest ? [payloadObj.product_interest] : []
+            };
+
+            const { data: insertedClient } = await supabase.from('clients').insert([newClientPayload]).select().single();
+            const newClientId = insertedClient?.id;
+
+            if (leadId && newClientId) {
+              await supabase.from('leads').update({
+                client_id: newClientId
+              }).eq('id', leadId);
+            }
+          } else {
+            if (leadId) {
+              await supabase.from('leads').update({
+                client_id: client.id
+              }).eq('id', leadId);
+            }
+          }
+        } else {
+          if (client) {
+            await supabase.from('clients').update({
+              company_name: payloadObj.company_name || client.company_name,
+              contact_name: payloadObj.contact_name !== undefined ? payloadObj.contact_name : client.contact_name,
+              contact_email: payloadObj.contact_email !== undefined ? payloadObj.contact_email : client.contact_email,
+              phone: payloadObj.phone !== undefined ? payloadObj.phone : client.phone,
+              destination_port: payloadObj.country || client.destination_port
+            }).eq('id', client.id);
+          }
+        }
+      }
+    }
+
+    // Auto-set lead stage to 'Won' when a shipment is created
+    if (table === 'shipments' && !editingId && (finalPayload as any).client_id) {
+      const clientId = (finalPayload as any).client_id;
+      const clientObj = clients.find(c => c.id === clientId);
+      const lead = leads.find(l => l.client_id === clientId || (clientObj && l.company_name.toLowerCase() === clientObj.company_name.toLowerCase()));
+      if (lead) {
+        await supabase.from('leads').update({
+          stage: 'Won'
+        }).eq('id', lead.id);
+      }
+    }
+
+    // Buyer Lifecycle Automation
+    try {
+      if (table === 'clients' && !editingId) {
+        const clientRecord = Array.isArray(data) ? data[0] : data;
+        if (clientRecord?.id) {
+          await supabase.from('clients').update({ lifecycle_status: 'Prospect' }).eq('id', clientRecord.id);
+        }
+      } else if (table === 'quotes') {
+        const qRecord = Array.isArray(data) ? data[0] : data || finalPayload;
+        if (qRecord?.client_id) {
+          await supabase.from('clients').update({ lifecycle_status: 'Qualified' }).eq('id', qRecord.client_id);
+        }
+      } else if (table === 'invoices') {
+        const invRecord = Array.isArray(data) ? data[0] : data || finalPayload;
+        if (invRecord?.client_id) {
+          const status = invRecord.payment_status === 'Paid' ? 'Completed Cycle' : 'Customer';
+          await supabase.from('clients').update({ lifecycle_status: status }).eq('id', invRecord.client_id);
+        }
+      } else if (table === 'shipments') {
+        const shipRecord = Array.isArray(data) ? data[0] : data || finalPayload;
+        if (shipRecord?.client_id) {
+          await supabase.from('clients').update({ lifecycle_status: 'Active Sourcing' }).eq('id', shipRecord.client_id);
+        }
+      }
+    } catch (lifecycleErr) {
+      console.warn('Lifecycle transition automation failed:', lifecycleErr);
+    }
+
+    reset();
+    await fetchData();
+  };
+
+  const deleteRecord = async (table: string, id: string, label: string) => {
+    if (!confirm(`Delete this ${label}?`)) return;
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) {
+      alert(error.message || `Failed to delete ${label}`);
+      return;
+    }
+    await fetchData();
+  };
+
 
   const tradeOperatingMetrics = useMemo(() => {
     const today = new Date();
@@ -2170,7 +2387,7 @@ export const Dashboard: React.FC = () => {
       .replaceAll('{{eta}}', shipment?.eta || 'TBA');
   };
 
-  const handleLeadEmail = async (lead: Lead, mode: 'First Reach' | 'Follow-up') => {
+  const handleLeadEmail = useCallback(async (lead: Lead, mode: 'First Reach' | 'Follow-up') => {
     if (!lead.contact_email) {
       alert('Please add a lead email address before sending.');
       return;
@@ -2203,30 +2420,42 @@ export const Dashboard: React.FC = () => {
             'Next Action': 'Waiting for buyer response'
           };
 
-    const { error: leadUpdateError } = await supabase.from('leads').update({
-      notes: setLeadNoteValues(lead, fields),
-      stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : 'Contacted',
-      next_follow_up: nextFollowUp
-    }).eq('id', lead.id);
-    if (leadUpdateError) {
-      alert(leadUpdateError.message || 'Could not update lead outreach status.');
-      return;
-    }
+    // 1. Launch email client instantly (non-blocking)
+    const mailtoUrl = `mailto:${encodeURIComponent(lead.contact_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = mailtoUrl;
+    document.body.appendChild(iframe);
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 300);
 
-    await saveRecord<TimelineActivity>('activities', null, {
-      client_id: lead.client_id,
-      lead_id: lead.id,
-      type: 'Email',
-      title: `${mode} email prepared for ${lead.company_name}`,
-      details: `Template: ${template?.name || 'Default message'}\nTo: ${lead.contact_email}`,
-      activity_date: today,
-      owner: lead.owner || 'Sana Zeba'
-    }, resetActivityForm);
+    // 2. Perform database actions in the background concurrently
+    (async () => {
+      const { error: leadUpdateError } = await supabase.from('leads').update({
+        notes: setLeadNoteValues(lead, fields),
+        stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : 'Contacted',
+        next_follow_up: nextFollowUp
+      }).eq('id', lead.id);
 
-    window.location.href = `mailto:${encodeURIComponent(lead.contact_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  };
+      if (leadUpdateError) {
+        console.error('Could not update lead outreach status:', leadUpdateError.message);
+        return;
+      }
 
-  const handleLeadWhatsApp = async (lead: Lead) => {
+      saveRecord<TimelineActivity>('activities', null, {
+        client_id: lead.client_id,
+        lead_id: lead.id,
+        type: 'Email',
+        title: `${mode} email prepared for ${lead.company_name}`,
+        details: `Template: ${template?.name || 'Default message'}\nTo: ${lead.contact_email}`,
+        activity_date: today,
+        owner: lead.owner || 'Sana Zeba'
+      }, resetActivityForm);
+    })();
+  }, [resolveCrmEmailTemplate, replaceLeadTemplateVars, saveRecord, fetchData]);
+
+  const handleLeadWhatsApp = useCallback(async (lead: Lead) => {
     if (!lead.phone) {
       alert('Please add a phone number before opening WhatsApp.');
       return;
@@ -2238,32 +2467,38 @@ export const Dashboard: React.FC = () => {
     const today = new Date().toISOString().slice(0, 10);
     const nextFollowUpDate = new Date();
     nextFollowUpDate.setDate(nextFollowUpDate.getDate() + 3);
-    const { error: leadUpdateError } = await supabase.from('leads').update({
-      notes: setLeadNoteValues(lead, {
-        'Email Status': 'WhatsApp Sent',
-        'Last Email Sent On': today,
-        'Next Action': 'Waiting for buyer response'
-      }),
-      stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : 'Contacted',
-      next_follow_up: nextFollowUpDate.toISOString().slice(0, 10)
-    }).eq('id', lead.id);
-    if (leadUpdateError) {
-      alert(leadUpdateError.message || 'Could not update WhatsApp outreach status.');
-      return;
-    }
 
-    await saveRecord<TimelineActivity>('activities', null, {
-      client_id: lead.client_id,
-      lead_id: lead.id,
-      type: 'Note',
-      title: `WhatsApp message opened for ${lead.company_name}`,
-      details: `Template: ${template?.name || 'Default WhatsApp message'}\nPhone: ${lead.phone}`,
-      activity_date: today,
-      owner: lead.owner || 'Sana Zeba'
-    }, resetActivityForm);
-
+    // 1. Launch WhatsApp instantly (non-blocking)
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(body)}`, '_blank', 'noopener,noreferrer');
-  };
+
+    // 2. Perform database actions in the background concurrently
+    (async () => {
+      const { error: leadUpdateError } = await supabase.from('leads').update({
+        notes: setLeadNoteValues(lead, {
+          'Email Status': 'WhatsApp Sent',
+          'Last Email Sent On': today,
+          'Next Action': 'Waiting for buyer response'
+        }),
+        stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : 'Contacted',
+        next_follow_up: nextFollowUpDate.toISOString().slice(0, 10)
+      }).eq('id', lead.id);
+
+      if (leadUpdateError) {
+        console.error('Could not update WhatsApp outreach status:', leadUpdateError.message);
+        return;
+      }
+
+      saveRecord<TimelineActivity>('activities', null, {
+        client_id: lead.client_id,
+        lead_id: lead.id,
+        type: 'Note',
+        title: `WhatsApp message opened for ${lead.company_name}`,
+        details: `Template: ${template?.name || 'Default WhatsApp message'}\nPhone: ${lead.phone}`,
+        activity_date: today,
+        owner: lead.owner || 'Sana Zeba'
+      }, resetActivityForm);
+    })();
+  }, [templates, selectedCrmTemplate, replaceLeadTemplateVars, saveRecord, fetchData]);
 
   const handleBuyerWhatsAppReachout = async (client: Client, phone: string) => {
     if (!phone) {
@@ -2529,147 +2764,7 @@ export const Dashboard: React.FC = () => {
     setPresetForm(blankPreset);
   };
 
-  const resetLeadForm = () => { setEditingLeadId(null); setLeadForm(blankLead); };
-  const resetActivityForm = () => { setEditingActivityId(null); setActivityForm(blankActivity); };
-  const resetTaskForm = () => { setEditingTaskId(null); setTaskForm(blankTask); };
-  const resetTemplateForm = () => { setEditingTemplateId(null); setTemplateForm(blankTemplate); };
-  const resetRateForm = () => { setEditingRateId(null); setRateForm(blankRate); };
-  const resetInvoiceForm = () => { setEditingInvoiceId(null); setInvoiceForm(blankInvoice); };
-  const resetShipmentForm = () => { setEditingShipmentId(null); setShipmentForm(blankShipment); };
-  const resetChecklistForm = () => { setEditingChecklistId(null); setChecklistForm(blankChecklist); };
-  const resetUserForm = () => { setEditingUserId(null); setUserForm(blankUser); };
 
-  const saveRecord = async <T extends { id: string }>(
-    table: string,
-    editingId: string | null,
-    payload: Partial<T>,
-    reset: () => void
-  ) => {
-    const preparedPayload = table === 'leads' ? smartLeadPayload(payload as Partial<Lead>, editingId) : payload;
-    const finalPayload = { ...preparedPayload, id: editingId || preparedPayload.id || undefined };
-    // Auto-populate lead_id for activities and tasks if client_id is provided but lead_id is missing
-    if ((table === 'activities' || table === 'tasks') && (finalPayload as any).client_id && !(finalPayload as any).lead_id) {
-      const linkedLead = leads.find(l => l.client_id === (finalPayload as any).client_id);
-      if (linkedLead) {
-        (finalPayload as any).lead_id = linkedLead.id;
-      }
-    }
-
-    const query = editingId
-      ? supabase.from(table).update(finalPayload).eq('id', editingId)
-      : supabase.from(table).insert([finalPayload]).select().single();
-    const { data, error } = await query as any;
-    if (error) {
-      alert(error.message || `Failed to save ${table}`);
-      return;
-    }
-
-    // Sync CRM lead updates to registered buyer profiles, or automatically create profiles for new leads
-    if (table === 'leads') {
-      const isNew = !editingId;
-      const payloadObj = finalPayload as any;
-      const leadCompany = payloadObj.company_name;
-
-      if (leadCompany) {
-        const client = clients.find(c => c.company_name.toLowerCase() === leadCompany.toLowerCase());
-
-        if (isNew) {
-          const insertedLead = Array.isArray(data) ? data[0] : data;
-          const leadId = insertedLead?.id || payloadObj.id;
-
-          if (!client) {
-            const newClientPayload = {
-              company_name: payloadObj.company_name,
-              contact_name: payloadObj.contact_name || '',
-              contact_email: payloadObj.contact_email || '',
-              destination_port: payloadObj.country || 'Not specified',
-              address: payloadObj.country ? `Country: ${payloadObj.country}` : '',
-              phone: payloadObj.phone || '',
-              products_dealing: payloadObj.product_interest ? [payloadObj.product_interest] : []
-            };
-
-            const { data: insertedClient } = await supabase.from('clients').insert([newClientPayload]).select().single();
-            const newClientId = insertedClient?.id;
-
-            if (leadId && newClientId) {
-              await supabase.from('leads').update({
-                client_id: newClientId
-              }).eq('id', leadId);
-            }
-          } else {
-            if (leadId) {
-              await supabase.from('leads').update({
-                client_id: client.id
-              }).eq('id', leadId);
-            }
-          }
-        } else {
-          if (client) {
-            await supabase.from('clients').update({
-              company_name: payloadObj.company_name || client.company_name,
-              contact_name: payloadObj.contact_name !== undefined ? payloadObj.contact_name : client.contact_name,
-              contact_email: payloadObj.contact_email !== undefined ? payloadObj.contact_email : client.contact_email,
-              phone: payloadObj.phone !== undefined ? payloadObj.phone : client.phone,
-              destination_port: payloadObj.country || client.destination_port
-            }).eq('id', client.id);
-          }
-        }
-      }
-    }
-
-    // Auto-set lead stage to 'Won' when a shipment is created
-    if (table === 'shipments' && !editingId && (finalPayload as any).client_id) {
-      const clientId = (finalPayload as any).client_id;
-      const clientObj = clients.find(c => c.id === clientId);
-      const lead = leads.find(l => l.client_id === clientId || (clientObj && l.company_name.toLowerCase() === clientObj.company_name.toLowerCase()));
-      if (lead) {
-        await supabase.from('leads').update({
-          stage: 'Won'
-        }).eq('id', lead.id);
-      }
-    }
-
-    // Buyer Lifecycle Automation
-    try {
-      if (table === 'clients' && !editingId) {
-        const clientRecord = Array.isArray(data) ? data[0] : data;
-        if (clientRecord?.id) {
-          await supabase.from('clients').update({ lifecycle_status: 'Prospect' }).eq('id', clientRecord.id);
-        }
-      } else if (table === 'quotes') {
-        const qRecord = Array.isArray(data) ? data[0] : data || finalPayload;
-        if (qRecord?.client_id) {
-          await supabase.from('clients').update({ lifecycle_status: 'Qualified' }).eq('id', qRecord.client_id);
-        }
-      } else if (table === 'invoices') {
-        const invRecord = Array.isArray(data) ? data[0] : data || finalPayload;
-        if (invRecord?.client_id) {
-          const status = invRecord.payment_status === 'Paid' ? 'Completed Cycle' : 'Customer';
-          await supabase.from('clients').update({ lifecycle_status: status }).eq('id', invRecord.client_id);
-        }
-      } else if (table === 'shipments') {
-        const shipRecord = Array.isArray(data) ? data[0] : data || finalPayload;
-        if (shipRecord?.client_id) {
-          await supabase.from('clients').update({ lifecycle_status: 'Active Sourcing' }).eq('id', shipRecord.client_id);
-        }
-      }
-    } catch (lifecycleErr) {
-      console.warn('Lifecycle transition automation failed:', lifecycleErr);
-    }
-
-    reset();
-    await fetchData();
-  };
-
-  const deleteRecord = async (table: string, id: string, label: string) => {
-    if (!confirm(`Delete this ${label}?`)) return;
-    const { error } = await supabase.from(table).delete().eq('id', id);
-    if (error) {
-      alert(error.message || `Failed to delete ${label}`);
-      return;
-    }
-    await fetchData();
-  };
 
   const handleSeedMock = async () => {
     const dbWithHelpers = mockDB || (supabase as any);
@@ -3380,7 +3475,7 @@ export const Dashboard: React.FC = () => {
     });
   }, [leads, deferredCrmSearchQuery, crmCountryFilter, crmSortKey]);
 
-  const crmQueues = [
+  const crmQueues = useMemo(() => [
     { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Need Reach Out') },
     { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Follow-up Due') },
     { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
@@ -3390,7 +3485,9 @@ export const Dashboard: React.FC = () => {
     { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Review') },
     { label: 'Won / Approved', description: 'Pipeline deals successfully won', tone: 'emerald' as const, leads: filteredCrmLeads.filter((lead) => lead.stage === 'Won') },
     { label: 'Lost / Declined', description: 'Pipeline deals lost/declined', tone: 'rose' as const, leads: filteredCrmLeads.filter((lead) => lead.stage === 'Lost') }
-  ];
+  ], [filteredCrmLeads, leadActionCategory]);
+
+  const visibleCrmLeads = useMemo(() => filteredCrmLeads.slice(0, crmVisibleCount), [filteredCrmLeads, crmVisibleCount]);
 
   const sourceFilteredLeads = useMemo(() => {
     const query = deferredSourceSearchQuery.trim().toLowerCase();
@@ -3668,7 +3765,7 @@ export const Dashboard: React.FC = () => {
     setShowNotifications(false);
   };
   const selectedBuyer = clients.find((client) => client.id === selectedBuyerId);
-  const leadCategoryClass = (category: string) => {
+  const leadCategoryClass = useCallback((category: string) => {
     if (category === 'Need Reach Out') return 'bg-sky-50 text-sky-700 border-sky-100';
     if (category === 'Follow-up Due') return 'bg-amber-50 text-amber-700 border-amber-100';
     if (category === 'Next Follow-up') return 'bg-indigo-50 text-indigo-700 border-indigo-100';
@@ -3676,14 +3773,14 @@ export const Dashboard: React.FC = () => {
     if (category === 'Responded / Qualify') return 'bg-teal-50 text-teal-700 border-teal-100';
     if (category === 'Needs Email Fix') return 'bg-red-50 text-red-700 border-red-100';
     return 'bg-violet-50 text-violet-700 border-violet-100';
-  };
-  const leadEmailMode = (lead: Lead): 'First Reach' | 'Follow-up' => {
+  }, []);
+  const leadEmailMode = useCallback((lead: Lead): 'First Reach' | 'Follow-up' => {
     const category = leadActionCategory(lead);
     if (category === 'Need Reach Out') return 'First Reach';
     if (category === 'Follow-up Due' || category === 'Next Follow-up' || category === 'Waiting Reply' || category === 'Responded / Qualify') return 'Follow-up';
     if (leadNextActionRequiresFollowUp(lead) || leadFollowUpDue(lead) || leadHasOutreach(lead)) return 'Follow-up';
     return 'First Reach';
-  };
+  }, [leadActionCategory]);
   const handleSendCopilotMessage = () => {
     if (!copilotMessage.trim()) return;
     const msg = copilotMessage.trim();
@@ -3865,6 +3962,87 @@ export const Dashboard: React.FC = () => {
       </div>
     );
   }
+
+  const handleDeleteLeadFromCrm = useCallback(async (id: string) => {
+    await deleteRecord('leads', id, 'lead');
+    if (selectedCrmLead?.id === id) {
+      setSelectedCrmLead(null);
+    }
+  }, [deleteRecord, selectedCrmLead]);
+
+  const handleBulkDeleteLeads = useCallback(async () => {
+    if (!selectedLeadIds.length) return;
+    if (!confirm(`Are you sure you want to delete ${selectedLeadIds.length} selected leads?`)) return;
+
+    setLoading(true);
+    const { error } = await supabase
+      .from('leads')
+      .delete()
+      .in('id', selectedLeadIds);
+
+    setLoading(false);
+
+    if (error) {
+      alert(`Failed to delete leads: ${error.message}`);
+      return;
+    }
+
+    setSelectedLeadIds([]);
+    await fetchData();
+  }, [selectedLeadIds, fetchData]);
+
+  const handleMoveLeadFromCrm = useCallback(async (leadId: string, newStage: CrmStage) => {
+    setLeads((prevLeads) =>
+      prevLeads.map((l) => (l.id === leadId ? { ...l, stage: newStage } : l))
+    );
+
+    const { error } = await supabase
+      .from('leads')
+      .update({ stage: newStage })
+      .eq('id', leadId);
+
+    if (error) {
+      alert(`Failed to move lead: ${error.message}`);
+      await fetchData();
+    } else {
+      await fetchData();
+    }
+  }, [fetchData]);
+
+  const handleSaveLeadFromDrawer = useCallback(async (updates: Partial<CrmLead>) => {
+    if (!selectedCrmLead) return;
+    
+    const updatedLead = { ...selectedCrmLead, ...updates };
+    setSelectedCrmLead(updatedLead);
+    setLeads((prevLeads) =>
+      prevLeads.map((l) => (l.id === selectedCrmLead.id ? { ...l, ...updates } : l))
+    );
+
+    await saveRecord<Lead>('leads', selectedCrmLead.id.startsWith('new-') ? null : selectedCrmLead.id, updates, () => {});
+  }, [selectedCrmLead, saveRecord]);
+
+  const handleToggleSelection = useCallback((id: string, checked: boolean) => {
+    setSelectedLeadIds((prev) =>
+      checked ? [...prev, id] : prev.filter((item) => item !== id)
+    );
+  }, []);
+
+  const handleToggleSelectAll = useCallback((checked: boolean) => {
+    setSelectedLeadIds(checked ? filteredCrmLeads.map((l) => l.id) : []);
+  }, [filteredCrmLeads]);
+
+  const handleEditLead = useCallback((l: CrmLead) => {
+    setSelectedCrmLead(l);
+  }, []);
+
+  const handleSendEmail = useCallback((lead: CrmLead) => {
+    handleLeadEmail(lead, leadEmailMode(lead));
+  }, [handleLeadEmail, leadEmailMode]);
+
+  const handleUpdateStatus = useCallback((lead: CrmLead, action: 'email_sent' | 'followup_due' | 'responded') => {
+    if (action === 'email_sent') handleLeadEmail(lead, 'First Reach');
+    if (action === 'followup_due') handleLeadEmail(lead, 'Follow-up');
+  }, [handleLeadEmail]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#e0f2fe_0,_transparent_28%),radial-gradient(circle_at_90%_10%,_#ecfeff_0,_transparent_22%),linear-gradient(180deg,_#f8fafc_0%,_#eef2f7_100%)] pb-28 lg:pb-0">
@@ -4569,553 +4747,281 @@ export const Dashboard: React.FC = () => {
             </div>
           )}
 
-          {activeTab === 'crm' && (
-            <TwoColumnManager
-              formTitle={editingLeadId ? 'Edit CRM Lead' : 'Add CRM Lead'}
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!leadForm.company_name) return alert('Please enter company name.');
-                saveRecord<Lead>('leads', editingLeadId, {
-                  ...leadForm,
-                  estimated_value: Number(leadForm.estimated_value) || 0,
-                  stage: leadForm.stage || 'New Lead',
-                  sequence_enrolled: leadForm.sequence_enrolled || ''
-                }, resetLeadForm);
-              }}
-              onCancel={resetLeadForm}
-              isEditing={Boolean(editingLeadId)}
-              scrollableForm
-              form={
-                <>
-                  <TextInput label="Company Name *" value={leadForm.company_name || ''} onChange={(value) => setLeadForm({ ...leadForm, company_name: value })} required />
-                  <TextInput label="Contact Person" value={leadForm.contact_name || ''} onChange={(value) => setLeadForm({ ...leadForm, contact_name: value })} />
-                  <TextInput label="Email" value={leadForm.contact_email || ''} onChange={(value) => setLeadForm({ ...leadForm, contact_email: value })} />
-                  <TextInput label="Phone" value={leadForm.phone || ''} onChange={(value) => setLeadForm({ ...leadForm, phone: value })} />
-                  <TextInput label="Country" placeholder="e.g. Sweden, UAE, France" value={leadForm.country || ''} onChange={(value) => setLeadForm({ ...leadForm, country: value })} />
-                  <SelectInput label="Pipeline Stage" value={leadForm.stage || 'New Lead'} onChange={(value) => setLeadForm({ ...leadForm, stage: value as Lead['stage'] })} options={['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost']} />
-                  <SelectInput label="Priority" value={leadForm.priority || 'Medium'} onChange={(value) => setLeadForm({ ...leadForm, priority: value as Lead['priority'] })} options={['Low', 'Medium', 'High']} />
-                  <SelectInput label="Enroll in Outreach Sequence" value={leadForm.sequence_enrolled || 'None'} onChange={(value) => setLeadForm({ ...leadForm, sequence_enrolled: value === 'None' ? '' : value })} options={['None', 'Intro Sequence', 'Warm Follow-Up', 'Reactivation Sequence']} />
-                  <TextInput label="Product Interest" value={leadForm.product_interest || ''} onChange={(value) => setLeadForm({ ...leadForm, product_interest: value })} />
-                  <NumberInput label="Estimated Value" value={Number(leadForm.estimated_value) || 0} onChange={(value) => setLeadForm({ ...leadForm, estimated_value: value })} />
-                  <TextInput label="Next Follow-up" type="date" value={leadForm.next_follow_up || ''} onChange={(value) => setLeadForm({ ...leadForm, next_follow_up: value })} />
-                  <TextArea label="Notes" value={leadForm.notes || ''} onChange={(value) => setLeadForm({ ...leadForm, notes: value })} />
-                </>
-              }
-            >
-              <div className="space-y-4">
-                <div className="hidden">
-                  <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-sky-300">CRM command center</p>
-                      <h3 className="text-lg font-extrabold">Imported buyer outreach, follow-ups, and sales pipeline</h3>
-                      <p className="text-xs text-slate-300 mt-1 max-w-3xl">Upload the old CRM sheet once. The portal reads outreach status, response status, next action, priority, and follow-up dates, then sorts every lead into the right queue automatically.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={downloadCrmImportTemplate} className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white/10 border border-white/15 text-white rounded font-bold hover:bg-white/15 transition">
-                        <Download className="h-4 w-4" />
-                        Sample Template
-                      </button>
-                      <label className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-sky-500 text-white rounded font-bold cursor-pointer hover:bg-sky-400 transition">
-                        <FileCheck2 className="h-4 w-4" />
-                        {importingBuyers ? 'Importing...' : 'Import CRM File'}
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls,.csv"
-                          disabled={importingBuyers}
-                          onChange={(event) => {
-                            handleBuyerWorkbookImport(event.target.files?.[0] || null);
-                            event.currentTarget.value = '';
-                          }}
-                          className="hidden"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleDeleteAllCrmData}
-                        disabled={(!leads.length && !clients.length) || loading}
-                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded font-bold hover:bg-red-400 transition disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400"
-                        title="Delete CRM buyers, leads, activities, and follow-up tasks"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete CRM Data
-                      </button>
-                    </div>
+          <div className={activeTab === 'crm' ? 'block' : 'hidden'}>
+            {hasOpenedCrm && (
+              
+            <div className="space-y-4">
+              {/* Dynamic Metric Grid */}
+              <div className="rounded-xl border border-slate-200 bg-slate-950 p-4 text-white shadow-sm">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">Smart CRM Pipeline</p>
+                    <h3 className="text-xl font-black">Lead Command OS</h3>
+                    <p className="text-xs text-slate-300 mt-1 max-w-2xl">
+                      Real-time B2B commodity buyer pipeline. Click rows or cards to open the slide-over Workspace Inspector.
+                    </p>
                   </div>
-                  <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 mt-5">
-                    <CrmMetric label="Total Leads" value={leads.length.toString()} helper="All imported and manual leads" />
-                    <CrmMetric label="Need Reach Out" value={crmQueues[0].leads.length.toString()} helper="First email/message not done" />
-                    <CrmMetric label="Follow-up Due" value={crmQueues[1].leads.length.toString()} helper="Due today, overdue, or requested" />
-                    <CrmMetric label="Waiting Reply" value={crmQueues[2].leads.length.toString()} helper="Reached, no response" />
-                    <CrmMetric label="Needs Email Fix" value={crmQueues[4].leads.length.toString()} helper="Missing or invalid email" />
-                  </div>
-                  {importSummary && (
-                    <div className="mt-4 bg-white text-slate-700 border border-slate-200 rounded-xl p-3.5 text-xs shadow-sm">
-                      <div className="font-bold text-slate-900">{importSummary.message}</div>
-                      <div className="mt-1 text-[11px] text-slate-500">Buyers: {importSummary.buyers} | Leads: {importSummary.leads} | Activities: {importSummary.activities} | Tasks: {importSummary.tasks} | Skipped: {importSummary.skipped}</div>
-                      {importSummary.skippedList && importSummary.skippedList.length > 0 && (
-                        <div className="mt-2 text-[10px] border-t border-slate-100 pt-2">
-                          <p className="font-bold text-slate-500">Skipped duplicate records (detected in DB by email, name, or phone):</p>
-                          <ul className="list-disc list-inside mt-1 font-semibold text-slate-400 space-y-0.5 max-h-24 overflow-y-auto">
-                            {importSummary.skippedList.map((comp, idx) => (
-                              <li key={idx} className="truncate">{comp}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="hidden">
-                  <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-extrabold text-slate-900">Bulk Lead Actions</h3>
-                      <p className="text-slate-500 mt-0.5">{selectedLeads.length} selected. Mark imported/outreach status without editing each buyer manually.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => selectLeadGroup(crmQueues[1].leads)} className="px-3 py-2 bg-amber-50 text-amber-700 rounded font-bold hover:bg-amber-100">Select Follow-up Due</button>
-                      <button type="button" onClick={() => selectLeadGroup(crmQueues[0].leads)} className="px-3 py-2 bg-sky-50 text-sky-700 rounded font-bold hover:bg-sky-100">Select Reach Out</button>
-                      <button type="button" onClick={() => selectLeadGroup(crmQueues[2].leads)} className="px-3 py-2 bg-slate-100 text-slate-700 rounded font-bold hover:bg-slate-200">Select Waiting Reply</button>
-                      <button type="button" onClick={() => selectLeadGroup(crmQueues[4].leads)} className="px-3 py-2 bg-red-50 text-red-700 rounded font-bold hover:bg-red-100">Select Email Fix</button>
-                      <button type="button" onClick={() => setSelectedLeadIds([])} className="px-3 py-2 bg-slate-100 text-slate-600 rounded font-bold hover:bg-slate-200">Clear</button>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => bulkUpdateSelectedLeads('email_sent')} className="px-3 py-2 bg-slate-900 text-white rounded font-bold hover:bg-slate-800 disabled:opacity-40" disabled={!selectedLeads.length}>Mark Email Sent</button>
-                    <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_due')} className="px-3 py-2 bg-amber-500 text-white rounded font-bold hover:bg-amber-400 disabled:opacity-40" disabled={!selectedLeads.length}>Mark Follow-up Due</button>
-                    <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_1')} className="px-3 py-2 bg-sky-600 text-white rounded font-bold hover:bg-sky-500 disabled:opacity-40" disabled={!selectedLeads.length}>Follow-up 1 Done</button>
-                    <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_2')} className="px-3 py-2 bg-sky-600 text-white rounded font-bold hover:bg-sky-500 disabled:opacity-40" disabled={!selectedLeads.length}>Follow-up 2 Done</button>
-                    <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_3')} className="px-3 py-2 bg-sky-600 text-white rounded font-bold hover:bg-sky-500 disabled:opacity-40" disabled={!selectedLeads.length}>Follow-up 3 Done</button>
-                    <button type="button" onClick={() => bulkUpdateSelectedLeads('responded')} className="px-3 py-2 bg-teal-600 text-white rounded font-bold hover:bg-teal-500 disabled:opacity-40" disabled={!selectedLeads.length}>Mark Responded</button>
-                  </div>
-                </div>
-
-                <div className="hidden">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-extrabold text-slate-900">Search CRM Leads</h3>
-                      <p className="text-slate-500 mt-0.5">Quickly find any buyer or lead in the CRM to verify, email, or message them.</p>
-                    </div>
-                    <div className="relative w-full md:max-w-md">
-                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                      <SmoothInput
-                        type="text"
-                        placeholder="Search by company, contact, email, phone..."
-                        value={crmSearchQuery}
-                        onChange={setCrmSearchQuery}
-                        className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition shadow-inner font-semibold"
+                  <div className="flex flex-wrap gap-2 text-slate-950">
+                    <button
+                      type="button"
+                      onClick={downloadCrmImportTemplate}
+                      className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs"
+                    >
+                      <Download className="h-4 w-4" />
+                      Template
+                    </button>
+                    <label className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-sky-500 text-white rounded-lg font-bold cursor-pointer hover:bg-sky-400 transition text-xs">
+                      <FileCheck2 className="h-4 w-4" />
+                      {importingBuyers ? 'Importing...' : 'Import CRM'}
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        disabled={importingBuyers}
+                        onChange={(event) => {
+                          handleBuyerWorkbookImport(event.target.files?.[0] || null);
+                          event.currentTarget.value = '';
+                        }}
+                        className="hidden"
                       />
-                      {crmSearchQuery && (
-                        <button
-                          type="button"
-                          onClick={() => setCrmSearchQuery('')}
-                          className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 transition"
-                          title="Clear search"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={runFollowUpAutomation}
+                      className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white text-slate-950 rounded-lg font-bold text-xs hover:bg-slate-100 transition"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Auto-Tasks
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteAllCrmData}
+                      disabled={(!leads.length && !clients.length) || loading}
+                      className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg font-bold hover:bg-red-400 transition text-xs disabled:opacity-40"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Purge Data
+                    </button>
                   </div>
                 </div>
+                <div className="mt-4 grid grid-cols-2 xl:grid-cols-5 gap-2.5">
+                  <CrmMetric label="Total Pipeline" value={leads.length.toString()} helper="Leads in stages" />
+                  <CrmMetric label="Need Reach Out" value={crmQueues[0].leads.length.toString()} helper="Uncontacted" />
+                  <CrmMetric label="Follow-up Due" value={crmQueues[1].leads.length.toString()} helper="Overdue alerts" />
+                  <CrmMetric label="Next Follow-up" value={crmQueues[2].leads.length.toString()} helper="Scheduled outreach" />
+                  <CrmMetric label="Waiting Reply" value={crmQueues[3].leads.length.toString()} helper="Awaiting response" />
+                </div>
+              </div>
 
-                <div className="hidden">
-                  <div className="flex flex-col 2xl:flex-row 2xl:items-end justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600">Buyer database inside CRM</p>
-                      <h3 className="text-base font-extrabold text-slate-900">All buyers, countries, phone numbers, and products in one sorted view</h3>
-                      <p className="text-slate-500 mt-1">Use this to find a buyer, view their profile, create the linked CRM lead, or open WhatsApp without leaving CRM.</p>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 w-full 2xl:max-w-5xl">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                        <SmoothInput
-                          type="text"
-                          placeholder="Search buyers, phone, product, port..."
-                          value={buyerSearchQuery}
-                          onChange={setBuyerSearchQuery}
-                          className="w-full h-10 bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 text-xs font-semibold text-slate-800 focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                        />
-                        {buyerSearchQuery && (
-                          <button type="button" onClick={() => setBuyerSearchQuery('')} className="absolute right-3 top-3 text-slate-400 hover:text-slate-700" title="Clear buyer search">
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                      <div className="relative">
-                        <select
-                          aria-label="Country Filter"
-                          value={buyerCountryFilter}
-                          onChange={(event) => setBuyerCountryFilter(event.target.value)}
-                          className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                        >
-                          {['All', ...buyerCountries].map((country) => (
-                            <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                      </div>
-                      <div className="relative">
-                        <select
-                          aria-label="Buyer Outreach Filter"
-                          value={buyerActionFilter}
-                          onChange={(event) => setBuyerActionFilter(event.target.value)}
-                          className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                        >
-                          <option value="All">All Outreach Status</option>
-                          <option value="Need Reach Out">Need Reach Out</option>
-                          <option value="Follow-up Due">Follow-up Due</option>
-                          <option value="Waiting Reply">Waiting Reply</option>
-                          <option value="Responded / Qualify">Responded / Qualify</option>
-                          <option value="Needs Email Fix">Needs Email Fix</option>
-                          <option value="Review">Needs Review</option>
-                          <option value="Closed">Closed</option>
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                      </div>
-                      <div className="relative">
-                        <select
-                          aria-label="Buyer Sorting"
-                          value={buyerSortKey}
-                          onChange={(event) => setBuyerSortKey(event.target.value as typeof buyerSortKey)}
-                          className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                        >
-                          <option value="name">Company Name (A-Z)</option>
-                          <option value="followup_first">Follow-up Due First</option>
-                          <option value="reachout_first">Need Reach Out First</option>
-                          <option value="waiting_first">Waiting Reply First</option>
-                          <option value="responded_first">Responded First</option>
-                          <option value="phone_asc">Phone Number (Ascending)</option>
-                          <option value="phone_desc">Phone Number (Descending)</option>
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-                    <CrmMetric label="Shown Buyers" value={buyerSummaryStats.shown.toString()} helper={buyerCountryFilter === 'All' ? 'All countries' : buyerCountryFilter} />
-                    <CrmMetric label="Countries" value={buyerSummaryStats.countriesCount.toString()} helper="Detected markets" />
-                    <CrmMetric label="Uncategorized" value={buyerSummaryStats.uncategorized.toString()} helper="Needs country data" />
-                    <CrmMetric label="CRM Linked" value={buyerSummaryStats.crmLinked.toString()} helper="Synced leads" />
-                  </div>
-
-                  <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-500">
-                    <span>Showing <strong className="text-slate-900">{visibleBuyers.length}</strong> of <strong className="text-slate-900">{filteredBuyers.length}</strong> buyers</span>
-                    {filteredBuyers.length > visibleBuyers.length && (
-                      <button
-                        type="button"
-                        onClick={() => setBuyerVisibleCount((count) => Math.min(count + buyerListPageSize, filteredBuyers.length))}
-                        className="rounded-md bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800"
-                      >
-                        Load More Buyers
+              {/* Filter Controls Row */}
+              <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm space-y-3">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                  <div className="relative w-full xl:max-w-md">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <SmoothInput
+                      type="text"
+                      placeholder="Search company name, country, phone, product interest..."
+                      value={crmSearchQuery}
+                      onChange={setCrmSearchQuery}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-10 text-sm font-semibold text-slate-800 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                    />
+                    {crmSearchQuery && (
+                      <button type="button" onClick={() => setCrmSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <X className="h-4 w-4" />
                       </button>
                     )}
                   </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative w-40">
+                      <select
+                        aria-label="Filter Country"
+                        value={crmCountryFilter}
+                        onChange={(e) => setCrmCountryFilter(e.target.value)}
+                        className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                      >
+                        {['All', ...crmCountries].map((c) => (
+                          <option key={c} value={c}>{c === 'All' ? 'All Countries' : c}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                    </div>
+                    <div className="relative w-44">
+                      <select
+                        aria-label="Sort leads"
+                        value={crmSortKey}
+                        onChange={(e) => setCrmSortKey(e.target.value as typeof crmSortKey)}
+                        className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                      >
+                        <option value="velocity">Smart Velocity Score</option>
+                        <option value="action">Action First</option>
+                        <option value="country">Country A-Z</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                    </div>
 
-                  <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-3">
-                    {visibleBuyers.length === 0 ? (
-                      <EmptyState text="No buyers match this CRM filter." />
-                    ) : visibleBuyers.map((buyer) => {
-                      const country = buyerCountry(buyer);
-                      const phone = buyer.phone || clientPhones[buyer.id] || '';
-                      const metrics = clientMetrics[buyer.id] || { quotesCount: 0, receivableValue: 0, shipmentsCount: 0, openTasksCount: 0, lastActivityTitle: 'No activity logged' };
-                      const linkedLead = linkedLeadForBuyer(buyer);
-                      const buyerCategory = buyerActionCategory(buyer);
-                      return (
-                        <div key={buyer.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-extrabold text-slate-900 truncate">{buyer.company_name}</div>
-                              <div className="mt-1 flex flex-wrap gap-1.5">
-                                <SmallBadge text={country} />
-                                <span className="inline-block rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">{bestSendWindowIST(country).replace('Best send: ', '')}</span>
-                                <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-extrabold ${leadCategoryClass(buyerCategory)}`}>{buyerCategory}</span>
-                                <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${linkedLead ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700'}`}>{linkedLead ? 'CRM Linked' : 'Create Lead'}</span>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-2 sm:mt-0 sm:justify-end">
-                              <button type="button" onClick={() => setSelectedBuyerId(buyer.id)} className="rounded bg-sky-50 px-2 py-1 text-[10px] font-bold text-sky-700 hover:bg-sky-100">View</button>
-                              <button type="button" onClick={() => openBuyerAsCrmLead(buyer)} className="rounded bg-slate-900 px-2 py-1 text-[10px] font-bold text-white hover:bg-slate-800">{linkedLead ? 'Edit Lead' : 'Create Lead'}</button>
-                              <button type="button" onClick={() => handleBuyerEmail(buyer, 'First Reach')} className="rounded bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100">Reach Out Email</button>
-                              <button type="button" onClick={() => handleBuyerEmail(buyer, 'Follow-up')} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-100">Follow-up Email</button>
-                              {phone && <button type="button" onClick={() => handleBuyerWhatsAppReachout(buyer, phone)} className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-500">WhatsApp</button>}
-                            </div>
-                          </div>
-                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-slate-500">
-                            <div className="truncate">Contact: <span className="font-bold text-slate-700">{buyer.contact_name || 'N/A'}</span></div>
-                            <div className="truncate">Phone: <span className="font-bold text-slate-700">{phone || 'N/A'}</span></div>
-                            <div className="truncate">Email: <span className="font-bold text-slate-700">{buyer.contact_email || 'N/A'}</span></div>
-                            <div className="truncate">Port: <span className="font-bold text-slate-700">{buyer.destination_port || 'N/A'}</span></div>
-                          </div>
-                          {buyer.products_dealing?.length ? (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {buyer.products_dealing.slice(0, 5).map((productName) => <span key={productName} className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{productName}</span>)}
-                            </div>
-                          ) : null}
-                          <div className="mt-3 grid grid-cols-4 gap-1.5 border-t border-slate-100 pt-2 text-center">
-                            <SmallMetric label="Quotes" value={metrics.quotesCount.toString()} />
-                            <SmallMetric label="Due" value={formatQuoteCurrency(metrics.receivableValue, 'INR')} />
-                            <SmallMetric label="Ship" value={metrics.shipmentsCount.toString()} />
-                            <SmallMetric label="Tasks" value={metrics.openTasksCount.toString()} />
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {/* View Switcher Toggle buttons */}
+                    <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-50 h-10">
+                      <button
+                        type="button"
+                        onClick={() => setCrmViewMode('table')}
+                        className={`px-3 py-1.5 rounded-md font-bold text-xs transition-all ${
+                          crmViewMode === 'table' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Grid View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCrmViewMode('kanban')}
+                        className={`px-3 py-1.5 rounded-md font-bold text-xs transition-all ${
+                          crmViewMode === 'kanban' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Kanban Board
+                      </button>
+                    </div>
+
+                    {/* Add Lead manual button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const emptyLead: CrmLead = {
+                          id: 'new-' + Math.random().toString(36).substring(2, 9),
+                          company_name: 'New Company Ltd',
+                          stage: 'New Lead' as CrmStage,
+                          estimated_value: 0
+                        };
+                        setSelectedCrmLead(emptyLead);
+                      }}
+                      className="h-10 px-4 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition text-xs"
+                    >
+                      + Add Lead
+                    </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="space-y-4">
-                    <div className="hidden">
-                      {crmQueues.map((queue) => (
-                        <div key={queue.label} className="bg-slate-50 border border-slate-200 rounded-lg p-3 min-h-[220px]">
-                          <div className="flex items-center justify-between gap-2 mb-3">
-                            <div>
-                              <h4 className="text-[11px] font-extrabold text-slate-800 uppercase">{queue.label}</h4>
-                              <p className="text-[10px] text-slate-400">{queue.description}</p>
-                              <p className="text-[10px] font-bold text-slate-500 mt-0.5">{queue.leads.length} lead{queue.leads.length === 1 ? '' : 's'}</p>
-                            </div>
-                            <span className={`h-2.5 w-2.5 rounded-full ${queue.tone === 'amber' ? 'bg-amber-500' : queue.tone === 'sky' ? 'bg-sky-500' : queue.tone === 'teal' ? 'bg-teal-500' : queue.tone === 'red' ? 'bg-red-500' : queue.tone === 'violet' ? 'bg-violet-500' : 'bg-slate-400'}`} />
-                          </div>
-                          <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-                            {queue.leads.length === 0 ? <EmptyState text="Nothing here." /> : queue.leads.slice(0, 12).map((lead) => renderLeadCard(lead, true))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                      <div className="border-b border-slate-200 bg-slate-950 px-4 py-4 text-white">
-                        <div className="flex flex-col 2xl:flex-row 2xl:items-center justify-between gap-4">
-                          <div>
-                            <p className="text-[10px] font-extrabold uppercase tracking-wider text-sky-300">Smart CRM Pipeline</p>
-                            <h3 className="text-lg font-black">Buyer follow-up workflow</h3>
-                            <p className="text-xs text-slate-300 mt-1">Only the working pipeline is shown here. Cards auto-sort by stage, outreach status, response, and follow-up date.</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button type="button" onClick={downloadCrmImportTemplate} className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs">
-                              <Download className="h-4 w-4" />
-                              Template
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => exportCrmImportTemplateData(filteredCrmLeads)}
-                              disabled={!filteredCrmLeads.length}
-                              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                              title="Export current CRM data using the same import template columns"
-                            >
-                              <Download className="h-4 w-4" />
-                              Export
-                            </button>
-                            <div className="relative">
-                              <select
-                                aria-label="Import Data Source"
-                                value={importDataSource}
-                                onChange={(event) => setImportDataSource(event.target.value as ImportDataSource)}
-                                className="h-9 appearance-none rounded-lg border border-white/15 bg-white/10 px-3 pr-8 text-xs font-bold text-white outline-none transition hover:bg-white/15 focus:ring-2 focus:ring-sky-300/30"
-                              >
-                                <option className="text-slate-900" value="Custom Researched Data">Custom Researched</option>
-                                <option className="text-slate-900" value="Embassy Data">Embassy Data</option>
-                              </select>
-                              <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-white/70" />
-                            </div>
-                            <label className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-sky-500 text-white rounded-lg font-bold cursor-pointer hover:bg-sky-400 transition text-xs">
-                              <FileCheck2 className="h-4 w-4" />
-                              {importingBuyers ? 'Importing...' : `Import ${importDataSource === 'Embassy Data' ? 'Embassy' : 'Research'}`}
-                              <input
-                                type="file"
-                                accept=".xlsx,.xls,.csv"
-                                disabled={importingBuyers}
-                                onChange={(event) => {
-                                  handleBuyerWorkbookImport(event.target.files?.[0] || null);
-                                  event.currentTarget.value = '';
-                                }}
-                                className="hidden"
-                              />
-                            </label>
-                            <button type="button" onClick={runFollowUpAutomation} className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white text-slate-950 rounded-lg font-bold text-xs hover:bg-slate-100 transition">
-                              <Sparkles className="h-4 w-4" />
-                              Follow-up Tasks
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleDeleteAllCrmData}
-                              disabled={(!leads.length && !clients.length) || loading}
-                              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg font-bold hover:bg-red-400 transition disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-400 text-xs"
-                              title="Delete CRM buyers, leads, activities, and follow-up tasks"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-4 grid grid-cols-2 xl:grid-cols-5 gap-2">
-                          <CrmMetric label="Total Leads" value={leads.length.toString()} helper="Pipeline records" />
-                          <CrmMetric label="Reach Out" value={crmQueues[0].leads.length.toString()} helper="First contact needed" />
-                          <CrmMetric label="Follow-up Due" value={crmQueues[1].leads.length.toString()} helper="Due now" />
-                          <CrmMetric label="Next Follow-up" value={crmQueues[2].leads.length.toString()} helper="Scheduled by date" />
-                          <CrmMetric label="Waiting" value={crmQueues[3].leads.length.toString()} helper="No response yet" />
-                          <CrmMetric label="Email Fix" value={crmQueues[5].leads.length.toString()} helper="Needs email" />
-                        </div>
-                      </div>
-
-                      <div className="p-4">
-                        <div className="mb-4 space-y-3">
-                          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                            <label className="mb-2 block text-[10px] font-black uppercase tracking-wide text-slate-500">Search CRM Buyers</label>
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                              <SmoothInput
-                                type="text"
-                                placeholder="Search by company, contact, email, phone, country, or product..."
-                                value={crmSearchQuery}
-                                onChange={setCrmSearchQuery}
-                                className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-10 text-sm font-semibold text-slate-800 placeholder-slate-400 transition focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-                              />
-                              {crmSearchQuery && (
-                                <button type="button" onClick={() => setCrmSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600" title="Clear search">
-                                  <X className="h-4 w-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                            <div className="grid w-full xl:max-w-md grid-cols-1 sm:grid-cols-2 gap-2">
-                            <div className="relative">
-                              <select
-                                aria-label="CRM Country Filter"
-                                value={crmCountryFilter}
-                                onChange={(event) => setCrmCountryFilter(event.target.value)}
-                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                              >
-                                {['All', ...crmCountries].map((country) => (
-                                  <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
-                                ))}
-                              </select>
-                              <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                            </div>
-                            <div className="relative">
-                              <select
-                                aria-label="CRM Sort"
-                                value={crmSortKey}
-                                onChange={(event) => setCrmSortKey(event.target.value as typeof crmSortKey)}
-                                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                              >
-                                <option value="action">Action First</option>
-                                <option value="country">Country A-Z</option>
-                              </select>
-                              <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2 text-xs">
-                            <button type="button" onClick={() => selectLeadGroup(crmQueues[1].leads)} className="px-3 py-2 bg-amber-50 text-amber-700 rounded-lg font-bold hover:bg-amber-100">Select Due</button>
-                            <button type="button" onClick={() => selectLeadGroup(crmQueues[0].leads)} className="px-3 py-2 bg-sky-50 text-sky-700 rounded-lg font-bold hover:bg-sky-100">Select Reach Out</button>
-                            <button type="button" onClick={() => selectLeadGroup(crmQueues[2].leads)} className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100">Select Next</button>
-                            <button type="button" onClick={() => bulkUpdateSelectedLeads('email_sent')} className="px-3 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-40" disabled={!selectedLeads.length}>Contacted</button>
-                            <button type="button" onClick={() => bulkUpdateSelectedLeads('followup_due')} className="px-3 py-2 bg-amber-500 text-white rounded-lg font-bold hover:bg-amber-400 disabled:opacity-40" disabled={!selectedLeads.length}>Need Follow-up</button>
-                            <button type="button" onClick={() => bulkUpdateSelectedLeads('responded')} className="px-3 py-2 bg-teal-600 text-white rounded-lg font-bold hover:bg-teal-500 disabled:opacity-40" disabled={!selectedLeads.length}>Responded</button>
-                            {selectedLeads.length > 0 && <button type="button" onClick={() => setSelectedLeadIds([])} className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200">{selectedLeads.length} selected - Clear</button>}
-                          </div>
-                        </div>
-                        </div>
-                        {importSummary && (
-                          <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-slate-700">
-                            <span className="font-bold text-slate-900">{importSummary.message}</span>
-                            <span className="ml-2 text-[11px] text-slate-500">Buyers: {importSummary.buyers} | Leads: {importSummary.leads} | Activities: {importSummary.activities} | Tasks: {importSummary.tasks} | Skipped duplicates: {importSummary.skipped}</span>
-                          </div>
-                        )}
-                        {importProgress && (
-                          <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                            <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                              <div>
-                                <span className="font-black text-slate-900">{importProgress.label}</span>
-                                <span className="ml-2 text-[11px] font-semibold text-slate-500">{importProgress.processed} / {importProgress.total}</span>
-                              </div>
-                              <span className="font-black text-sky-700">{importProgressPercent}%</span>
-                            </div>
-                            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                              <div
-                                className="h-full rounded-full bg-sky-500 transition-all duration-500 ease-out"
-                                style={{ width: `${importProgressPercent}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-                        <div className="overflow-x-auto pb-2">
-                          <div className="grid min-w-[1580px] grid-cols-8 gap-3">
-                            {crmBoardColumns.map((column) => {
-                              const stageLeads = column.leads;
-                              const visibleCount = crmColumnVisibleCounts[column.label] || crmColumnPageSize;
-                              const visibleStageLeads = stageLeads.slice(0, visibleCount);
-                              return (
-                                <div key={column.label} className="rounded-lg border border-slate-200 bg-slate-50 p-3 min-h-[520px]">
-                                  <div className="flex items-center justify-between mb-3">
-                                    <div>
-                                      <h4 className="text-[11px] font-black text-slate-700 uppercase">{column.label}</h4>
-                                      <p className="text-[10px] text-slate-400">{column.description}</p>
-                                    </div>
-                                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-slate-500 border border-slate-200">{stageLeads.length}</span>
-                                  </div>
-                                  <div className="space-y-2 max-h-[68vh] overflow-y-auto pr-1">
-                                    {stageLeads.length === 0 ? <EmptyState text="No leads." /> : visibleStageLeads.map((lead) => renderLeadCard(lead))}
-                                    {stageLeads.length > visibleStageLeads.length && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setCrmColumnVisibleCounts((current) => ({
-                                          ...current,
-                                          [column.label]: Math.min((current[column.label] || crmColumnPageSize) + crmColumnPageSize, stageLeads.length)
-                                        }))}
-                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black text-slate-600 hover:bg-slate-100"
-                                      >
-                                        Load More ({stageLeads.length - visibleStageLeads.length})
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                {/* Bulk status update bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                  <div className="text-xs text-slate-500 font-medium">
+                    {selectedLeadIds.length > 0 ? (
+                      <span>
+                        <strong className="text-slate-900">{selectedLeadIds.length}</strong> leads selected
+                      </span>
+                    ) : (
+                      <span>No leads selected for bulk action</span>
+                    )}
                   </div>
-
-                  <div className="hidden">
-                    <div className="bg-white border border-slate-200 rounded-lg p-4 text-xs space-y-3 shadow-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h3 className="font-bold text-slate-900">Outreach Template</h3>
-                          <p className="text-[10px] text-slate-500 mt-0.5">Used by email and WhatsApp actions.</p>
-                        </div>
-                        <button type="button" onClick={editTemplateFromCrm} className="px-2.5 py-1.5 bg-slate-100 rounded font-bold text-slate-700 hover:bg-slate-200 flex items-center gap-1.5">
-                          <Edit2 className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                      </div>
-                      <SelectInput
-                        label="Template"
-                        value={selectedCrmTemplateId}
-                        onChange={setSelectedCrmTemplateId}
-                        options={['', ...templates.map((template) => template.id)]}
-                        labels={{
-                          '': 'Auto by action type',
-                          ...Object.fromEntries(templates.map((template) => [template.id, `${template.name} (${template.channel} / ${template.category})`]))
-                        }}
-                      />
-                    </div>
-                    <SimplePanel title="Imported Field Sync" rows={[
-                      ['Email Status', 'Outreach badges + queues'],
-                      ['Response Received', 'Responded queue'],
-                      ['Next Follow-up Date', 'Pending follow-up queue + tasks'],
-                      ['Next Action', 'Lead card action context'],
-                      ['Priority', 'Hot lead scoring']
-                    ]} />
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => selectLeadGroup(crmQueues[1].leads)}
+                      className="px-3 py-2 bg-amber-50 text-amber-700 rounded-lg font-bold hover:bg-amber-100"
+                    >
+                      Select Due
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectLeadGroup(crmQueues[0].leads)}
+                      className="px-3 py-2 bg-sky-50 text-sky-700 rounded-lg font-bold hover:bg-sky-100"
+                    >
+                      Select Reach Out
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => bulkUpdateSelectedLeads('email_sent')}
+                      disabled={!selectedLeadIds.length}
+                      className="px-3 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-40"
+                    >
+                      Bulk Contacted
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => bulkUpdateSelectedLeads('followup_due')}
+                      disabled={!selectedLeadIds.length}
+                      className="px-3 py-2 bg-amber-500 text-white rounded-lg font-bold hover:bg-amber-400 disabled:opacity-40"
+                    >
+                      Bulk Follow-up
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBulkDeleteLeads}
+                      disabled={!selectedLeadIds.length}
+                      className="px-3 py-2 bg-red-650 hover:bg-red-500 text-white rounded-lg font-bold disabled:opacity-40 transition-colors"
+                    >
+                      Bulk Delete
+                    </button>
+                    {selectedLeadIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLeadIds([])}
+                        className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200"
+                      >
+                        Clear Selection
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
-            </TwoColumnManager>
-          )}
+
+              {/* Main Workspace Board view */}
+              <div className="mt-4">
+                {crmViewMode === 'table' ? (
+                  <>
+                    <CrmTable
+                      leads={visibleCrmLeads}
+                      selectedLeadIds={selectedLeadIds}
+                      onToggleSelection={handleToggleSelection}
+                      onToggleSelectAll={handleToggleSelectAll}
+                      onEditLead={handleEditLead}
+                      onDeleteLead={handleDeleteLeadFromCrm}
+                      onSendEmail={handleSendEmail}
+                      onSendWhatsApp={handleLeadWhatsApp}
+                      onUpdateStatus={handleUpdateStatus}
+                      leadScoreValue={leadScoreValue}
+                      leadVelocityScore={leadVelocityScore}
+                      bestSendWindowIST={bestSendWindowIST}
+                      leadCategoryClass={leadCategoryClass}
+                      leadActionCategory={leadActionCategory}
+                    />
+                    {filteredCrmLeads.length > crmVisibleCount && (
+                      <div className="mt-3 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => setCrmVisibleCount((prev) => prev + 45)}
+                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition text-xs shadow-sm animate-fade-in"
+                        >
+                          Load More Leads ({filteredCrmLeads.length - crmVisibleCount} remaining)
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <CrmKanban
+                    leads={filteredCrmLeads}
+                    onEditLead={handleEditLead}
+                    onDeleteLead={handleDeleteLeadFromCrm}
+                    onMoveLead={handleMoveLeadFromCrm}
+                    leadScoreValue={leadScoreValue}
+                    leadVelocityScore={leadVelocityScore}
+                    leadCategoryClass={leadCategoryClass}
+                    leadActionCategory={leadActionCategory}
+                  />
+                )}
+              </div>
+
+              {/* Workspace Slide-over Inspector Drawer */}
+              <LeadInspectorDrawer
+                lead={selectedCrmLead}
+                onClose={() => {
+                  setSelectedCrmLead(null);
+                  fetchData();
+                }}
+                onSaveLead={handleSaveLeadFromDrawer}
+                activities={activities}
+              />
+            </div>
+          
+            )}
+          </div>
 
           {activeTab === 'dataSources' && (
             <div className="space-y-4">
@@ -7466,3 +7372,5 @@ const BuyerDetailModal: React.FC<BuyerDetailModalProps> = React.memo(({
   );
 });
 BuyerDetailModal.displayName = 'BuyerDetailModal';
+
+// CRM Re-built cleanly with optimal callbacks and memo hooks v4

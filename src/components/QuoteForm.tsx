@@ -29,10 +29,14 @@ const quoteStatuses: Quote['status'][] = [
 
 const useBufferedText = (value: string, onChange: (value: string) => void, delay = 120) => {
   const [draft, setDraft] = useState(value);
+  const committedValue = useRef(value);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setDraft(value);
+    if (value !== committedValue.current) {
+      committedValue.current = value;
+      setDraft(value);
+    }
   }, [value]);
 
   useEffect(() => () => {
@@ -44,7 +48,10 @@ const useBufferedText = (value: string, onChange: (value: string) => void, delay
       clearTimeout(timer.current);
       timer.current = null;
     }
-    onChange(nextValue);
+    if (nextValue !== committedValue.current) {
+      committedValue.current = nextValue;
+      onChange(nextValue);
+    }
   }, [onChange]);
 
   const schedule = React.useCallback((nextValue: string) => {
