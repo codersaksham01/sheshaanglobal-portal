@@ -1150,7 +1150,7 @@ export const Dashboard: React.FC = () => {
   const [crmViewMode, setCrmViewMode] = useState<'table' | 'kanban'>('table');
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
   const [crmCountryFilter, setCrmCountryFilter] = useState('All');
-  const [crmSortKey, setCrmSortKey] = useState<'action' | 'country'>('action');
+  const [crmSortKey, setCrmSortKey] = useState<'action' | 'velocity' | 'reachout' | 'country'>('action');
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
   const [sourceTypeFilter, setSourceTypeFilter] = useState<'All' | ImportDataSource>('All');
   const [sourceCountryFilter, setSourceCountryFilter] = useState('All');
@@ -3467,6 +3467,34 @@ export const Dashboard: React.FC = () => {
       : countryFiltered;
 
     return [...searched].sort((a, b) => {
+      if (crmSortKey === 'reachout') {
+        const catA = leadActionCategory(a);
+        const catB = leadActionCategory(b);
+        if (catA === 'Need Reach Out' && catB !== 'Need Reach Out') return -1;
+        if (catA !== 'Need Reach Out' && catB === 'Need Reach Out') return 1;
+      }
+      if (crmSortKey === 'velocity') {
+        return (leadVelocityScore[b.id] || 0) - (leadVelocityScore[a.id] || 0);
+      }
+      if (crmSortKey === 'action') {
+        const scoreA = 
+          leadActionCategory(a) === 'Needs Email Fix' ? 10 :
+          leadActionCategory(a) === 'Need Reach Out' ? 9 :
+          leadActionCategory(a) === 'Follow-up Due' ? 8 :
+          leadActionCategory(a) === 'Responded / Qualify' ? 7 :
+          leadActionCategory(a) === 'Next Follow-up' ? 6 :
+          leadActionCategory(a) === 'Waiting Reply' ? 5 :
+          leadActionCategory(a) === 'Review' ? 4 : 1;
+        const scoreB = 
+          leadActionCategory(b) === 'Needs Email Fix' ? 10 :
+          leadActionCategory(b) === 'Need Reach Out' ? 9 :
+          leadActionCategory(b) === 'Follow-up Due' ? 8 :
+          leadActionCategory(b) === 'Responded / Qualify' ? 7 :
+          leadActionCategory(b) === 'Next Follow-up' ? 6 :
+          leadActionCategory(b) === 'Waiting Reply' ? 5 :
+          leadActionCategory(b) === 'Review' ? 4 : 1;
+        if (scoreB !== scoreA) return scoreB - scoreA;
+      }
       if (crmSortKey === 'country') {
         const countryCompare = (a.country || 'Uncategorized').localeCompare(b.country || 'Uncategorized');
         if (countryCompare !== 0) return countryCompare;
@@ -4851,8 +4879,9 @@ export const Dashboard: React.FC = () => {
                         onChange={(e) => setCrmSortKey(e.target.value as typeof crmSortKey)}
                         className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
                       >
-                        <option value="velocity">Smart Velocity Score</option>
                         <option value="action">Action First</option>
+                        <option value="reachout">Need Reach Out First</option>
+                        <option value="velocity">Smart Velocity Score</option>
                         <option value="country">Country A-Z</option>
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
