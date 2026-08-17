@@ -5075,7 +5075,7 @@ export const Dashboard: React.FC = () => {
                         <option value="emailfix">Needs Email Fix First</option>
                         <option value="velocity">Smart Velocity Score</option>
                         <option value="country">Country A-Z</option>
-                        <option value="stage_new">Stage: New Leads First</option>
+                        <option value="stage_new">Stage: Need Reach Out First</option>
                         <option value="stage_contacted">Stage: Contacted First</option>
                         <option value="stage_quoted">Stage: Quoted First</option>
                         <option value="stage_negotiation">Stage: Negotiating First</option>

@@ -148,7 +148,7 @@ interface CrmKanbanProps {
 }
 
 const COLUMNS: { id: string; title: string; color: string }[] = [
-  { id: 'New Lead', title: 'New Leads', color: 'border-t-sky-500 bg-sky-50/10' },
+  { id: 'New Lead', title: 'Need Reach Out', color: 'border-t-sky-500 bg-sky-50/10' },
   { id: 'Contacted', title: 'Contacted', color: 'border-t-blue-500 bg-blue-50/10' },
   { id: 'Follow-up Due', title: 'Follow-up Due', color: 'border-t-amber-600 bg-amber-50/20 border-l border-r border-amber-250 shadow-sm' },
   { id: 'Quoted', title: 'Quoted', color: 'border-t-purple-500 bg-purple-50/10' },
