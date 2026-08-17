@@ -7,6 +7,22 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const portalTables = ['clients', 'vendors', 'products', 'freight_presets', 'quotes', 'quote_items', 'leads', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users'] as const;
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
+const cleanUndefined = (obj: any): any => {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  const clean: any = Array.isArray(obj) ? [] : {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const val = obj[key];
+      if (val !== undefined) {
+        clean[key] = cleanUndefined(val);
+      }
+    }
+  }
+  return clean;
+};
+
 // Decorated Promise that emulates Supabase query chaining.
 function makeChainPromise(promise: Promise<any>, extra: any = {}): any {
   const chainObj: any = {
@@ -326,7 +342,8 @@ class FirebaseDB {
             updated_at: new Date().toISOString(),
             created_at: value.created_at || new Date().toISOString()
           };
-          await setDoc(doc(this.db, table, id), record, { merge: true });
+          const cleanedRecord = cleanUndefined(record);
+          await setDoc(doc(this.db, table, id), cleanedRecord, { merge: true });
           saved.push(record);
         }
 
