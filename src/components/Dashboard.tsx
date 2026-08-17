@@ -1270,6 +1270,7 @@ export const Dashboard: React.FC = () => {
       setProducts(pData || []);
       setFreightPresets(fData || []);
       const activityLeadIds = new Set((aData || []).map((act: any) => act.lead_id).filter(Boolean));
+      const quotedClientIds = new Set((qData || []).map((q: any) => q.client_id).filter(Boolean));
       const alignedLeads = (lData || []).map((lead: any) => {
         const notesStr = lead.notes || '';
         const statusMatch = notesStr.match(/Email Status:\s*([^\n]+)/i);
@@ -1280,9 +1281,17 @@ export const Dashboard: React.FC = () => {
                             emailStatus.includes('opened') || 
                             emailStatus.includes('replied');
                             
+        let finalStage = lead.stage;
         if (lead.stage === 'New Lead' && hasOutreach) {
-          supabase.from('leads').update({ stage: 'Contacted' }).eq('id', lead.id);
-          return { ...lead, stage: 'Contacted' };
+          finalStage = 'Contacted';
+        } else if (lead.stage === 'Quoted' && lead.client_id && !quotedClientIds.has(lead.client_id)) {
+          // If in Quoted stage but has no quotes created in the portal, downgrade to Contacted
+          finalStage = 'Contacted';
+        }
+        
+        if (finalStage !== lead.stage) {
+          supabase.from('leads').update({ stage: finalStage }).eq('id', lead.id);
+          return { ...lead, stage: finalStage };
         }
         return lead;
       });
@@ -2980,12 +2989,21 @@ export const Dashboard: React.FC = () => {
   const normalizePhoneValue = (value: unknown) => String(value || '').replace(/\D/g, '');
 
   const mapImportStage = (stage: string, response: string): Lead['stage'] => {
+    const normalizedStage = stage.toLowerCase();
     const normalized = `${stage} ${response}`.toLowerCase();
     if (normalized.includes('won') || normalized.includes('response received yes')) return 'Won';
     if (normalized.includes('lost')) return 'Lost';
     if (normalized.includes('negotiation')) return 'Negotiation';
-    if (normalized.includes('quote')) return 'Quoted';
-    if (normalized.includes('follow') || normalized.includes('contact') || normalized.includes('sent')) return 'Contacted';
+    
+    // Only map to 'Quoted' if the stage explicitly mentions sent/delivered/quoted
+    if (normalizedStage.includes('quote sent') || normalizedStage.includes('quoted') || normalizedStage.includes('quote delivered')) {
+      return 'Quoted';
+    }
+    
+    if (normalized.includes('follow') || normalized.includes('contact') || normalized.includes('sent') || normalized.includes('reply') || normalized.includes('response') || normalized.includes('quote')) {
+      return 'Contacted';
+    }
+    
     return 'New Lead';
   };
 
@@ -4901,28 +4919,28 @@ export const Dashboard: React.FC = () => {
                     value={crmQueues[0].leads.length.toString()}
                     helper="Uncontacted"
                     active={crmQueueFilter === 'Need Reach Out'}
-                    onClick={() => setCrmQueueFilter('Need Reach Out')}
+                    onClick={() => setCrmQueueFilter(crmQueueFilter === 'Need Reach Out' ? null : 'Need Reach Out')}
                   />
                   <CrmMetric
                     label="Follow-up Due"
                     value={crmQueues[1].leads.length.toString()}
                     helper="Overdue alerts"
                     active={crmQueueFilter === 'Follow-up Due'}
-                    onClick={() => setCrmQueueFilter('Follow-up Due')}
+                    onClick={() => setCrmQueueFilter(crmQueueFilter === 'Follow-up Due' ? null : 'Follow-up Due')}
                   />
                   <CrmMetric
                     label="Next Follow-up"
                     value={crmQueues[2].leads.length.toString()}
                     helper="Scheduled outreach"
                     active={crmQueueFilter === 'Next Follow-up'}
-                    onClick={() => setCrmQueueFilter('Next Follow-up')}
+                    onClick={() => setCrmQueueFilter(crmQueueFilter === 'Next Follow-up' ? null : 'Next Follow-up')}
                   />
                   <CrmMetric
                     label="Waiting Reply"
                     value={crmQueues[3].leads.length.toString()}
                     helper="Awaiting response"
                     active={crmQueueFilter === 'Waiting Reply'}
-                    onClick={() => setCrmQueueFilter('Waiting Reply')}
+                    onClick={() => setCrmQueueFilter(crmQueueFilter === 'Waiting Reply' ? null : 'Waiting Reply')}
                   />
                 </div>
               </div>
