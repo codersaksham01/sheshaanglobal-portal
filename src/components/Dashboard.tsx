@@ -1151,7 +1151,11 @@ export const Dashboard: React.FC = () => {
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
   const [crmQueueFilter, setCrmQueueFilter] = useState<string | null>(null);
   const [crmCountryFilter, setCrmCountryFilter] = useState('All');
-  const [crmSortKey, setCrmSortKey] = useState<'action' | 'velocity' | 'reachout' | 'country'>('action');
+  const [crmSortKey, setCrmSortKey] = useState<
+    'action' | 'velocity' | 'reachout' | 'country' |
+    'followup' | 'emailfix' | 'stage_new' | 'stage_contacted' |
+    'stage_quoted' | 'stage_negotiation' | 'stage_won' | 'stage_lost'
+  >('action');
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
   const [sourceTypeFilter, setSourceTypeFilter] = useState<'All' | ImportDataSource>('All');
   const [sourceCountryFilter, setSourceCountryFilter] = useState('All');
@@ -3522,6 +3526,42 @@ export const Dashboard: React.FC = () => {
         if (catA === 'Need Reach Out' && catB !== 'Need Reach Out') return -1;
         if (catA !== 'Need Reach Out' && catB === 'Need Reach Out') return 1;
       }
+      if (crmSortKey === 'followup') {
+        const catA = leadActionCategory(a);
+        const catB = leadActionCategory(b);
+        if (catA === 'Follow-up Due' && catB !== 'Follow-up Due') return -1;
+        if (catA !== 'Follow-up Due' && catB === 'Follow-up Due') return 1;
+      }
+      if (crmSortKey === 'emailfix') {
+        const catA = leadActionCategory(a);
+        const catB = leadActionCategory(b);
+        if (catA === 'Needs Email Fix' && catB !== 'Needs Email Fix') return -1;
+        if (catA !== 'Needs Email Fix' && catB === 'Needs Email Fix') return 1;
+      }
+      if (crmSortKey === 'stage_new') {
+        if (a.stage === 'New Lead' && b.stage !== 'New Lead') return -1;
+        if (a.stage !== 'New Lead' && b.stage === 'New Lead') return 1;
+      }
+      if (crmSortKey === 'stage_contacted') {
+        if (a.stage === 'Contacted' && b.stage !== 'Contacted') return -1;
+        if (a.stage !== 'Contacted' && b.stage === 'Contacted') return 1;
+      }
+      if (crmSortKey === 'stage_quoted') {
+        if (a.stage === 'Quoted' && b.stage !== 'Quoted') return -1;
+        if (a.stage !== 'Quoted' && b.stage === 'Quoted') return 1;
+      }
+      if (crmSortKey === 'stage_negotiation') {
+        if (a.stage === 'Negotiation' && b.stage !== 'Negotiation') return -1;
+        if (a.stage !== 'Negotiation' && b.stage === 'Negotiation') return 1;
+      }
+      if (crmSortKey === 'stage_won') {
+        if (a.stage === 'Won' && b.stage !== 'Won') return -1;
+        if (a.stage !== 'Won' && b.stage === 'Won') return 1;
+      }
+      if (crmSortKey === 'stage_lost') {
+        if (a.stage === 'Lost' && b.stage !== 'Lost') return -1;
+        if (a.stage !== 'Lost' && b.stage === 'Lost') return 1;
+      }
       if (crmSortKey === 'velocity') {
         return (leadVelocityScore[b.id] || 0) - (leadVelocityScore[a.id] || 0);
       }
@@ -4986,8 +5026,16 @@ export const Dashboard: React.FC = () => {
                       >
                         <option value="action">Action First</option>
                         <option value="reachout">Need Reach Out First</option>
+                        <option value="followup">Follow-up Due First</option>
+                        <option value="emailfix">Needs Email Fix First</option>
                         <option value="velocity">Smart Velocity Score</option>
                         <option value="country">Country A-Z</option>
+                        <option value="stage_new">Stage: New Leads First</option>
+                        <option value="stage_contacted">Stage: Contacted First</option>
+                        <option value="stage_quoted">Stage: Quoted First</option>
+                        <option value="stage_negotiation">Stage: Negotiating First</option>
+                        <option value="stage_won">Stage: Won Deals First</option>
+                        <option value="stage_lost">Stage: Lost Leads First</option>
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
                     </div>
