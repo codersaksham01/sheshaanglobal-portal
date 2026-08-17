@@ -1149,6 +1149,7 @@ export const Dashboard: React.FC = () => {
   const [selectedCrmLead, setSelectedCrmLead] = useState<CrmLead | null>(null);
   const [crmViewMode, setCrmViewMode] = useState<'table' | 'kanban'>('table');
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
+  const [crmQueueFilter, setCrmQueueFilter] = useState<string | null>(null);
   const [crmCountryFilter, setCrmCountryFilter] = useState('All');
   const [crmSortKey, setCrmSortKey] = useState<'action' | 'velocity' | 'reachout' | 'country'>('action');
   const [sourceSearchQuery, setSourceSearchQuery] = useState('');
@@ -1222,7 +1223,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     setCrmVisibleCount(40);
-  }, [crmSearchQuery, crmCountryFilter, crmSortKey]);
+  }, [crmSearchQuery, crmCountryFilter, crmSortKey, crmQueueFilter]);
 
   useEffect(() => {
     setCrmColumnVisibleCounts({});
@@ -1268,7 +1269,24 @@ export const Dashboard: React.FC = () => {
       setVendors(vData || []);
       setProducts(pData || []);
       setFreightPresets(fData || []);
-      setLeads(lData || []);
+      const activityLeadIds = new Set((aData || []).map((act: any) => act.lead_id).filter(Boolean));
+      const alignedLeads = (lData || []).map((lead: any) => {
+        const notesStr = lead.notes || '';
+        const statusMatch = notesStr.match(/Email Status:\s*([^\n]+)/i);
+        const emailStatus = statusMatch ? statusMatch[1].trim().toLowerCase() : '';
+        const hasOutreach = activityLeadIds.has(lead.id) || 
+                            emailStatus.includes('sent') || 
+                            emailStatus.includes('delivered') || 
+                            emailStatus.includes('opened') || 
+                            emailStatus.includes('replied');
+                            
+        if (lead.stage === 'New Lead' && hasOutreach) {
+          supabase.from('leads').update({ stage: 'Contacted' }).eq('id', lead.id);
+          return { ...lead, stage: 'Contacted' };
+        }
+        return lead;
+      });
+      setLeads(alignedLeads);
       setActivities(aData || []);
       setFreightRates(rData || []);
       setInvoices(iData || []);
@@ -3080,7 +3098,7 @@ export const Dashboard: React.FC = () => {
           country: String(row.Country || '').trim(),
           product_interest: product && product !== 'Other' ? product : productCategory || 'General export product range',
           estimated_value: Number(row['Lead Score'] || 0),
-          stage,
+          stage: (outreachDone && stage === 'New Lead') ? 'Contacted' : stage,
           priority: ['Low', 'Medium', 'High'].includes(String(row.Priority)) ? String(row.Priority) as Lead['priority'] : 'Medium',
           owner: 'Sana Zeba',
           next_follow_up: nextFollowUp,
@@ -3448,12 +3466,12 @@ export const Dashboard: React.FC = () => {
     return Array.from(new Set(leads.map((lead) => (lead.country || 'Uncategorized').trim() || 'Uncategorized'))).sort((a, b) => a.localeCompare(b));
   }, [leads]);
 
-  const filteredCrmLeads = useMemo(() => {
+  const searchedCrmLeads = useMemo(() => {
     const query = deferredCrmSearchQuery.trim().toLowerCase();
     const countryFiltered = crmCountryFilter === 'All'
       ? leads
       : leads.filter((lead) => ((lead.country || 'Uncategorized').trim() || 'Uncategorized') === crmCountryFilter);
-    const searched = query
+    return query
       ? countryFiltered.filter((lead) => {
           return (
             lead.company_name.toLowerCase().includes(query) ||
@@ -3465,8 +3483,21 @@ export const Dashboard: React.FC = () => {
           );
         })
       : countryFiltered;
+  }, [leads, deferredCrmSearchQuery, crmCountryFilter]);
 
-    return [...searched].sort((a, b) => {
+  const filteredCrmLeads = useMemo(() => {
+    let finalLeads = searchedCrmLeads;
+    if (crmQueueFilter) {
+      finalLeads = searchedCrmLeads.filter((lead) => {
+        if (crmQueueFilter === 'Need Reach Out') return lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Need Reach Out';
+        if (crmQueueFilter === 'Follow-up Due') return lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Follow-up Due';
+        if (crmQueueFilter === 'Next Follow-up') return lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Next Follow-up';
+        if (crmQueueFilter === 'Waiting Reply') return lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Waiting Reply';
+        return true;
+      });
+    }
+
+    return [...finalLeads].sort((a, b) => {
       if (crmSortKey === 'reachout') {
         const catA = leadActionCategory(a);
         const catB = leadActionCategory(b);
@@ -3501,19 +3532,19 @@ export const Dashboard: React.FC = () => {
       }
       return a.company_name.localeCompare(b.company_name);
     });
-  }, [leads, deferredCrmSearchQuery, crmCountryFilter, crmSortKey]);
+  }, [searchedCrmLeads, crmSortKey, crmQueueFilter, leadActionCategory, leadVelocityScore]);
 
   const crmQueues = useMemo(() => [
-    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Need Reach Out') },
-    { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Follow-up Due') },
-    { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
-    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Waiting Reply') },
-    { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Responded / Qualify') },
-    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Needs Email Fix') },
-    { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: filteredCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Review') },
-    { label: 'Won / Approved', description: 'Pipeline deals successfully won', tone: 'emerald' as const, leads: filteredCrmLeads.filter((lead) => lead.stage === 'Won') },
-    { label: 'Lost / Declined', description: 'Pipeline deals lost/declined', tone: 'rose' as const, leads: filteredCrmLeads.filter((lead) => lead.stage === 'Lost') }
-  ], [filteredCrmLeads, leadActionCategory]);
+    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Need Reach Out') },
+    { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Follow-up Due') },
+    { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
+    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Waiting Reply') },
+    { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Responded / Qualify') },
+    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Needs Email Fix') },
+    { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Review') },
+    { label: 'Won / Approved', description: 'Pipeline deals successfully won', tone: 'emerald' as const, leads: searchedCrmLeads.filter((lead) => lead.stage === 'Won') },
+    { label: 'Lost / Declined', description: 'Pipeline deals lost/declined', tone: 'rose' as const, leads: searchedCrmLeads.filter((lead) => lead.stage === 'Lost') }
+  ], [searchedCrmLeads, leadActionCategory]);
 
   const visibleCrmLeads = useMemo(() => filteredCrmLeads.slice(0, crmVisibleCount), [filteredCrmLeads, crmVisibleCount]);
 
@@ -4849,11 +4880,41 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-2 xl:grid-cols-5 gap-2.5">
-                  <CrmMetric label="Total Pipeline" value={leads.length.toString()} helper="Leads in stages" />
-                  <CrmMetric label="Need Reach Out" value={crmQueues[0].leads.length.toString()} helper="Uncontacted" />
-                  <CrmMetric label="Follow-up Due" value={crmQueues[1].leads.length.toString()} helper="Overdue alerts" />
-                  <CrmMetric label="Next Follow-up" value={crmQueues[2].leads.length.toString()} helper="Scheduled outreach" />
-                  <CrmMetric label="Waiting Reply" value={crmQueues[3].leads.length.toString()} helper="Awaiting response" />
+                  <CrmMetric
+                    label="Total Pipeline"
+                    value={leads.length.toString()}
+                    helper="Leads in stages"
+                    active={crmQueueFilter === null}
+                    onClick={() => setCrmQueueFilter(null)}
+                  />
+                  <CrmMetric
+                    label="Need Reach Out"
+                    value={crmQueues[0].leads.length.toString()}
+                    helper="Uncontacted"
+                    active={crmQueueFilter === 'Need Reach Out'}
+                    onClick={() => setCrmQueueFilter('Need Reach Out')}
+                  />
+                  <CrmMetric
+                    label="Follow-up Due"
+                    value={crmQueues[1].leads.length.toString()}
+                    helper="Overdue alerts"
+                    active={crmQueueFilter === 'Follow-up Due'}
+                    onClick={() => setCrmQueueFilter('Follow-up Due')}
+                  />
+                  <CrmMetric
+                    label="Next Follow-up"
+                    value={crmQueues[2].leads.length.toString()}
+                    helper="Scheduled outreach"
+                    active={crmQueueFilter === 'Next Follow-up'}
+                    onClick={() => setCrmQueueFilter('Next Follow-up')}
+                  />
+                  <CrmMetric
+                    label="Waiting Reply"
+                    value={crmQueues[3].leads.length.toString()}
+                    helper="Awaiting response"
+                    active={crmQueueFilter === 'Waiting Reply'}
+                    onClick={() => setCrmQueueFilter('Waiting Reply')}
+                  />
                 </div>
               </div>
 
@@ -6842,11 +6903,18 @@ const Stat = ({ icon, label, value, tone }: { icon: React.ReactNode; label: stri
   );
 };
 
-const CrmMetric = ({ label, value, helper }: { label: string; value: string; helper: string }) => (
-  <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 hover:bg-white/10 transition duration-250">
-    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+const CrmMetric = ({ label, value, helper, active, onClick }: { label: string; value: string; helper: string; active?: boolean; onClick?: () => void }) => (
+  <div
+    onClick={onClick}
+    className={`border rounded-xl p-3.5 transition duration-250 cursor-pointer select-none ${
+      active
+        ? 'bg-white/15 border-sky-400 shadow-md ring-1 ring-sky-400'
+        : 'bg-white/5 border-white/10 hover:bg-white/10'
+    }`}
+  >
+    <span className={`block text-[10px] font-bold uppercase tracking-wider ${active ? 'text-sky-300' : 'text-slate-400'}`}>{label}</span>
     <span className="block text-xl font-extrabold text-white mt-1">{value}</span>
-    <span className="block text-[10px] text-slate-400 mt-1">{helper}</span>
+    <span className={`block text-[10px] mt-1 ${active ? 'text-sky-300' : 'text-slate-400'}`}>{helper}</span>
   </div>
 );
 
