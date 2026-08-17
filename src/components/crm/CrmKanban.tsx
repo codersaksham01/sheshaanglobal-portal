@@ -1,6 +1,6 @@
 import React from 'react';
 import { CrmLead, CrmStage } from '../../lib/types/crm';
-import { Edit2, Trash2 } from 'lucide-react';
+import { Edit2, Trash2, Mail } from 'lucide-react';
 
 interface CrmKanbanCardProps {
   lead: CrmLead;
@@ -9,6 +9,7 @@ interface CrmKanbanCardProps {
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  onSendEmail: (lead: CrmLead, mode: 'First Reach' | 'Follow-up') => void;
   score: number;
   velocity: number;
   actionCategory: string;
@@ -22,6 +23,7 @@ const CrmKanbanCardComponent: React.FC<CrmKanbanCardProps> = ({
   onEditLead,
   onDeleteLead,
   onDragStart,
+  onSendEmail,
   score,
   velocity,
   actionCategory,
@@ -87,6 +89,33 @@ const CrmKanbanCardComponent: React.FC<CrmKanbanCardProps> = ({
         </span>
       </div>
 
+      {actionCategory === 'Need Reach Out' && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSendEmail(lead, 'First Reach');
+          }}
+          className="w-full mt-2.5 py-1 px-2 bg-sky-600 hover:bg-sky-700 text-white rounded text-[10px] font-black uppercase flex items-center justify-center gap-1 transition shadow-sm"
+        >
+          <Mail className="h-3 w-3" />
+          Send Reach Out
+        </button>
+      )}
+      {actionCategory === 'Follow-up Due' && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSendEmail(lead, 'Follow-up');
+          }}
+          className="w-full mt-2.5 py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-black uppercase flex items-center justify-center gap-1 transition shadow-sm"
+        >
+          <Mail className="h-3 w-3" />
+          Send Follow-up
+        </button>
+      )}
+
       <div className="mt-3 flex justify-between items-center text-[9px] text-slate-400 font-bold border-t border-slate-50 pt-2">
         <span>{lead.country || 'Global'}</span>
         {lead.priority && (
@@ -111,6 +140,7 @@ interface CrmKanbanProps {
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
   onMoveLead: (leadId: string, newStage: CrmStage) => void;
+  onSendEmail: (lead: CrmLead, mode: 'First Reach' | 'Follow-up') => void;
   leadScoreValue: Record<string, number>;
   leadVelocityScore: Record<string, number>;
   leadCategoryClass: (cat: string) => string;
@@ -133,6 +163,7 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
   onEditLead,
   onDeleteLead,
   onMoveLead,
+  onSendEmail,
   leadScoreValue,
   leadVelocityScore,
   leadCategoryClass,
@@ -203,6 +234,7 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
                     onEditLead={onEditLead}
                     onDeleteLead={onDeleteLead}
                     onDragStart={handleDragStart}
+                    onSendEmail={onSendEmail}
                     score={leadScoreValue[lead.id] || 0}
                     velocity={leadVelocityScore[lead.id] || 0}
                     actionCategory={leadActionCategory(lead)}

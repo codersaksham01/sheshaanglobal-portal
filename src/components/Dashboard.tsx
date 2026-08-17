@@ -5184,6 +5184,7 @@ export const Dashboard: React.FC = () => {
                     onEditLead={handleEditLead}
                     onDeleteLead={handleDeleteLeadFromCrm}
                     onMoveLead={handleMoveLeadFromCrm}
+                    onSendEmail={handleLeadEmail}
                     leadScoreValue={leadScoreValue}
                     leadVelocityScore={leadVelocityScore}
                     leadCategoryClass={leadCategoryClass}
