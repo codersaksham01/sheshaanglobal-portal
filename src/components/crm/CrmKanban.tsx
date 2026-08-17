@@ -192,13 +192,26 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
       {COLUMNS.map((col) => {
         const colLeads = leads.filter((l) => {
           const actionCat = leadActionCategory(l);
+          
+          // 1. Follow-up Due Column
           if (col.id === 'Follow-up Due') {
             return actionCat === 'Follow-up Due' && l.stage !== 'Won' && l.stage !== 'Lost';
           }
-          // For other columns, exclude if they have follow-up due
-          if (actionCat === 'Follow-up Due' && l.stage !== 'Won' && l.stage !== 'Lost') {
-            return false;
+          
+          // 2. Need Reach Out Column
+          if (col.id === 'New Lead') {
+            if (l.stage === 'Won' || l.stage === 'Lost') return false;
+            if (actionCat === 'Follow-up Due') return false;
+            return l.stage === 'New Lead' || actionCat === 'Need Reach Out' || actionCat === 'Needs Email Fix';
           }
+          
+          // 3. For all other columns (Contacted, Quoted, Negotiating, Won, Lost)
+          // Exclude leads that belong to Follow-up Due or Need Reach Out columns
+          if (l.stage !== 'Won' && l.stage !== 'Lost') {
+            if (actionCat === 'Follow-up Due') return false;
+            if (actionCat === 'Need Reach Out' || actionCat === 'Needs Email Fix') return false;
+          }
+          
           return l.stage === col.id;
         });
 
