@@ -263,6 +263,26 @@ class ServerFileDB {
               return { data: null, error: null };
             })();
             return makeChainPromise(deletePromise);
+          },
+          in: (col: string, valArray: any[]) => {
+            const deletePromise = (async () => {
+              const localDB = this.getLocalDB() || {};
+              const currentTableData = localDB[table] || [];
+              
+              const deletedRecords = currentTableData.filter((record: any) => valArray.includes(record[col]));
+              const newTableData = currentTableData.filter((record: any) => !valArray.includes(record[col]));
+              localDB[table] = newTableData;
+              this.saveLocalDB(localDB);
+
+              try {
+                await Promise.all(deletedRecords.map((record: any) => this.deleteServerRecord(table, record.id)));
+              } catch (error) {
+                return { data: null, error: { message: error instanceof Error ? error.message : `Could not delete ${table}` } };
+              }
+
+              return { data: null, error: null };
+            })();
+            return makeChainPromise(deletePromise);
           }
         };
       }
@@ -413,6 +433,22 @@ class FirebaseDB {
             const matches = snapshot.docs
               .map((item) => ({ id: item.id, ...item.data() }))
               .filter((record: any) => record[col] === val);
+
+            for (const record of matches) {
+              await deleteDoc(doc(this.db, table, record.id));
+            }
+
+            return { data: null, error: null };
+          } catch (error) {
+            return { data: null, error: { message: errorMessage(error, `Could not delete ${table} from Firebase.`) } };
+          }
+        })()),
+        in: (col: string, valArray: any[]) => makeChainPromise((async () => {
+          try {
+            const snapshot = await getDocs(collection(this.db, table));
+            const matches = snapshot.docs
+              .map((item) => ({ id: item.id, ...item.data() }))
+              .filter((record: any) => valArray.includes(record[col]));
 
             for (const record of matches) {
               await deleteDoc(doc(this.db, table, record.id));

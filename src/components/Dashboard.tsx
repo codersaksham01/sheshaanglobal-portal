@@ -4097,10 +4097,19 @@ export const Dashboard: React.FC = () => {
     await saveRecord<Lead>('leads', selectedCrmLead.id.startsWith('new-') ? null : selectedCrmLead.id, updates, () => {});
   }, [selectedCrmLead, saveRecord]);
 
-  const handleToggleSelection = useCallback((id: string, checked: boolean) => {
-    setSelectedLeadIds((prev) =>
-      checked ? [...prev, id] : prev.filter((item) => item !== id)
-    );
+  const handleToggleSelection = useCallback((id: string | string[], checked: boolean) => {
+    setSelectedLeadIds((prev) => {
+      if (Array.isArray(id)) {
+        if (checked) {
+          const toAdd = id.filter(x => !prev.includes(x));
+          return [...prev, ...toAdd];
+        } else {
+          return prev.filter(x => !id.includes(x));
+        }
+      } else {
+        return checked ? [...prev, id] : prev.filter((item) => item !== id);
+      }
+    });
   }, []);
 
   const handleToggleSelectAll = useCallback((checked: boolean) => {

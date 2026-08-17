@@ -5,7 +5,7 @@ import { Edit2, Trash2 } from 'lucide-react';
 interface CrmKanbanCardProps {
   lead: CrmLead;
   selected: boolean;
-  onToggleSelection: (id: string, checked: boolean) => void;
+  onToggleSelection: (id: string | string[], checked: boolean) => void;
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
@@ -107,7 +107,7 @@ const CrmKanbanCard = React.memo(CrmKanbanCardComponent);
 interface CrmKanbanProps {
   leads: CrmLead[];
   selectedLeadIds: string[];
-  onToggleSelection: (id: string, checked: boolean) => void;
+  onToggleSelection: (id: string | string[], checked: boolean) => void;
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
   onMoveLead: (leadId: string, newStage: CrmStage) => void;
@@ -168,8 +168,22 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
             className={`rounded-xl border border-slate-200 border-t-4 p-3 min-h-[500px] flex flex-col ${col.color}`}
           >
             <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
-              <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">{col.title}</h4>
-              <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <input
+                  type="checkbox"
+                  checked={colLeads.length > 0 && colLeads.every((l) => selectedLeadIds.includes(l.id))}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    const leadIds = colLeads.map((l) => l.id);
+                    onToggleSelection(leadIds, checked);
+                  }}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+                  title="Select all in stage"
+                  aria-label={`Select all in ${col.title}`}
+                />
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider truncate">{col.title}</h4>
+              </div>
+              <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
                 {colLeads.length}
               </span>
             </div>

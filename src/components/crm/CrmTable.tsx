@@ -10,7 +10,7 @@ const TIMEZONE_MAP: Record<string, number> = {
 interface CrmTableRowProps {
   lead: CrmLead;
   selected: boolean;
-  onToggleSelection: (id: string, checked: boolean) => void;
+  onToggleSelection: (id: string | string[], checked: boolean) => void;
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
   onSendEmail: (lead: CrmLead) => void;
@@ -151,7 +151,7 @@ const CrmTableRow = React.memo(CrmTableRowComponent);
 interface CrmTableProps {
   leads: CrmLead[];
   selectedLeadIds: string[];
-  onToggleSelection: (id: string, checked: boolean) => void;
+  onToggleSelection: (id: string | string[], checked: boolean) => void;
   onToggleSelectAll: (checked: boolean) => void;
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
