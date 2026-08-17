@@ -5104,6 +5104,8 @@ export const Dashboard: React.FC = () => {
                 ) : (
                   <CrmKanban
                     leads={filteredCrmLeads}
+                    selectedLeadIds={selectedLeadIds}
+                    onToggleSelection={handleToggleSelection}
                     onEditLead={handleEditLead}
                     onDeleteLead={handleDeleteLeadFromCrm}
                     onMoveLead={handleMoveLeadFromCrm}

@@ -4,6 +4,8 @@ import { Edit2, Trash2 } from 'lucide-react';
 
 interface CrmKanbanCardProps {
   lead: CrmLead;
+  selected: boolean;
+  onToggleSelection: (id: string, checked: boolean) => void;
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
@@ -15,6 +17,8 @@ interface CrmKanbanCardProps {
 
 const CrmKanbanCardComponent: React.FC<CrmKanbanCardProps> = ({
   lead,
+  selected,
+  onToggleSelection,
   onEditLead,
   onDeleteLead,
   onDragStart,
@@ -27,12 +31,25 @@ const CrmKanbanCardComponent: React.FC<CrmKanbanCardProps> = ({
     <div
       draggable
       onDragStart={(e) => onDragStart(e, lead.id)}
-      className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm hover:border-sky-300 hover:shadow-md cursor-grab active:cursor-grabbing transition duration-150 group"
+      className={`bg-white border rounded-lg p-3 shadow-sm hover:border-sky-300 hover:shadow-md cursor-grab active:cursor-grabbing transition duration-150 group ${
+        selected ? 'border-sky-200 bg-sky-50/15' : 'border-slate-200'
+      }`}
     >
       <div className="flex justify-between items-start gap-2">
-        <div className="min-w-0">
-          <h5 className="font-extrabold text-slate-900 truncate leading-snug">{lead.company_name}</h5>
-          <p className="text-[10px] text-slate-500 truncate mt-0.5">{lead.product_interest || 'General Commodity'}</p>
+        <div className="flex items-start gap-2 min-w-0">
+          <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(e) => onToggleSelection(lead.id, e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
+              aria-label={`Select ${lead.company_name}`}
+            />
+          </div>
+          <div className="min-w-0">
+            <h5 className="font-extrabold text-slate-900 truncate leading-snug">{lead.company_name}</h5>
+            <p className="text-[10px] text-slate-500 truncate mt-0.5">{lead.product_interest || 'General Commodity'}</p>
+          </div>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition duration-150">
           <button
@@ -89,6 +106,8 @@ const CrmKanbanCard = React.memo(CrmKanbanCardComponent);
 
 interface CrmKanbanProps {
   leads: CrmLead[];
+  selectedLeadIds: string[];
+  onToggleSelection: (id: string, checked: boolean) => void;
   onEditLead: (lead: CrmLead) => void;
   onDeleteLead: (id: string) => void;
   onMoveLead: (leadId: string, newStage: CrmStage) => void;
@@ -109,6 +128,8 @@ const STAGES: { id: CrmStage; title: string; color: string }[] = [
 
 const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
   leads,
+  selectedLeadIds,
+  onToggleSelection,
   onEditLead,
   onDeleteLead,
   onMoveLead,
@@ -163,6 +184,8 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
                   <CrmKanbanCard
                     key={lead.id}
                     lead={lead}
+                    selected={selectedLeadIds.includes(lead.id)}
+                    onToggleSelection={onToggleSelection}
                     onEditLead={onEditLead}
                     onDeleteLead={onDeleteLead}
                     onDragStart={handleDragStart}
