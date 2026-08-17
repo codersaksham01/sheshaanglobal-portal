@@ -4974,7 +4974,7 @@ export const Dashboard: React.FC = () => {
                       type="button"
                       onClick={handleBulkDeleteLeads}
                       disabled={!selectedLeadIds.length}
-                      className="px-3 py-2 bg-red-650 hover:bg-red-500 text-white rounded-lg font-bold disabled:opacity-40 transition-colors"
+                      className="px-3 py-2 bg-rose-600 hover:bg-rose-750 text-white rounded-lg font-bold disabled:opacity-40 transition-colors hover:bg-rose-700"
                     >
                       Bulk Delete
                     </button>
