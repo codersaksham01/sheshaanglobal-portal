@@ -3748,31 +3748,48 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const allNavItems: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
-    { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
-    { key: 'actionQueue', label: 'Action Queue', icon: <Target className="h-4 w-4" />, count: actionQueueItems.length },
-    { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
-    { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, count: sourceFilteredLeads.length },
-    { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
-    { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
-    { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
-    { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
-    { key: 'tasks', label: 'Tasks & Reminders', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter((task) => task.status !== 'Done').length },
-    { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, count: invoices.length },
-    { key: 'shipments', label: 'Shipment Operations', icon: <Ship className="h-4 w-4" />, count: shipments.length },
-    { key: 'documents', label: 'Documents', icon: <CheckSquare className="h-4 w-4" />, count: checklists.length },
-    { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, count: products.length },
-    { key: 'vendors', label: 'Suppliers / Vendors', icon: <Building2 className="h-4 w-4" />, count: vendors.length },
-    { key: 'freight', label: 'Freight Presets', icon: <Anchor className="h-4 w-4" />, count: freightPresets.length },
-    { key: 'rates', label: 'Rate History', icon: <History className="h-4 w-4" />, count: freightRates.length },
-    { key: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-4 w-4" /> },
-    { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, count: users.length },
-    { key: 'manager', label: 'Manager Dashboard', icon: <LineChart className="h-4 w-4" /> }
-  ];
-
   const navItems = useMemo(() => {
+    const allNavItems: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
+      { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
+      { key: 'actionQueue', label: 'Action Queue', icon: <Target className="h-4 w-4" />, count: actionQueueItems.length },
+      { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
+      { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, count: sourceFilteredLeads.length },
+      { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
+      { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
+      { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
+      { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
+      { key: 'tasks', label: 'Tasks & Reminders', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter((task) => task.status !== 'Done').length },
+      { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, count: invoices.length },
+      { key: 'shipments', label: 'Shipment Operations', icon: <Ship className="h-4 w-4" />, count: shipments.length },
+      { key: 'documents', label: 'Documents', icon: <CheckSquare className="h-4 w-4" />, count: checklists.length },
+      { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, count: products.length },
+      { key: 'vendors', label: 'Suppliers / Vendors', icon: <Building2 className="h-4 w-4" />, count: vendors.length },
+      { key: 'freight', label: 'Freight Presets', icon: <Anchor className="h-4 w-4" />, count: freightPresets.length },
+      { key: 'rates', label: 'Rate History', icon: <History className="h-4 w-4" />, count: freightRates.length },
+      { key: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-4 w-4" /> },
+      { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, count: users.length },
+      { key: 'manager', label: 'Manager Dashboard', icon: <LineChart className="h-4 w-4" /> }
+    ];
     return allNavItems.filter((item) => canAccessTab(currentRole, item.key));
-  }, [leads.length, sourceFilteredLeads.length, reachoutBuyers.length, quotes.length, activities.length, templates.length, tasks, invoices.length, shipments.length, checklists.length, products.length, vendors.length, freightPresets.length, freightRates.length, users.length, currentRole, actionQueueItems.length]);
+  }, [
+    currentRole,
+    actionQueueItems,
+    leads,
+    sourceFilteredLeads,
+    reachoutBuyers,
+    quotes,
+    activities,
+    templates,
+    tasks,
+    invoices,
+    shipments,
+    checklists,
+    products,
+    vendors,
+    freightPresets,
+    freightRates,
+    users
+  ]);
 
   const activeNavItem = navItems.find((item) => item.key === activeTab);
   const appBusy = loading || importingBuyers;
