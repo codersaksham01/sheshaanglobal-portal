@@ -24,6 +24,7 @@ import { QuoteForm } from './QuoteForm';
 import { CrmTable } from './crm/CrmTable';
 import { CrmKanban } from './crm/CrmKanban';
 import { LeadInspectorDrawer } from './crm/LeadInspectorDrawer';
+import { LetterheadGenerator } from './LetterheadGenerator';
 import { CrmLead, CrmStage } from '../lib/types/crm';
 import { useCallback } from 'react';
 import { SmartCommandCenter, SmartPortalInsight, SmartPortalPulse } from './SmartCommandCenter';
@@ -96,7 +97,7 @@ const missingPhonePageSize = 40;
 const sourceListPageSize = 60;
 const crmColumnPageSize = 24;
 
-type TabKey = 'overview' | 'actionQueue' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager';
+type TabKey = 'overview' | 'actionQueue' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
@@ -3847,6 +3848,7 @@ export const Dashboard: React.FC = () => {
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
       { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
       { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
+      { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" /> },
       { key: 'tasks', label: 'Tasks & Reminders', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter((task) => task.status !== 'Done').length },
       { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, count: invoices.length },
       { key: 'shipments', label: 'Shipment Operations', icon: <Ship className="h-4 w-4" />, count: shipments.length },
@@ -3885,7 +3887,7 @@ export const Dashboard: React.FC = () => {
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
   const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'dataSources', 'tasks'].includes(item.key)), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'manager'].includes(item.key)) }
   ], [navItems]);
@@ -6721,6 +6723,10 @@ export const Dashboard: React.FC = () => {
                 ))}
               </DataTable>
             </TwoColumnManager>
+          )}
+
+          {activeTab === 'letterhead' && (
+            <LetterheadGenerator />
           )}
                 </>
               )}
