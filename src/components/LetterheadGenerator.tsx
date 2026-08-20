@@ -18,6 +18,9 @@ import jsPDF from 'jspdf';
 export const LetterheadGenerator: React.FC = () => {
   // 1. State for editable letterhead fields
   const [date, setDate] = useState('20 August 2026');
+  const [toAddress, setToAddress] = useState(
+    `To,\nThe Purchasing Manager,\nCommodity Imports LLC,\nDubai, United Arab Emirates`
+  );
   const [subject, setSubject] = useState('Subject of the Letter');
   const [body, setBody] = useState(
     `Dear Recipient,\n\nWrite your letter content here. You can write multiple paragraphs, and they will be formatted properly with clean line spacing. This editor is fully responsive, and the live preview on the right updates instantly.\n\nSheshaan Global supports international trade by connecting global markets with high-quality Indian export products, including fresh agricultural goods, spices, oilseeds, and processed foods. We ensure end-to-end supply chain reliability, quality checks, and timely shipments.\n\nPlease let us know if you require any specific product samples, CIF pricing sheets, or shipping schedule details.\n\nThank you for your trust and partnership.`
@@ -37,6 +40,9 @@ export const LetterheadGenerator: React.FC = () => {
   const handleReset = () => {
     if (confirm('Are you sure you want to reset the letter content to defaults?')) {
       setDate('20 August 2026');
+      setToAddress(
+        `To,\nThe Purchasing Manager,\nCommodity Imports LLC,\nDubai, United Arab Emirates`
+      );
       setSubject('Subject of the Letter');
       setBody(
         `Dear Recipient,\n\nWrite your letter content here. You can write multiple paragraphs, and they will be formatted properly with clean line spacing. This editor is fully responsive, and the live preview on the right updates instantly.\n\nSheshaan Global supports international trade by connecting global markets with high-quality Indian export products, including fresh agricultural goods, spices, oilseeds, and processed foods. We ensure end-to-end supply chain reliability, quality checks, and timely shipments.\n\nPlease let us know if you require any specific product samples, CIF pricing sheets, or shipping schedule details.\n\nThank you for your trust and partnership.`
@@ -171,6 +177,22 @@ export const LetterheadGenerator: React.FC = () => {
                 onChange={(e) => setDate(e.target.value)}
                 placeholder="e.g. 20 August 2026"
                 className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+              />
+            </div>
+
+            {/* Recipient To Address Input */}
+            <div>
+              <label htmlFor="letterhead-to-address" className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1.5 flex justify-between">
+                <span>Recipient (To Address)</span>
+                <span className="text-[10px] text-slate-400 font-bold normal-case">Supports line breaks</span>
+              </label>
+              <textarea
+                id="letterhead-to-address"
+                value={toAddress}
+                onChange={(e) => setToAddress(e.target.value)}
+                rows={3}
+                placeholder="To,\nRecipient Name,\nAddress..."
+                className="w-full p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 resize-y leading-relaxed"
               />
             </div>
 
@@ -420,6 +442,12 @@ export const LetterheadGenerator: React.FC = () => {
                     <div className="text-right text-[11px] font-bold text-slate-600 mb-6">
                       Date: {date || 'N/A'}
                     </div>
+
+                    {toAddress && (
+                      <div className="text-[11.5px] text-slate-700 font-bold mb-6 leading-relaxed whitespace-pre-line text-left">
+                        {toAddress}
+                      </div>
+                    )}
 
                     {subject && (
                       <div className="text-[12.5px] font-black text-slate-800 uppercase tracking-wide mb-8 underline decoration-blue-900 decoration-2 underline-offset-4">
