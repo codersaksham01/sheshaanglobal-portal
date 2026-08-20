@@ -691,7 +691,6 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
     }
   };
 
-  // Indian/US formatting utility
   const formatValue = (amount: number) => {
     const symbol = quote.currency === 'INR' ? 'INR' : 'USD';
     const formatter = new Intl.NumberFormat(quote.currency === 'INR' ? 'en-IN' : 'en-US', {
@@ -699,6 +698,12 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
       maximumFractionDigits: 2,
     });
     return `${symbol} ${formatter.format(amount)}`;
+  };
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr || dateStr === 'preview') return new Date().toLocaleDateString();
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? new Date().toLocaleDateString() : d.toLocaleDateString();
   };
 
   const lineItems = quote.items || [];
@@ -817,7 +822,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
             <Text style={styles.docHeaderTitle}>{getDocumentTitle()}</Text>
             <Text style={styles.docHeaderRef}>REF: {quote.quote_number}</Text>
             <Text style={styles.docHeaderMeta}>
-              Date: {quote.created_at ? new Date(quote.created_at).toLocaleDateString() : new Date().toLocaleDateString()} | Validity: {quote.validity_days || 15} Days
+              Date: {formatDate(quote.created_at)} | Validity: {quote.validity_days || 15} Days
             </Text>
           </View>
         </View>
@@ -938,8 +943,8 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                 {documentType !== 'packing_list' ? (
                   <>
                     <View style={[styles.tableCol, styles.colDesc, styles.tableColDescBlock]}>
-                      <Text style={styles.tableColDescTitle}>{mainTitle}</Text>
-                      {bullets.map((b, bi) => (
+                      <Text style={styles.tableColDescTitle}>{mainTitle || 'Product'}</Text>
+                      {(bullets || []).map((b, bi) => (
                         <Text key={bi} style={styles.tableColDescBullet}>{b}</Text>
                       ))}
                     </View>
@@ -948,31 +953,31 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                     <Text style={[styles.tableCol, styles.colPack]}>{item.packing_container || 'Standard Carton'}</Text>
                     
                     <Text style={[styles.tableCol, styles.colQty]}>
-                      {new Intl.NumberFormat('en-US').format(item.quantity)} kg{"\n"}
-                      {item.quantity === 13000 ? '(13.00 MT)' : `(${(item.quantity / 1000).toFixed(2)} MT)`}
+                      {new Intl.NumberFormat('en-US').format(Number(item.quantity) || 0)} kg{"\n"}
+                      {Number(item.quantity) === 13000 ? '(13.00 MT)' : `(${(Number(item.quantity) / 1000).toFixed(2)} MT)`}
                     </Text>
                     
                     <Text style={[styles.tableCol, styles.colPrice]}>
-                      {quote.currency === 'INR' ? 'INR' : '$'} {item.unit_price.toFixed(2)}
+                      {quote.currency === 'INR' ? 'INR' : '$'} {(Number(item.unit_price) || 0).toFixed(2)}
                     </Text>
                     
                     <Text style={[styles.tableCol, styles.colTotal, { fontWeight: 'bold' }]}>
-                      {quote.currency === 'INR' ? 'INR' : '$'} {new Intl.NumberFormat('en-US').format(item.quantity * item.unit_price)}
+                      {quote.currency === 'INR' ? 'INR' : '$'} {new Intl.NumberFormat('en-US').format((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))}
                     </Text>
                   </>
                 ) : (
                   <>
                     <View style={[styles.tableCol, { width: '45%' }, styles.tableColDescBlock]}>
-                      <Text style={styles.tableColDescTitle}>{mainTitle}</Text>
-                      {bullets.map((b, bi) => (
+                      <Text style={styles.tableColDescTitle}>{mainTitle || 'Product'}</Text>
+                      {(bullets || []).map((b, bi) => (
                         <Text key={bi} style={styles.tableColDescBullet}>{b}</Text>
                       ))}
                     </View>
                     <Text style={[styles.tableCol, { width: '15%', textAlign: 'center' }]}>{item.hs_code || 'N/A'}</Text>
                     <Text style={[styles.tableCol, { width: '20%' }]}>{item.packing_container || 'Standard Carton'}</Text>
                     <Text style={[styles.tableCol, { width: '15%', textAlign: 'right', fontWeight: 'bold' }]}>
-                      {new Intl.NumberFormat('en-US').format(item.quantity)} kg{"\n"}
-                      {item.quantity === 13000 ? '(13.00 MT)' : `(${(item.quantity / 1000).toFixed(2)} MT)`}
+                      {new Intl.NumberFormat('en-US').format(Number(item.quantity) || 0)} kg{"\n"}
+                      {Number(item.quantity) === 13000 ? '(13.00 MT)' : `(${(Number(item.quantity) / 1000).toFixed(2)} MT)`}
                     </Text>
                   </>
                 )}
@@ -1141,10 +1146,10 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {/* Mini Header Page 2 */}
         <View style={[styles.companyHeader, { marginBottom: 15 }]}>
           <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#475569' }}>
-            {shipper.company_name.toUpperCase()} - {getDocumentTitle()} REF: {quote.quote_number}
+            {(shipper.company_name || '').toUpperCase()} - {getDocumentTitle()} REF: {quote.quote_number || ''}
           </Text>
           <Text style={{ fontSize: 8, color: '#64748b' }}>
-            Date: {quote.created_at ? new Date(quote.created_at).toLocaleDateString() : new Date().toLocaleDateString()}
+            Date: {formatDate(quote.created_at)}
           </Text>
         </View>
 

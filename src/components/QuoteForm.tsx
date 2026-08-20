@@ -940,18 +940,20 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <span className="hidden sm:inline">{showPreview ? 'Hide Live PDF Preview' : 'Show Live PDF Preview'}</span>
           </button>
           {isMounted && (
-            <PDFDownloadLink
-              document={<QuotePDF quote={deferredTempQuoteForPDF} documentType={previewDocType} />}
-              fileName={pdfFileName}
-              className={downloadButtonClass}
-            >
-              {({ loading: pdfLoading }) => (
-                <>
-                  {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  Download PDF
-                </>
-              )}
-            </PDFDownloadLink>
+            <PdfPreviewBoundary>
+              <PDFDownloadLink
+                document={<QuotePDF quote={deferredTempQuoteForPDF} documentType={previewDocType} />}
+                fileName={pdfFileName}
+                className={downloadButtonClass}
+              >
+                {({ loading: pdfLoading }) => (
+                  <>
+                    {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    Download PDF
+                  </>
+                )}
+              </PDFDownloadLink>
+            </PdfPreviewBoundary>
           )}
           <button
             type="button"
