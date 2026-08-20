@@ -439,6 +439,15 @@ export const LetterheadGenerator: React.FC = () => {
                     <p className="text-[12px] font-black text-slate-900 leading-none">{senderName || 'Sana Zeba Bakshi'}</p>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1.5">{senderPosition || 'CEO'}</p>
                     <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5 select-none">Sheshaan Global</p>
+                    
+                    {/* Official Rubber Stamp */}
+                    <div className="mt-3 select-none">
+                      <img 
+                        src="/stamp.png" 
+                        alt="Official Sheshaan Stamp" 
+                        className="h-11 w-auto object-contain opacity-[0.93] -rotate-[1.5deg]"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
