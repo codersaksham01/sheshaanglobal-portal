@@ -311,39 +311,13 @@ export const LetterheadGenerator: React.FC = () => {
                 {/* Logo and Brand Text */}
                 <div className="flex items-center gap-4">
                   {/* Sheshaan Logo Container */}
-                  <div className="shrink-0">
-                    <svg viewBox="0 0 100 100" className="h-16 w-16 select-none">
-                      {/* Globe Grid lines */}
-                      <circle cx="50" cy="45" r="30" fill="none" stroke="#e2e8f0" strokeWidth="1" />
-                      <ellipse cx="50" cy="45" rx="30" ry="10" fill="none" stroke="#cbd5e1" strokeWidth="0.75" />
-                      <ellipse cx="50" cy="45" rx="15" ry="30" fill="none" stroke="#cbd5e1" strokeWidth="0.75" />
-                      <line x1="20" y1="45" x2="80" y2="45" stroke="#cbd5e1" strokeWidth="0.75" />
-                      <line x1="50" y1="15" x2="50" y2="75" stroke="#cbd5e1" strokeWidth="0.75" />
-
-                      {/* Swirls */}
-                      <path d="M 17 45 A 33 28 0 1 1 83 45" fill="none" stroke="#f97316" strokeWidth="2.5" strokeLinecap="round" />
-                      <path d="M 83 45 A 33 28 0 0 1 17 45" fill="none" stroke="#1d4ed8" strokeWidth="2.5" strokeLinecap="round" />
-
-                      {/* Cargo Container Ship */}
-                      <path d="M 22 64 L 78 64 L 73 72 L 27 72 Z" fill="#1e3a8a" />
-                      <path d="M 22 64 L 30 64 L 28 60 L 24 60 Z" fill="#f97316" />
-                      <line x1="25" y1="68" x2="75" y2="68" stroke="#dc2626" strokeWidth="1.25" />
-
-                      {/* Containers */}
-                      <rect x="32" y="55" width="6" height="9" fill="#f97316" />
-                      <rect x="39" y="52" width="6" height="12" fill="#0284c7" />
-                      <rect x="46" y="49" width="8" height="15" fill="#10b981" />
-                      <rect x="55" y="52" width="6" height="12" fill="#eab308" />
-                      <rect x="62" y="57" width="6" height="7" fill="#ec4899" />
-
-                      {/* Waves */}
-                      <path d="M 12 74 Q 26 71 40 74 T 68 74 T 88 74" fill="none" stroke="#38bdf8" strokeWidth="1.75" strokeLinecap="round" />
-                      <path d="M 16 77 Q 30 75 44 77 T 72 77 T 84 77" fill="none" stroke="#0284c7" strokeWidth="1.25" strokeLinecap="round" />
-
-                      {/* Airplane */}
-                      <path d="M 76 26 L 87 20 L 85 25 L 91 24 L 89 28 L 78 29 Z" fill="#1d4ed8" />
-                      <path d="M 82 22 L 84 15 L 83 24 L 74 29 L 72 28 L 78 25 Z" fill="#1d4ed8" />
-                    </svg>
+                  <div className="shrink-0 h-16 w-16 overflow-hidden relative select-none bg-white">
+                    <img 
+                      src="/logo.jpg" 
+                      alt="Sheshaan Global Logo" 
+                      className="w-full h-auto max-w-none" 
+                      style={{ transform: 'scale(1.23)', transformOrigin: 'top center' }}
+                    />
                   </div>
 
                   {/* Brand Typography */}
