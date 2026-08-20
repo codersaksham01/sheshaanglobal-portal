@@ -27,6 +27,7 @@ export const LetterheadGenerator: React.FC = () => {
   );
   const [senderName, setSenderName] = useState('Sana Zeba Bakshi');
   const [senderPosition, setSenderPosition] = useState('CEO');
+  const [showSignature, setShowSignature] = useState(true);
 
   // Generation status states
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -49,6 +50,7 @@ export const LetterheadGenerator: React.FC = () => {
       );
       setSenderName('Sana Zeba Bakshi');
       setSenderPosition('CEO');
+      setShowSignature(true);
     }
   };
 
@@ -256,7 +258,21 @@ export const LetterheadGenerator: React.FC = () => {
                   placeholder="e.g. CEO"
                   className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
                 />
-              </div>
+            </div>
+          </div>
+
+          {/* CEO Signature Toggle */}
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+              <input 
+                id="letterhead-show-signature"
+                type="checkbox"
+                checked={showSignature}
+                onChange={(e) => setShowSignature(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-sky-650 focus:ring-sky-500 cursor-pointer"
+              />
+              <label htmlFor="letterhead-show-signature" className="text-xs font-bold text-slate-700 cursor-pointer select-none">
+                Include CEO Signature
+              </label>
             </div>
           </div>
 
@@ -462,9 +478,23 @@ export const LetterheadGenerator: React.FC = () => {
                   </div>
 
                   {/* Sign-off details block */}
-                  <div className="mt-12 text-left self-start">
-                    <p className="text-[11.5px] text-slate-600 mb-10">Yours sincerely,</p>
-                    <p className="text-[12px] font-black text-slate-900 leading-none">{senderName || 'Sana Zeba Bakshi'}</p>
+                  <div className="mt-12 text-left self-start relative">
+                    <p className="text-[11.5px] text-slate-600 mb-2">Yours sincerely,</p>
+                    
+                    {/* CEO Signature Graphic */}
+                    {showSignature ? (
+                      <div className="h-12 my-1 select-none flex items-center">
+                        <img 
+                          src="/signature.png" 
+                          alt="CEO Signature" 
+                          className="h-full w-auto object-contain"
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-8 select-none" />
+                    )}
+
+                    <p className="text-[12px] font-black text-slate-900 leading-none mt-1">{senderName || 'Sana Zeba Bakshi'}</p>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1.5">{senderPosition || 'CEO'}</p>
                     <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5 select-none">Sheshaan Global</p>
                     
