@@ -1016,7 +1016,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
               <View style={styles.tableRow} wrap={false}>
                 <Text style={[styles.tableCol, styles.colBdSr]}>1</Text>
                 <View style={[styles.tableCol, styles.colBdDesc]}>
-                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Base Product Value (FOB {quote.loading_port.split(',')[0].trim()})</Text>
+                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Base Product Value (FOB {(quote.loading_port || 'Mundra').split(',')[0].trim()})</Text>
                   <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>
                     FOB package value including raw product cost, packaging, loading, haulage and origin port charges.
                   </Text>
@@ -1033,7 +1033,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                 <Text style={[styles.tableCol, styles.colBdSr]}>2</Text>
                 <View style={[styles.tableCol, styles.colBdDesc]}>
                   <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Main Ocean Freight</Text>
-                  <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>Lump-sum ocean freight from {quote.loading_port.split(',')[0].trim()} to {client.destination_port.split(',')[0].trim()}.</Text>
+                  <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>Lump-sum ocean freight from {(quote.loading_port || 'Mundra').split(',')[0].trim()} to {(client.destination_port || 'Destination').split(',')[0].trim()}.</Text>
                 </View>
                 <Text style={[styles.tableCol, styles.colBdBasis]}>Lump Sum ({quote.shipment_mode})</Text>
                 <Text style={[styles.tableCol, styles.colBdRate]}>Overall Order</Text>
@@ -1054,7 +1054,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
               {/* Grand total breakdown */}
               <View style={styles.tableRowGrandTotal} wrap={false}>
-                <Text style={styles.bdGrandLabel}>Total Offered CIF Value ({client.destination_port.split(',')[0].toUpperCase()})</Text>
+                <Text style={styles.bdGrandLabel}>Total Offered CIF Value ({(client.destination_port || 'Destination').split(',')[0].toUpperCase()})</Text>
                 <Text style={styles.bdGrandVal}>{formatValue(totalCIF)}</Text>
               </View>
             </View>

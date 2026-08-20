@@ -1309,8 +1309,9 @@ export const Dashboard: React.FC = () => {
       setTasks(tData || []);
       setTemplates(mtData || []);
       setUsers(uData || []);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Error fetching dashboard data:', err);
+      alert(err?.message || 'Failed to sync dashboard data with database.');
     } finally {
       setLoading(false);
     }
@@ -1344,7 +1345,7 @@ export const Dashboard: React.FC = () => {
       if (quoteSort === 'value_desc') return quoteValue(b) - quoteValue(a);
       if (quoteSort === 'value_asc') return quoteValue(a) - quoteValue(b);
       if (quoteSort === 'buyer_asc') return (a.client?.company_name || '').localeCompare(b.client?.company_name || '');
-      if (quoteSort === 'status_asc') return a.status.localeCompare(b.status);
+      if (quoteSort === 'status_asc') return (a.status || '').localeCompare(b.status || '');
       return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
     });
   }, [quotes, quoteSearch, quoteStatusFilter, quoteCurrencyFilter, quoteSort]);
