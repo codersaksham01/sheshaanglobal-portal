@@ -483,11 +483,11 @@ export const LetterheadGenerator: React.FC = () => {
                     
                     {/* CEO Signature Graphic */}
                     {showSignature ? (
-                      <div className="h-14 my-1 select-none flex items-center">
+                      <div className="h-8 my-1 relative select-none flex items-center">
                         <img 
                           src="/signature.png" 
                           alt="CEO Signature" 
-                          className="h-full w-auto object-contain"
+                          className="h-24 w-auto object-contain absolute left-0 -top-8 z-10"
                         />
                       </div>
                     ) : (
