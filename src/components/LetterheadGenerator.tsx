@@ -311,12 +311,11 @@ export const LetterheadGenerator: React.FC = () => {
                 {/* Logo and Brand Text */}
                 <div className="flex items-center gap-4">
                   {/* Sheshaan Logo Container */}
-                  <div className="shrink-0 h-16 w-16 overflow-hidden relative select-none bg-white">
+                  <div className="shrink-0">
                     <img 
                       src="/logo.jpg" 
                       alt="Sheshaan Global Logo" 
-                      className="w-full h-auto max-w-none" 
-                      style={{ transform: 'scale(1.23)', transformOrigin: 'top center' }}
+                      className="h-16 w-auto object-contain select-none" 
                     />
                   </div>
 
