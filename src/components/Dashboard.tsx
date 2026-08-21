@@ -91,7 +91,8 @@ const quoteStatuses: Quote['status'][] = [
   'Declined'
 ];
 const buyerListPageSize = 48;
-const portalDataCacheVersion = 'crm-pipeline-only-2026-08-14';
+const portalBuildLabel = 'Smart Trade OS v2026.08.21';
+const portalDataCacheVersion = 'smart-trade-os-2026-08-21';
 const reachoutListPageSize = 60;
 const missingPhonePageSize = 40;
 const sourceListPageSize = 60;
@@ -3327,7 +3328,7 @@ export const Dashboard: React.FC = () => {
         'Cumin Seeds',
         'Spices',
         'Importer',
-        'Trade Portal',
+        'Smart Trade OS',
         'Not Sent',
         'High',
         'New Lead',
@@ -4358,6 +4359,9 @@ export const Dashboard: React.FC = () => {
                   ₹{fxRate.toFixed(2)}
                 </span>
               </div>
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-sky-200/80">
+                {portalBuildLabel}
+              </div>
             </div>
           </aside>
 
@@ -4381,6 +4385,7 @@ export const Dashboard: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Sheshaan Global</p>
                   <p className="text-sm font-extrabold text-slate-900 truncate">{activeNavItem?.label || 'Overview'}</p>
+                  <p className="text-[9px] font-bold uppercase tracking-wide text-sky-700">{portalBuildLabel}</p>
                 </div>
                 <button
                   type="button"
