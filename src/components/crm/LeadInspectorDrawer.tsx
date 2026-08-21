@@ -1,19 +1,31 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { CrmLead, CrmStage, CrmPriority } from '../../lib/types/crm';
-import { X, Calendar, User, Tag, FileText, CheckSquare, Clock } from 'lucide-react';
+import { X, Clock, Mail, Phone, Gauge, Globe2, PackageSearch, Target, Database } from 'lucide-react';
 
 interface LeadInspectorDrawerProps {
   lead: CrmLead | null;
   onClose: () => void;
   onSaveLead: (updates: Partial<CrmLead>) => void;
   activities: { id: string; lead_id?: string; type: string; title: string; details?: string; activity_date: string }[];
+  leadScore?: number;
+  velocityScore?: number;
+  actionCategory?: string;
+  bestSendWindow?: string;
+  onSendEmail?: (lead: CrmLead) => void;
+  onSendWhatsApp?: (lead: CrmLead) => void;
 }
 
 const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
   lead,
   onClose,
   onSaveLead,
-  activities
+  activities,
+  leadScore = 0,
+  velocityScore = 0,
+  actionCategory = 'Review',
+  bestSendWindow = 'Best send: office hours',
+  onSendEmail,
+  onSendWhatsApp
 }) => {
   const [companyName, setCompanyName] = useState('');
   const [contactName, setContactName] = useState('');
@@ -54,6 +66,8 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
   };
 
   const leadActivities = activities.filter((act) => act.lead_id === lead.id);
+  const leadSource = (lead as CrmLead & { data_source?: string }).data_source || 'Uncategorized';
+  const scoreTone = leadScore >= 70 ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : leadScore >= 50 ? 'text-sky-700 bg-sky-50 border-sky-100' : 'text-slate-700 bg-slate-50 border-slate-200';
 
   return (
     <div className="fixed inset-0 z-40 overflow-hidden flex justify-end" role="dialog" aria-modal="true">
@@ -71,7 +85,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
         {/* Header */}
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-950 text-white">
           <div>
-            <span className="text-[9px] font-black uppercase text-sky-400 tracking-wider">Lead Workspace</span>
+            <span className="text-[9px] font-black uppercase text-sky-400 tracking-wider">Buyer 360 Workspace</span>
             <h3 className="text-sm font-extrabold truncate max-w-[320px]">{companyName}</h3>
           </div>
           <button
@@ -86,6 +100,69 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
 
         {/* Form Editor Contents */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="grid grid-cols-2 gap-2">
+              <div className={`rounded-lg border p-3 ${scoreTone}`}>
+                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase">
+                  <Gauge className="h-3.5 w-3.5" />
+                  Smart Score
+                </div>
+                <p className="mt-1 text-2xl font-black">{leadScore}</p>
+              </div>
+              <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 text-amber-800">
+                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase">
+                  <Target className="h-3.5 w-3.5" />
+                  Velocity
+                </div>
+                <p className="mt-1 text-2xl font-black">{velocityScore}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
+                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase">
+                  <Globe2 className="h-3.5 w-3.5" />
+                  Market
+                </div>
+                <p className="mt-1 font-black">{lead.country || 'Global'}</p>
+                <p className="mt-1 text-[10px] font-bold text-slate-500">{bestSendWindow}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
+                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase">
+                  <Database className="h-3.5 w-3.5" />
+                  Source
+                </div>
+                <p className="mt-1 font-black">{leadSource}</p>
+                <p className="mt-1 text-[10px] font-bold text-slate-500">{actionCategory}</p>
+              </div>
+            </div>
+            <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <div className="flex items-start gap-2">
+                <PackageSearch className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase text-slate-400">Product Interest</p>
+                  <p className="mt-1 font-bold text-slate-900 break-words">{lead.product_interest || 'General Sheshaan export range'}</p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => onSendEmail?.(lead)}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-950 text-xs font-black text-white hover:bg-slate-800"
+              >
+                <Mail className="h-4 w-4" />
+                Smart Email
+              </button>
+              <button
+                type="button"
+                disabled={!lead.phone}
+                onClick={() => onSendWhatsApp?.(lead)}
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-600 text-xs font-black text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Phone className="h-4 w-4" />
+                WhatsApp
+              </button>
+            </div>
+          </div>
+
           {/* Company & Primary Info */}
           <div className="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
             <h4 className="font-extrabold text-[10px] uppercase text-slate-400 tracking-wider">Primary Metadata</h4>

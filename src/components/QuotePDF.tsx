@@ -13,6 +13,22 @@ const styles = StyleSheet.create({
     color: '#334155', // slate-700
     backgroundColor: '#ffffff',
   },
+  brandAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 8,
+    backgroundColor: '#0f172a',
+  },
+  brandAccentGold: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: '32%',
+    height: 8,
+    backgroundColor: '#f97316',
+  },
   
   // Upper Header
   companyHeader: {
@@ -86,6 +102,18 @@ const styles = StyleSheet.create({
     color: '#475569',
     marginTop: 3,
     lineHeight: 1.25,
+  },
+  statusPill: {
+    marginTop: 5,
+    paddingVertical: 2.5,
+    paddingHorizontal: 7,
+    borderRadius: 999,
+    backgroundColor: '#e0f2fe',
+    color: '#0369a1',
+    fontSize: 6.2,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // Section Dividers
@@ -314,11 +342,11 @@ const styles = StyleSheet.create({
   amountWordsBlock: {
     paddingVertical: 5.5,
     paddingHorizontal: 8,
-    backgroundColor: '#f8fafc',
-    borderRadius: 3,
+    backgroundColor: '#fff7ed',
+    borderRadius: 5,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#fed7aa',
   },
   amountWordsText: {
     fontSize: 7.2,
@@ -804,6 +832,8 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
       
       {/* ==================== PAGE 1 ==================== */}
       <Page size="A4" style={styles.page}>
+        <View style={styles.brandAccent} fixed />
+        <View style={styles.brandAccentGold} fixed />
         
         {/* Upper Header Block */}
         <View style={styles.companyHeader}>
@@ -824,6 +854,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
             <Text style={styles.docHeaderMeta}>
               Date: {formatDate(quote.created_at)} | Validity: {quote.validity_days || 15} Days
             </Text>
+            <Text style={styles.statusPill}>{quote.status || 'Draft'} | {quote.currency}</Text>
           </View>
         </View>
 
@@ -1142,6 +1173,8 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
       {/* ==================== PAGE 2 ==================== */}
       <Page size="A4" style={styles.page}>
+        <View style={styles.brandAccent} fixed />
+        <View style={styles.brandAccentGold} fixed />
         
         {/* Mini Header Page 2 */}
         <View style={[styles.companyHeader, { marginBottom: 15 }]}>

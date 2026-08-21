@@ -5,11 +5,29 @@ import { Client, InvoiceRecord, Quote } from '../lib/types';
 
 const styles = StyleSheet.create({
   page: {
-    padding: 30,
+    paddingTop: 28,
+    paddingHorizontal: 30,
+    paddingBottom: 30,
     fontFamily: 'Helvetica',
     fontSize: 8,
     color: '#334155',
     backgroundColor: '#ffffff'
+  },
+  brandAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 8,
+    backgroundColor: '#0f172a'
+  },
+  brandAccentGold: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: '32%',
+    height: 8,
+    backgroundColor: '#f97316'
   },
   header: {
     flexDirection: 'row',
@@ -79,6 +97,52 @@ const styles = StyleSheet.create({
     color: '#475569',
     fontSize: 6.8,
     lineHeight: 1.25
+  },
+  statusPill: {
+    marginTop: 5,
+    paddingVertical: 2.5,
+    paddingHorizontal: 7,
+    borderRadius: 999,
+    backgroundColor: '#ecfdf5',
+    color: '#047857',
+    fontSize: 6.2,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  kpiStrip: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    borderRadius: 6,
+    backgroundColor: '#f8fbff',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    marginBottom: 12
+  },
+  kpi: {
+    width: '24%',
+    borderRightWidth: 0.5,
+    borderRightColor: '#dbeafe',
+    paddingRight: 6
+  },
+  kpiLast: {
+    width: '24%'
+  },
+  kpiLabel: {
+    fontSize: 5.8,
+    color: '#64748b',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2.5
+  },
+  kpiValue: {
+    fontSize: 8,
+    color: '#0f172a',
+    fontWeight: 'bold',
+    lineHeight: 1.2
   },
   cards: {
     flexDirection: 'row',
@@ -208,8 +272,8 @@ const styles = StyleSheet.create({
   },
   note: {
     borderWidth: 1,
-    borderColor: '#bae6fd',
-    backgroundColor: '#f0f9ff',
+    borderColor: '#fed7aa',
+    backgroundColor: '#fff7ed',
     borderRadius: 6,
     padding: 8,
     color: '#475569',
@@ -257,6 +321,8 @@ export const InvoicePDF = ({
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        <View style={styles.brandAccent} fixed />
+        <View style={styles.brandAccentGold} fixed />
         <View style={styles.header}>
           <View style={styles.brand}>
             <Image src="/logo.png" style={styles.logo} />
@@ -271,6 +337,26 @@ export const InvoicePDF = ({
             <Text style={styles.docNo}>{invoice.invoice_number}</Text>
             <Text style={styles.docMeta}>Issue Date: {issueDate}</Text>
             <Text style={styles.docMeta}>Due Date: {invoice.due_date || 'As agreed'}</Text>
+            <Text style={styles.statusPill}>{invoice.payment_status}</Text>
+          </View>
+        </View>
+
+        <View style={styles.kpiStrip} wrap={false}>
+          <View style={styles.kpi}>
+            <Text style={styles.kpiLabel}>Buyer</Text>
+            <Text style={styles.kpiValue}>{client?.company_name || 'Unlinked Buyer'}</Text>
+          </View>
+          <View style={styles.kpi}>
+            <Text style={styles.kpiLabel}>Invoice Amount</Text>
+            <Text style={styles.kpiValue}>{formatMoney(amount, currency)}</Text>
+          </View>
+          <View style={styles.kpi}>
+            <Text style={styles.kpiLabel}>Advance</Text>
+            <Text style={styles.kpiValue}>{formatMoney(advance, currency)}</Text>
+          </View>
+          <View style={styles.kpiLast}>
+            <Text style={styles.kpiLabel}>Balance Due</Text>
+            <Text style={styles.kpiValue}>{formatMoney(balance, currency)}</Text>
           </View>
         </View>
 
@@ -331,7 +417,8 @@ export const InvoicePDF = ({
 
         <Text style={styles.sectionTitle}>Payment Instructions</Text>
         <View style={styles.note} wrap={false}>
-          <Text>Payment should be made as per agreed commercial terms. Please mention invoice number {invoice.invoice_number} in the bank transfer reference. This document is generated from Sheshaan Global Admin Portal.</Text>
+          <Text style={{ fontWeight: 'bold', color: '#0f172a', marginBottom: 3 }}>Settlement Reference: {invoice.invoice_number}</Text>
+          <Text>Payment should be made as per agreed commercial terms. Please mention invoice number {invoice.invoice_number} in the bank transfer reference. This document is generated from Sheshaan Global Admin Portal and should be matched against the quote, shipment, and payment tracker before release of final documents.</Text>
         </View>
 
         <View style={styles.footer} fixed>

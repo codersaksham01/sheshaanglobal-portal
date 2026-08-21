@@ -18,6 +18,10 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
 
   render() {
     if (!this.state.hasError) return this.props.children;
+    const errorReference = this.state.error?.message
+      ? `ERR-${Math.abs(this.state.error.message.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)).toString(16).toUpperCase()}`
+      : 'ERR-PORTAL';
+    const canShowDebugDetails = process.env.NODE_ENV !== 'production';
 
     return (
       <main className="min-h-screen bg-slate-100 p-4 flex items-center justify-center">
@@ -29,8 +33,9 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
             <div className="flex-1 min-w-0">
               <h1 className="text-base font-extrabold text-slate-950">The portal could not render this view</h1>
               <p className="mt-1 text-sm leading-6 text-slate-600">Your data has not been changed. Reload the portal to restore the last saved state.</p>
+              <p className="mt-2 text-xs font-bold text-slate-500">Reference: {errorReference}</p>
               
-              {this.state.error && (
+              {canShowDebugDetails && this.state.error && (
                 <div className="mt-4 p-3 bg-red-50/50 border border-red-100 rounded text-xs font-mono text-red-800 break-words max-h-60 overflow-y-auto">
                   <p className="font-bold">{this.state.error.name}: {this.state.error.message}</p>
                   <p className="mt-1 text-[10px] text-red-600 whitespace-pre-wrap">{this.state.error.stack}</p>

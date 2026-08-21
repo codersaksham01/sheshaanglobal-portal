@@ -151,8 +151,11 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin" />
+      <div className="auth-os min-h-screen text-white flex items-center justify-center">
+        <div className="portal-loader-card">
+          <Loader2 className="h-6 w-6 animate-spin text-sky-300" />
+          <span className="text-xs font-bold text-slate-300">Opening Sheshaan Trade OS</span>
+        </div>
       </div>
     );
   }
@@ -177,54 +180,85 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <form onSubmit={handleLogin} className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-slate-200 p-6 space-y-5">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-lg bg-white text-slate-900 flex items-center justify-center border border-slate-200 overflow-hidden shadow-sm">
-            <Image src="/logo.png" alt="Sheshaan Global logo" width={48} height={48} className="h-full w-full object-contain" />
-          </div>
+    <div className="auth-os min-h-screen flex items-center justify-center p-4">
+      <div className="grid w-full max-w-5xl gap-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-stretch">
+        <section className="hidden overflow-hidden rounded-2xl border border-white/10 bg-white/8 p-7 text-white shadow-2xl backdrop-blur-xl lg:flex lg:flex-col lg:justify-between">
           <div>
-            <h1 className="text-lg font-extrabold text-slate-900">Sheshaan Global Login</h1>
-            <p className="text-xs text-slate-500">Secure access to your commercial operations workspace.</p>
+            <span className="inline-flex rounded-full bg-sky-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-sky-200 ring-1 ring-sky-300/15">
+              Smart Trade Operating System
+            </span>
+            <h1 className="mt-5 max-w-xl text-4xl font-black leading-tight tracking-tight">
+              Command every buyer, quote, shipment, and payment from one secure workspace.
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">
+              Sheshaan Global portal connects CRM, export documentation, payment control, and logistics execution for faster international trade operations.
+            </p>
           </div>
-        </div>
+          <div className="grid grid-cols-3 gap-3 text-xs">
+            <div className="rounded-xl border border-white/10 bg-white/8 p-3">
+              <p className="text-[10px] font-black uppercase text-slate-400">Pipeline</p>
+              <p className="mt-2 text-lg font-black text-white">CRM</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/8 p-3">
+              <p className="text-[10px] font-black uppercase text-slate-400">Exports</p>
+              <p className="mt-2 text-lg font-black text-white">Docs</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/8 p-3">
+              <p className="text-[10px] font-black uppercase text-slate-400">Control</p>
+              <p className="mt-2 text-lg font-black text-white">RBAC</p>
+            </div>
+          </div>
+        </section>
 
-        <label className="block text-sm">
-          <span className="block text-slate-600 font-semibold mb-1">Email</span>
+        <form onSubmit={handleLogin} className="auth-card w-full rounded-2xl p-6 sm:p-7 space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="h-14 w-14 rounded-2xl bg-white text-slate-900 flex items-center justify-center border border-slate-200 overflow-hidden shadow-sm">
+              <Image src="/logo.png" alt="Sheshaan Global logo" width={56} height={56} className="h-full w-full object-contain" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Secure Portal Access</p>
+              <h1 className="text-lg font-extrabold text-slate-900">Sheshaan Global</h1>
+              <p className="text-xs text-slate-500">Commercial operations workspace.</p>
+            </div>
+          </div>
+
+          <label className="block text-sm">
+          <span className="block text-slate-600 font-bold mb-1.5">Email</span>
           <input
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder={defaultFirebaseLoginEmail}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
+            className="w-full h-11 px-3 border border-slate-200 bg-slate-50 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 focus:bg-white focus:outline-none"
             autoFocus
             required
           />
         </label>
 
         <label className="block text-sm">
-          <span className="block text-slate-600 font-semibold mb-1">Password</span>
+          <span className="block text-slate-600 font-bold mb-1.5">Password</span>
           <input
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Enter your password"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-none"
+            className="w-full h-11 px-3 border border-slate-200 bg-slate-50 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 focus:bg-white focus:outline-none"
             required
           />
         </label>
 
-        {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2">{error}</div>}
+        {error && <div className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-xl p-3 font-semibold">{error}</div>}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-500 text-white font-bold rounded-lg transition flex items-center justify-center gap-2"
+          className="w-full h-11 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-500 text-white font-black rounded-xl transition flex items-center justify-center gap-2 shadow-[0_18px_42px_rgba(15,23,42,0.18)]"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Login
         </button>
-      </form>
+        </form>
+      </div>
     </div>
   );
 };

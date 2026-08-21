@@ -2127,6 +2127,43 @@ export const Dashboard: React.FC = () => {
     return list.sort((a, b) => priorityMap[a.tone] - priorityMap[b.tone]);
   }, [invoices, checklists, shipments, leads, tasks, clients, leadScoreValue, tradeOperatingMetrics]);
 
+  const unifiedDailyWorkQueue = useMemo(() => {
+    const todayStart = new Date().setHours(0, 0, 0, 0);
+    const needsReachOut = leads
+      .filter((lead) => leadActionCategory(lead) === 'Need Reach Out')
+      .sort((a, b) => (leadScoreValue[b.id] || 0) - (leadScoreValue[a.id] || 0))
+      .slice(0, 8);
+    const followUpsDue = leads
+      .filter((lead) => leadActionCategory(lead) === 'Follow-up Due')
+      .sort((a, b) => (leadVelocityScore[b.id] || 0) - (leadVelocityScore[a.id] || 0))
+      .slice(0, 8);
+    const paymentFollowUps = invoices
+      .filter((invoice) => invoice.payment_status !== 'Paid')
+      .sort((a, b) => Number(b.balance_amount || b.amount || 0) - Number(a.balance_amount || a.amount || 0))
+      .slice(0, 8);
+    const documentBlockers = checklists
+      .filter((item) => [item.commercial_invoice, item.packing_list, item.certificate_origin, item.phytosanitary, item.insurance, item.bill_of_lading].some((flag) => !flag))
+      .slice(0, 8);
+    const dueTasks = tasks
+      .filter((task) => task.status !== 'Done' && task.due_date && new Date(task.due_date).getTime() <= todayStart)
+      .sort((a, b) => (a.priority === 'High' ? -1 : 1) - (b.priority === 'High' ? -1 : 1))
+      .slice(0, 8);
+
+    return {
+      needsReachOut,
+      followUpsDue,
+      paymentFollowUps,
+      documentBlockers,
+      dueTasks,
+      total:
+        needsReachOut.length +
+        followUpsDue.length +
+        paymentFollowUps.length +
+        documentBlockers.length +
+        dueTasks.length
+    };
+  }, [leads, invoices, checklists, tasks, leadActionCategory, leadScoreValue, leadVelocityScore]);
+
   const buyerCountries = useMemo(() => {
     return Array.from(new Set(clients.map((client) => clientCountries[client.id] || 'Uncategorized').filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [clients, clientCountries]);
@@ -2352,16 +2389,22 @@ export const Dashboard: React.FC = () => {
 
   const globalResults = useMemo<{ key: string; label: string; meta: string; tab: TabKey; buyerId?: string }[]>(() => {
     const search = deferredGlobalSearch.trim().toLowerCase();
-    if (!search) return [];
+    if (search.length < 2) return [];
 
-    return [
-      ...clients.map((item) => ({ key: `buyer-${item.id}`, label: item.company_name, meta: `${buyerCountry(item)} | ${item.contact_email || item.destination_port || 'Buyer'}`, tab: 'crm' as TabKey, buyerId: item.id })),
-      ...leads.map((item) => ({ key: `lead-${item.id}`, label: item.company_name, meta: `${item.country || 'Country not set'} | ${item.stage} | ${item.product_interest || 'Lead'}`, tab: 'crm' as TabKey })),
-      ...quotes.map((item) => ({ key: `quote-${item.id}`, label: item.quote_number, meta: `${quoteClient(item)?.company_name || 'Unassigned'} | ${item.status}`, tab: 'quotes' as TabKey })),
-      ...invoices.map((item) => ({ key: `invoice-${item.id}`, label: item.invoice_number, meta: `${item.payment_status} | ${formatQuoteCurrency(Number(item.balance_amount || item.amount || 0), item.currency || 'INR')}`, tab: 'accounts' as TabKey })),
-      ...shipments.map((item) => ({ key: `shipment-${item.id}`, label: item.booking_number || item.vessel_name || 'Shipment', meta: `${item.status} | ETA ${item.eta || 'TBA'}`, tab: 'shipments' as TabKey })),
-      ...vendors.map((item) => ({ key: `vendor-${item.id}`, label: item.company_name, meta: `${item.status} | ${item.product_categories || 'Vendor'}`, tab: 'vendors' as TabKey }))
-    ].filter((item) => `${item.label} ${item.meta}`.toLowerCase().includes(search)).slice(0, 8);
+    const results: { key: string; label: string; meta: string; tab: TabKey; buyerId?: string }[] = [];
+    const pushIfMatch = (item: { key: string; label: string; meta: string; tab: TabKey; buyerId?: string }) => {
+      if (results.length >= 8) return;
+      if (`${item.label} ${item.meta}`.toLowerCase().includes(search)) results.push(item);
+    };
+
+    for (const item of clients) pushIfMatch({ key: `buyer-${item.id}`, label: item.company_name, meta: `${buyerCountry(item)} | ${item.contact_email || item.destination_port || 'Buyer'}`, tab: 'crm', buyerId: item.id });
+    for (const item of leads) pushIfMatch({ key: `lead-${item.id}`, label: item.company_name, meta: `${item.country || 'Country not set'} | ${item.stage} | ${item.product_interest || 'Lead'}`, tab: 'crm' });
+    for (const item of quotes) pushIfMatch({ key: `quote-${item.id}`, label: item.quote_number, meta: `${quoteClient(item)?.company_name || 'Unassigned'} | ${item.status}`, tab: 'quotes' });
+    for (const item of invoices) pushIfMatch({ key: `invoice-${item.id}`, label: item.invoice_number, meta: `${item.payment_status} | ${formatQuoteCurrency(Number(item.balance_amount || item.amount || 0), item.currency || 'INR')}`, tab: 'accounts' });
+    for (const item of shipments) pushIfMatch({ key: `shipment-${item.id}`, label: item.booking_number || item.vessel_name || 'Shipment', meta: `${item.status} | ETA ${item.eta || 'TBA'}`, tab: 'shipments' });
+    for (const item of vendors) pushIfMatch({ key: `vendor-${item.id}`, label: item.company_name, meta: `${item.status} | ${item.product_categories || 'Vendor'}`, tab: 'vendors' });
+
+    return results;
   }, [deferredGlobalSearch, clients, leads, quotes, invoices, shipments, vendors]);
 
   const communicationClient = clients.find((client) => client.id === selectedCommunicationClientId) || clients[0];
@@ -4085,21 +4128,6 @@ export const Dashboard: React.FC = () => {
     );
   };
 
-  if (editingQuoteId !== undefined) {
-    return (
-      <div className="p-4 md:p-8">
-        <QuoteForm
-          quoteId={editingQuoteId}
-          onSaveSuccess={() => {
-            setEditingQuoteId(undefined);
-            fetchData();
-          }}
-          onCancel={() => setEditingQuoteId(undefined)}
-        />
-      </div>
-    );
-  }
-
   const handleDeleteLeadFromCrm = useCallback(async (id: string) => {
     await deleteRecord('leads', id, 'lead');
     if (selectedCrmLead?.id === id) {
@@ -4223,8 +4251,23 @@ export const Dashboard: React.FC = () => {
     if (action === 'followup_due') handleLeadEmail(lead, 'Follow-up');
   }, [handleLeadEmail]);
 
+  if (editingQuoteId !== undefined) {
+    return (
+      <div className="p-4 md:p-8">
+        <QuoteForm
+          quoteId={editingQuoteId}
+          onSaveSuccess={() => {
+            setEditingQuoteId(undefined);
+            fetchData();
+          }}
+          onCancel={() => setEditingQuoteId(undefined)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#e0f2fe_0,_transparent_28%),radial-gradient(circle_at_90%_10%,_#ecfeff_0,_transparent_22%),linear-gradient(180deg,_#f8fafc_0%,_#eef2f7_100%)] pb-28 lg:pb-0">
+    <div className="portal-os min-h-screen pb-28 lg:pb-0">
       {appBusy && (
         <div className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-slate-200/70">
           <div className="h-full w-1/2 animate-loading-bar bg-sky-500 shadow-[0_0_18px_rgba(14,165,233,0.65)]" />
@@ -4234,16 +4277,16 @@ export const Dashboard: React.FC = () => {
         <div className="flex flex-col lg:flex-row">
           <aside
             data-sidebar="true"
-            className="hidden lg:flex flex-col w-[280px] h-screen fixed top-0 left-0 bg-zinc-950 border-r border-zinc-800 overflow-hidden z-40 animate-fade-up"
+            className="portal-sidebar hidden lg:flex flex-col w-[288px] h-screen fixed top-0 left-0 overflow-hidden z-40 animate-fade-up"
           >
             {/* Brand Header */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-800/80 shrink-0">
-              <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center overflow-hidden shadow-inner shrink-0">
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 shrink-0">
+              <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-[0_16px_36px_rgba(14,165,233,0.22)] shrink-0 ring-1 ring-white/15">
                 <Image src="/logo.png" alt="Sheshaan Global" width={36} height={36} className="h-full w-full object-contain" />
               </div>
               <div className="min-w-0">
                 <h1 className="text-[13px] font-extrabold text-white tracking-tight leading-none truncate">Sheshaan Global</h1>
-                <p className="text-[10px] text-zinc-500 font-semibold mt-0.5 uppercase tracking-wider">Trade Portal</p>
+                <p className="text-[10px] text-sky-200/70 font-semibold mt-0.5 uppercase tracking-wider">Smart Trade OS</p>
               </div>
             </div>
 
@@ -4251,7 +4294,7 @@ export const Dashboard: React.FC = () => {
             <div className="px-4 pt-4 pb-2 shrink-0">
               <button
                 onClick={() => { setEditingQuoteId(null); setShowMobileMenu(false); navigateToTab('quotes'); }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-white text-[11px] font-bold rounded-lg shadow-sm shadow-sky-500/20 transition-all duration-150"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-white text-slate-950 hover:bg-sky-50 active:bg-sky-100 text-[11px] font-black rounded-xl shadow-[0_14px_34px_rgba(255,255,255,0.12)] transition-all duration-150"
               >
                 <Plus className="h-3.5 w-3.5" />
                 New Quote
@@ -4272,12 +4315,12 @@ export const Dashboard: React.FC = () => {
                           onClick={() => navigateToTab(item.key)}
                           className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-[11.5px] font-semibold transition-all duration-150 relative group ${
                             isActive
-                              ? 'bg-zinc-800 text-white'
-                              : 'text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100'
+                              ? 'bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                              : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
                           }`}
                         >
                           {/* Active accent bar */}
-                          {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-sky-400 rounded-r-full" />}
+                          {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
                           <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
                           <span className="flex-1 truncate">{item.label}</span>
                           {typeof item.count === 'number' && item.count > 0 && (
@@ -4318,8 +4361,8 @@ export const Dashboard: React.FC = () => {
             </div>
           </aside>
 
-          <section className="flex-1 lg:ml-[280px] space-y-4 min-w-0 p-3 lg:p-5">
-            <div className="lg:hidden sticky top-2 z-30 bg-white/95 backdrop-blur rounded-lg border border-slate-200 shadow-sm overflow-hidden animate-fade-up">
+          <section className="flex-1 lg:ml-[288px] space-y-4 min-w-0 p-3 lg:p-5">
+            <div className="lg:hidden sticky top-2 z-30 portal-glass overflow-hidden animate-fade-up">
               <div className="px-3 py-2 flex items-center justify-between gap-3">
                 <button
                   type="button"
@@ -4368,7 +4411,7 @@ export const Dashboard: React.FC = () => {
               </div>
             )}
 
-            <div className="lg:hidden sticky top-[4.75rem] z-20 bg-white/95 backdrop-blur rounded-lg border border-slate-200 shadow-sm p-3 animate-fade-up">
+            <div className="lg:hidden sticky top-[4.75rem] z-20 portal-glass p-3 animate-fade-up">
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <SmoothInput
@@ -4417,10 +4460,10 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="hidden lg:block sticky top-3 z-20 bg-white/95 backdrop-blur rounded-lg border border-slate-200 shadow-sm overflow-hidden animate-fade-up">
+            <div className="hidden lg:block sticky top-3 z-20 portal-topbar overflow-visible animate-fade-up">
               <div className="min-h-14 px-4 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-slate-200">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-9 w-9 rounded bg-slate-900 text-white flex items-center justify-center shrink-0">
+                  <div className="h-10 w-10 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-[0_14px_30px_rgba(15,23,42,0.22)]">
                     {activeNavItem?.icon || <LayoutDashboard className="h-4 w-4" />}
                   </div>
                   <div className="min-w-0">
@@ -4541,7 +4584,7 @@ export const Dashboard: React.FC = () => {
                 </div>
               </div>
             </div>
-            <div key={activeTab} className="bg-white/95 rounded-lg border border-slate-200 shadow-sm p-3 sm:p-5 min-w-0 animate-panel-in">
+            <div key={activeTab} className="portal-workspace p-3 sm:p-5 min-w-0 animate-panel-in">
               {!hasAccessToActiveTab ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center bg-slate-50 rounded-xl border border-slate-200/60 shadow-inner animate-fade-in my-6">
                   <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center border border-red-100 mb-4 animate-pulse">
@@ -4560,10 +4603,55 @@ export const Dashboard: React.FC = () => {
                       <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
                         <div>
                           <h2 className="text-lg font-black text-slate-900">Manager Dashboard</h2>
-                          <p className="text-xs text-slate-500">Commercial overview, pipeline conversion rates, and revenue forecasts.</p>
+                          <p className="text-xs text-slate-500">Commercial overview, team workload, pipeline conversion, and productivity control.</p>
                         </div>
                         <div className="text-xs font-bold text-slate-400">
                           Real-time Database Sync
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
+                        <div className="portal-card p-4">
+                          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-wider text-sky-700">Manager Control</p>
+                              <h3 className="text-sm font-black text-slate-950">Today&apos;s Operator Workload</h3>
+                            </div>
+                            <span className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black text-white">{unifiedDailyWorkQueue.total} actions</span>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-2">
+                            <SmallMetric label="Reach Out" value={unifiedDailyWorkQueue.needsReachOut.length.toString()} />
+                            <SmallMetric label="Follow-up" value={unifiedDailyWorkQueue.followUpsDue.length.toString()} />
+                            <SmallMetric label="Payments" value={unifiedDailyWorkQueue.paymentFollowUps.length.toString()} />
+                            <SmallMetric label="Docs" value={unifiedDailyWorkQueue.documentBlockers.length.toString()} />
+                            <SmallMetric label="Tasks" value={unifiedDailyWorkQueue.dueTasks.length.toString()} />
+                          </div>
+                        </div>
+                        <div className="portal-card p-4">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Smart Lead Scoring</p>
+                          <h3 className="mt-1 text-sm font-black text-slate-950">Best Leads To Work</h3>
+                          <div className="mt-3 space-y-2">
+                            {[...leads]
+                              .sort((a, b) => (leadScoreValue[b.id] || 0) - (leadScoreValue[a.id] || 0))
+                              .slice(0, 4)
+                              .map((lead) => (
+                                <button
+                                  key={lead.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab('crm');
+                                    setSelectedCrmLead(lead as CrmLead);
+                                  }}
+                                  className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-left hover:bg-sky-50"
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-xs font-black text-slate-900">{lead.company_name}</span>
+                                    <span className="block truncate text-[10px] font-semibold text-slate-500">{lead.country || 'Global'} | {leadActionCategory(lead)}</span>
+                                  </span>
+                                  <span className="rounded-full bg-sky-100 px-2 py-1 text-[10px] font-black text-sky-800">{leadScoreValue[lead.id] || 0}</span>
+                                </button>
+                              ))}
+                          </div>
                         </div>
                       </div>
 
@@ -4710,12 +4798,67 @@ export const Dashboard: React.FC = () => {
                     <div className="space-y-4">
                       <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
                         <div>
-                          <h2 className="text-lg font-black text-slate-900">Unified Action Queue</h2>
-                          <p className="text-xs text-slate-500">Real-time prioritized operational actions based on database triggers.</p>
+                          <h2 className="text-lg font-black text-slate-900">Unified Daily Work Queue</h2>
+                          <p className="text-xs text-slate-500">One operating list for reach-outs, follow-ups, payments, documents, and overdue tasks.</p>
                         </div>
                         <div className="text-xs bg-slate-100 text-slate-700 font-extrabold px-3 py-1 rounded-full">
-                          {actionQueueItems.length} Pending Actions
+                          {unifiedDailyWorkQueue.total} Today | {actionQueueItems.length} Signals
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+                        <DailyWorkTile
+                          label="Need Reach Out"
+                          value={unifiedDailyWorkQueue.needsReachOut.length.toString()}
+                          detail="Highest-score uncontacted buyers"
+                          tone="sky"
+                          onClick={() => {
+                            setActiveTab('crm');
+                            setCrmQueueFilter('Need Reach Out');
+                          }}
+                        />
+                        <DailyWorkTile
+                          label="Follow-up Due"
+                          value={unifiedDailyWorkQueue.followUpsDue.length.toString()}
+                          detail="Buyers waiting for next touch"
+                          tone="amber"
+                          onClick={() => {
+                            setActiveTab('crm');
+                            setCrmQueueFilter('Follow-up Due');
+                          }}
+                        />
+                        <DailyWorkTile
+                          label="Payments"
+                          value={unifiedDailyWorkQueue.paymentFollowUps.length.toString()}
+                          detail="Pending receivables to chase"
+                          tone="red"
+                          onClick={() => navigateToTab('accounts')}
+                        />
+                        <DailyWorkTile
+                          label="Documents"
+                          value={unifiedDailyWorkQueue.documentBlockers.length.toString()}
+                          detail="Export packet blockers"
+                          tone="emerald"
+                          onClick={() => navigateToTab('documents')}
+                        />
+                        <DailyWorkTile
+                          label="Due Tasks"
+                          value={unifiedDailyWorkQueue.dueTasks.length.toString()}
+                          detail="Operational tasks due today"
+                          tone="slate"
+                          onClick={() => navigateToTab('tasks')}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <DashboardList title="Top Follow-ups Due" empty="No due follow-ups." rows={unifiedDailyWorkQueue.followUpsDue.slice(0, 5).map((lead) => ({
+                          title: lead.company_name,
+                          meta: `${lead.country || 'Country not set'} | Score ${leadScoreValue[lead.id] || 0} | Next ${lead.next_follow_up || 'today'}`
+                        }))} />
+                        <DashboardList title="Top First Reach-outs" empty="No first reach-outs pending." rows={unifiedDailyWorkQueue.needsReachOut.slice(0, 5).map((lead) => ({
+                          title: lead.company_name,
+                          meta: `${lead.country || 'Country not set'} | Score ${leadScoreValue[lead.id] || 0} | ${lead.product_interest || 'General export'}`
+                        }))} />
                       </div>
 
                       <div className="space-y-3">
@@ -4926,7 +5069,8 @@ export const Dashboard: React.FC = () => {
             </div>
           )}
 
-          <div className={activeTab === 'crm' ? 'block' : 'hidden'}>
+          {activeTab === 'crm' && (
+            <>
             {hasOpenedCrm && (
               
             <div className="space-y-4">
@@ -5226,7 +5370,7 @@ export const Dashboard: React.FC = () => {
                   </>
                 ) : (
                   <CrmKanban
-                    leads={filteredCrmLeads}
+                    leads={filteredCrmLeads.slice(0, 140)}
                     selectedLeadIds={selectedLeadIds}
                     onToggleSelection={handleToggleSelection}
                     onEditLead={handleEditLead}
@@ -5250,11 +5394,18 @@ export const Dashboard: React.FC = () => {
                 }}
                 onSaveLead={handleSaveLeadFromDrawer}
                 activities={activities}
+                leadScore={selectedCrmLead ? leadScoreValue[selectedCrmLead.id] || 0 : 0}
+                velocityScore={selectedCrmLead ? leadVelocityScore[selectedCrmLead.id] || 0 : 0}
+                actionCategory={selectedCrmLead ? leadActionCategory(selectedCrmLead) : 'Review'}
+                bestSendWindow={selectedCrmLead ? bestSendWindowIST(selectedCrmLead.country || '') : 'Best send: office hours'}
+                onSendEmail={handleSendEmail}
+                onSendWhatsApp={handleLeadWhatsApp}
               />
             </div>
           
             )}
-          </div>
+            </>
+          )}
 
           {activeTab === 'dataSources' && (
             <div className="space-y-4">
@@ -6752,7 +6903,7 @@ export const Dashboard: React.FC = () => {
       {showMobileMenu && (
         <div className="fixed inset-0 z-50 bg-slate-950/40 lg:hidden" onClick={() => setShowMobileMenu(false)}>
           <div className="absolute left-0 top-0 h-full w-[88vw] max-w-sm bg-white shadow-2xl animate-slide-in-left overflow-y-auto mobile-safe-bottom" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-slate-950 text-white p-4 z-10">
+            <div className="sticky top-0 mobile-menu-head text-white p-4 z-10">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded bg-white flex items-center justify-center overflow-hidden">
@@ -6802,7 +6953,7 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       )}
-      <nav className="fixed inset-x-3 bottom-3 z-40 rounded-xl border border-slate-200 bg-white/95 backdrop-blur shadow-2xl lg:hidden mobile-safe-bottom">
+      <nav className="fixed inset-x-3 bottom-3 z-40 portal-mobile-dock lg:hidden mobile-safe-bottom">
         <div className="grid grid-cols-5 p-1">
           {mobilePrimaryNav.map((item) => (
             <button
@@ -7023,13 +7174,47 @@ const Stat = ({ icon, label, value, tone }: { icon: React.ReactNode; label: stri
   }[tone];
 
   return (
-    <div className={`group bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4 hover:shadow-lg transition-all duration-300 ${colorMap.glow}`}>
+    <div className={`group metric-tile p-4 sm:p-5 flex items-center gap-4 ${colorMap.glow}`}>
       <div className={`p-3 rounded-xl shrink-0 transition-transform duration-300 group-hover:scale-110 ${colorMap.iconBg}`}>{icon}</div>
       <div className="min-w-0 flex-1">
         <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1">{label}</span>
         <span className="block text-xl sm:text-2xl font-black text-slate-800 tracking-tight truncate" title={value}>{value}</span>
       </div>
     </div>
+  );
+};
+
+const DailyWorkTile = ({
+  label,
+  value,
+  detail,
+  tone,
+  onClick
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: 'sky' | 'amber' | 'red' | 'emerald' | 'slate';
+  onClick: () => void;
+}) => {
+  const toneClass = {
+    sky: 'border-sky-200 bg-sky-50 text-sky-800',
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    red: 'border-red-200 bg-red-50 text-red-800',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    slate: 'border-slate-200 bg-slate-50 text-slate-800'
+  }[tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${toneClass}`}
+    >
+      <span className="block text-[10px] font-black uppercase tracking-wider opacity-70">{label}</span>
+      <span className="mt-1 block text-2xl font-black">{value}</span>
+      <span className="mt-1 block text-[10px] font-bold opacity-70">{detail}</span>
+    </button>
   );
 };
 
@@ -7064,11 +7249,11 @@ const StatusBadge = ({ status }: { status: Quote['status'] }) => {
 };
 
 const EmptyState = ({ text }: { text: string }) => (
-  <div className="text-center py-12 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50/50 font-medium px-4">{text}</div>
+  <div className="text-center py-12 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-white/60 font-semibold px-4 shadow-inner">{text}</div>
 );
 
 const DashboardList = ({ title, empty, rows }: { title: string; empty: string; rows: { title: string; meta: string }[] }) => (
-  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+  <div className="portal-card p-5 transition-all duration-300">
     <h3 className="font-extrabold text-slate-900 text-sm mb-4 relative pb-2 border-b border-slate-100 flex items-center">
       <span className="absolute bottom-[-1px] left-0 h-[2px] w-8 bg-indigo-500 rounded"></span>
       {title}
@@ -7122,7 +7307,7 @@ const TwoColumnManager = ({
   scrollableForm?: boolean;
 }) => (
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div className="bg-slate-50/90 p-5 rounded-2xl border border-slate-200 h-fit space-y-4 shadow-sm lg:sticky lg:top-24">
+    <div className="portal-card p-5 h-fit space-y-4 lg:sticky lg:top-24">
       <h3 className="font-black text-slate-900 text-[11px] uppercase tracking-wider border-b border-slate-200 pb-2">{formTitle}</h3>
       <form onSubmit={onSubmit} className="space-y-3.5 text-xs">
         <div className={scrollableForm ? 'max-h-[52vh] overflow-y-auto pr-2 space-y-3.5 scroll-smooth' : 'space-y-3.5'}>
@@ -7387,7 +7572,7 @@ const TableSkeleton = () => (
 );
 
 const SimplePanel = ({ title, rows }: { title: string; rows: [string, string][] }) => (
-  <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300">
+  <div className="portal-card p-5 transition-all duration-300">
     <h3 className="font-extrabold text-slate-900 text-sm mb-4 relative pb-2 border-b border-slate-100 flex items-center">
       <span className="absolute bottom-[-1px] left-0 h-[2px] w-8 bg-sky-500 rounded"></span>
       {title}

@@ -74,11 +74,11 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
 
   return (
     <div className="space-y-4">
-      <section className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950 text-white shadow-sm">
+      <section className="smart-hero overflow-hidden text-white">
         <div className="grid gap-5 p-4 sm:p-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.6fr)] xl:items-center">
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded bg-sky-400/10 px-2 py-1 text-[10px] font-extrabold uppercase text-sky-300">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase text-sky-200 ring-1 ring-sky-300/15">
                 <Bot className="h-3.5 w-3.5" /> Rule-Based Trade Intelligence
               </span>
               <span className="text-[10px] font-semibold text-slate-400">Explainable signals from live operational data</span>
@@ -88,10 +88,10 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
               Buyers, quotations, collections, freight, documents, and shipment execution are ranked into one operating plan.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" onClick={() => onNavigate('actionQueue')} className="inline-flex h-10 items-center gap-2 rounded-md bg-white px-4 text-xs font-extrabold text-slate-950 hover:bg-slate-100">
+              <button type="button" onClick={() => onNavigate('actionQueue')} className="inline-flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)]">
                 <Target className="h-4 w-4" /> Work priority queue
               </button>
-              <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-700 bg-slate-900 px-4 text-xs font-extrabold text-white hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 text-xs font-extrabold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50">
                 <Sparkles className="h-4 w-4" /> {busy ? 'Automation running' : 'Run smart automation'}
               </button>
             </div>
@@ -124,7 +124,7 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
         <PulseMetric icon={<Ship className="h-4 w-4" />} label="Shipments" value={String(pulse.activeShipments)} detail="Currently in motion" className="col-span-2 lg:col-span-1" />
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <section className="portal-card">
         <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[10px] font-extrabold uppercase text-sky-700">Deterministic operating brief</p>
@@ -164,7 +164,7 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
 
 function PulseMetric({ icon, label, value, detail, className = '' }: { icon: React.ReactNode; label: string; value: string; detail: string; className?: string }) {
   return (
-    <div className={`min-w-0 rounded-lg border border-slate-200 bg-white p-3 shadow-sm ${className}`}>
+    <div className={`metric-tile min-w-0 p-3 ${className}`}>
       <div className="flex items-center gap-2 text-slate-500">{icon}<span className="truncate text-[10px] font-extrabold uppercase">{label}</span></div>
       <p className="mt-2 truncate text-xl font-black text-slate-950">{value}</p>
       <p className="mt-0.5 truncate text-[10px] text-slate-500">{detail}</p>
