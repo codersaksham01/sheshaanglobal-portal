@@ -170,6 +170,28 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
   leadCategoryClass,
   leadActionCategory
 }) => {
+  const selectedLeadIdSet = React.useMemo(() => new Set(selectedLeadIds), [selectedLeadIds]);
+  const leadsByColumn = React.useMemo(() => {
+    const grouped = new Map<string, CrmLead[]>();
+    COLUMNS.forEach((column) => grouped.set(column.id, []));
+
+    leads.forEach((lead) => {
+      const actionCat = leadActionCategory(lead);
+      let columnId: string | null = null;
+
+      if (actionCat === 'Follow-up Due' && lead.stage !== 'Won' && lead.stage !== 'Lost') {
+        columnId = 'Follow-up Due';
+      } else if (lead.stage !== 'Won' && lead.stage !== 'Lost' && (lead.stage === 'New Lead' || actionCat === 'Need Reach Out' || actionCat === 'Needs Email Fix')) {
+        columnId = 'New Lead';
+      } else if (lead.stage === 'Contacted' || lead.stage === 'Quoted' || lead.stage === 'Negotiation' || lead.stage === 'Won' || lead.stage === 'Lost') {
+        columnId = lead.stage;
+      }
+
+      if (columnId) grouped.get(columnId)?.push(lead);
+    });
+
+    return grouped;
+  }, [leads, leadActionCategory]);
   
   const handleDragStart = (e: React.DragEvent, id: string) => {
     e.dataTransfer.setData('text/plain', id);
@@ -190,30 +212,7 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-7 gap-3.5 items-start">
       {COLUMNS.map((col) => {
-        const colLeads = leads.filter((l) => {
-          const actionCat = leadActionCategory(l);
-          
-          // 1. Follow-up Due Column
-          if (col.id === 'Follow-up Due') {
-            return actionCat === 'Follow-up Due' && l.stage !== 'Won' && l.stage !== 'Lost';
-          }
-          
-          // 2. Need Reach Out Column
-          if (col.id === 'New Lead') {
-            if (l.stage === 'Won' || l.stage === 'Lost') return false;
-            if (actionCat === 'Follow-up Due') return false;
-            return l.stage === 'New Lead' || actionCat === 'Need Reach Out' || actionCat === 'Needs Email Fix';
-          }
-          
-          // 3. For all other columns (Contacted, Quoted, Negotiating, Won, Lost)
-          // Exclude leads that belong to Follow-up Due or Need Reach Out columns
-          if (l.stage !== 'Won' && l.stage !== 'Lost') {
-            if (actionCat === 'Follow-up Due') return false;
-            if (actionCat === 'Need Reach Out' || actionCat === 'Needs Email Fix') return false;
-          }
-          
-          return l.stage === col.id;
-        });
+        const colLeads = leadsByColumn.get(col.id) || [];
 
         return (
           <div
@@ -226,7 +225,7 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
               <div className="flex items-center gap-1.5 min-w-0">
                 <input
                   type="checkbox"
-                  checked={colLeads.length > 0 && colLeads.every((l) => selectedLeadIds.includes(l.id))}
+                  checked={colLeads.length > 0 && colLeads.every((l) => selectedLeadIdSet.has(l.id))}
                   onChange={(e) => {
                     const checked = e.target.checked;
                     const leadIds = colLeads.map((l) => l.id);
@@ -253,7 +252,7 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
                   <CrmKanbanCard
                     key={lead.id}
                     lead={lead}
-                    selected={selectedLeadIds.includes(lead.id)}
+                    selected={selectedLeadIdSet.has(lead.id)}
                     onToggleSelection={onToggleSelection}
                     onEditLead={onEditLead}
                     onDeleteLead={onDeleteLead}

@@ -14,11 +14,14 @@ import {
   MessageTemplate,
   Product,
   Quote,
+  QuoteItem,
   ShipmentRecord,
   TaskRecord,
   TimelineActivity,
   Vendor
 } from '../lib/types';
+import type { BlogPost } from '../lib/types';
+import { blankBlogPost, generateBlogSlug, sanitizeBlogHtml, stripHtml } from '../lib/blogs';
 import { InvoicePDF } from './InvoicePDF';
 import { QuoteForm } from './QuoteForm';
 import { CrmTable } from './crm/CrmTable';
@@ -98,7 +101,32 @@ const missingPhonePageSize = 40;
 const sourceListPageSize = 60;
 const crmColumnPageSize = 24;
 
-type TabKey = 'overview' | 'actionQueue' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
+const getQuoteItemPricingBasis = (item: QuoteItem) => item.pricing_basis || 'kg';
+const getQuoteItemSellTotal = (item: QuoteItem) => (
+  getQuoteItemPricingBasis(item) === 'package'
+    ? Number(item.package_quantity || 0) * Number(item.package_unit_price || 0)
+    : Number(item.quantity || 0) * Number(item.unit_price || 0)
+);
+const getQuoteItemCostTotal = (item: QuoteItem) => (
+  getQuoteItemPricingBasis(item) === 'package'
+    ? Number(item.package_quantity || 0) * Number(item.package_cost_price || 0)
+    : Number(item.quantity || 0) * Number(item.cost_price || 0)
+);
+const getQuoteItemNetWeight = (item: QuoteItem) => {
+  if (getQuoteItemPricingBasis(item) === 'package') {
+    const packages = Number(item.package_quantity || 0);
+    const packageWeight = Number(item.weight || 0);
+    return packages > 0 && packageWeight > 0 ? packages * packageWeight : Number(item.quantity || 0);
+  }
+  return Number(item.quantity || 0);
+};
+const getQuoteItemQuantityLabel = (item: QuoteItem) => (
+  getQuoteItemPricingBasis(item) === 'package' && Number(item.package_quantity || 0) > 0
+    ? `${Number(item.package_quantity || 0).toLocaleString()} pkg / ${getQuoteItemNetWeight(item).toLocaleString()} kg`
+    : `${Number(item.quantity || 0).toLocaleString()} kg`
+);
+
+type TabKey = 'overview' | 'actionQueue' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
@@ -519,13 +547,13 @@ const MarginGuard = ({
   const MARGIN_FLOOR = 8;
 
   const totalRevenue = useMemo(() => {
-    const items = (quote.items || []).reduce((sum, it) => sum + (Number(it.unit_price || 0) * Number(it.quantity || 0)), 0);
+    const items = (quote.items || []).reduce((sum, it) => sum + getQuoteItemSellTotal(it), 0);
     return items + Number(quote.packaging_cost || 0) + Number(quote.inland_haulage_cost || 0) +
       Number(quote.customs_clearance_cost || 0) + Number(quote.freight_cost || 0) + Number(quote.insurance_cost || 0);
   }, [quote]);
 
   const totalCost = useMemo(() => {
-    const items = (quote.items || []).reduce((sum, it) => sum + (Number(it.cost_price || 0) * Number(it.quantity || 0)), 0);
+    const items = (quote.items || []).reduce((sum, it) => sum + getQuoteItemCostTotal(it), 0);
     return items + Number(quote.packaging_cost || 0) + Number(quote.inland_haulage_cost || 0) +
       Number(quote.customs_clearance_cost || 0) + Number(quote.freight_cost || 0) + Number(quote.insurance_cost || 0);
   }, [quote]);
@@ -535,7 +563,7 @@ const MarginGuard = ({
   const gaugeBg = netMarginPct >= 15 ? '#f0fdf4' : netMarginPct >= 8 ? '#fffbeb' : '#fef2f2';
 
   const totalWeightKg = useMemo(() =>
-    (quote.items || []).reduce((sum, it) => sum + (Number(it.weight || 0) * Number(it.quantity || 0)), 0),
+    (quote.items || []).reduce((sum, it) => sum + getQuoteItemNetWeight(it), 0),
   [quote.items]);
 
   const fillPct20ft = Math.min(100, Math.round((totalWeightKg / 26500) * 100));
@@ -716,7 +744,7 @@ const RevenueTrendChart = ({ quotes, formatQuoteCurrency }: { quotes: Quote[]; f
 
         let itemsSum = 0;
         if (q.items) {
-          itemsSum = q.items.reduce((sum, item) => sum + (Number(item.unit_price || 0) * Number(item.quantity || 0)), 0);
+          itemsSum = q.items.reduce((sum, item) => sum + getQuoteItemSellTotal(item), 0);
         }
         return acc + freight + ins + pack + haul + custom + itemsSum;
       }, 0);
@@ -873,6 +901,7 @@ export const Dashboard: React.FC = () => {
   const [checklists, setChecklists] = useState<DocumentChecklist[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [blogs, setBlogs] = useState<BlogPost[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(undefined);
@@ -971,18 +1000,73 @@ export const Dashboard: React.FC = () => {
   const [fxRate, setFxRate] = useState<number>(84); // fallback: ₹84 per $1
   const [fxRateLoading, setFxRateLoading] = useState(false);
   const [fxRateFetchedAt, setFxRateFetchedAt] = useState<string>('');
+  const [fxRateDraft, setFxRateDraft] = useState('84');
+  const [fxRateEditing, setFxRateEditing] = useState(false);
+  const [fxRateSource, setFxRateSource] = useState<'Manual' | 'Market' | 'Fallback'>('Fallback');
+
+  const applyFxRate = useCallback((rate: number, source: 'Manual' | 'Market' | 'Fallback', fetchedAt = new Date().toISOString()) => {
+    if (!Number.isFinite(rate) || rate <= 0) return false;
+    const normalizedRate = Number(rate.toFixed(4));
+    setFxRate(normalizedRate);
+    setFxRateDraft(normalizedRate.toString());
+    setFxRateSource(source);
+    setFxRateFetchedAt(fetchedAt);
+    return true;
+  }, []);
+
+  const fetchMarketFxRate = useCallback(async () => {
+    setFxRateLoading(true);
+    try {
+      const response = await fetch('https://api.frankfurter.app/latest?base=USD&symbols=INR');
+      const data = await response.json();
+      const rate = Number(data?.rates?.INR);
+      if (rate && rate > 0) {
+        const now = new Date().toISOString();
+        if (applyFxRate(rate, 'Market', now)) {
+          localStorage.removeItem('fx_manual_usd_inr');
+          localStorage.setItem('fx_cache_usd_inr', JSON.stringify({ rate, base: 'USD', target: 'INR', fetched_at: now, source: 'Market' }));
+        }
+      }
+    } catch {
+      applyFxRate(fxRate || 84, fxRateSource || 'Fallback', fxRateFetchedAt || new Date().toISOString());
+    } finally {
+      setFxRateLoading(false);
+    }
+  }, [applyFxRate, fxRate, fxRateFetchedAt, fxRateSource]);
+
+  const saveManualFxRate = useCallback(() => {
+    const nextRate = Number(fxRateDraft);
+    if (!Number.isFinite(nextRate) || nextRate <= 0) {
+      alert('Enter a valid USD/INR rate greater than 0.');
+      return;
+    }
+    const now = new Date().toISOString();
+    if (applyFxRate(nextRate, 'Manual', now)) {
+      localStorage.setItem('fx_manual_usd_inr', JSON.stringify({ rate: nextRate, base: 'USD', target: 'INR', fetched_at: now }));
+      localStorage.setItem('fx_cache_usd_inr', JSON.stringify({ rate: nextRate, base: 'USD', target: 'INR', fetched_at: now, source: 'Manual' }));
+      setFxRateEditing(false);
+    }
+  }, [applyFxRate, fxRateDraft]);
 
   useEffect(() => {
     const FX_CACHE_KEY = 'fx_cache_usd_inr';
+    const FX_MANUAL_KEY = 'fx_manual_usd_inr';
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
     try {
+      const manual = localStorage.getItem(FX_MANUAL_KEY);
+      if (manual) {
+        const parsedManual = JSON.parse(manual);
+        if (parsedManual.rate > 0) {
+          applyFxRate(parsedManual.rate, 'Manual', parsedManual.fetched_at || new Date().toISOString());
+          return;
+        }
+      }
       const cached = localStorage.getItem(FX_CACHE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
         const age = Date.now() - new Date(parsed.fetched_at).getTime();
         if (age < TWO_HOURS_MS && parsed.rate > 0) {
-          setFxRate(parsed.rate);
-          setFxRateFetchedAt(parsed.fetched_at);
+          applyFxRate(parsed.rate, parsed.source === 'Manual' ? 'Manual' : 'Market', parsed.fetched_at);
           return;
         }
       }
@@ -995,9 +1079,8 @@ export const Dashboard: React.FC = () => {
         const rate = data?.rates?.INR;
         if (rate && rate > 0) {
           const now = new Date().toISOString();
-          setFxRate(rate);
-          setFxRateFetchedAt(now);
-          localStorage.setItem('fx_cache_usd_inr', JSON.stringify({ rate, base: 'USD', target: 'INR', fetched_at: now }));
+          applyFxRate(rate, 'Market', now);
+          localStorage.setItem('fx_cache_usd_inr', JSON.stringify({ rate, base: 'USD', target: 'INR', fetched_at: now, source: 'Market' }));
         }
       })
       .catch(() => { /* Keep fallback ₹84 */ })
@@ -1172,6 +1255,8 @@ export const Dashboard: React.FC = () => {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [templateForm, setTemplateForm] = useState<Partial<MessageTemplate>>(blankTemplate);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [blogForm, setBlogForm] = useState<Partial<BlogPost>>(blankBlogPost);
+  const [editingBlogId, setEditingBlogId] = useState<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [selectedCrmTemplateId, setSelectedCrmTemplateId] = useState('');
   const [selectedCommunicationClientId, setSelectedCommunicationClientId] = useState('');
@@ -1252,6 +1337,7 @@ export const Dashboard: React.FC = () => {
         { data: dData },
         { data: tData },
         { data: mtData },
+        { data: bData },
         { data: uData }
       ] = await Promise.all([
         supabase.from('quotes').select('*, client:clients(*), items:quote_items(*)').order('created_at', { ascending: false }),
@@ -1267,6 +1353,7 @@ export const Dashboard: React.FC = () => {
         supabase.from('document_checklists').select('*').order('updated_at', { ascending: false }),
         supabase.from('tasks').select('*').order('due_date', { ascending: true }),
         supabase.from('message_templates').select('*').order('name'),
+        supabase.from('blogs').select('*').order('updated_at', { ascending: false }),
         supabase.from('app_users').select('*').order('name')
       ]);
 
@@ -1309,6 +1396,7 @@ export const Dashboard: React.FC = () => {
       setChecklists(dData || []);
       setTasks(tData || []);
       setTemplates(mtData || []);
+      setBlogs(bData || []);
       setUsers(uData || []);
     } catch (err: any) {
       console.warn('Error fetching dashboard data:', err);
@@ -1319,7 +1407,7 @@ export const Dashboard: React.FC = () => {
   };
 
   const quoteValue = (q: Quote) => {
-    const subtotal = (q.items || []).reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0), 0);
+    const subtotal = (q.items || []).reduce((sum, item) => sum + getQuoteItemSellTotal(item), 0);
     return subtotal + Number(q.packaging_cost || 0) + Number(q.inland_haulage_cost || 0) + Number(q.customs_clearance_cost || 0) + Number(q.freight_cost || 0) + Number(q.insurance_cost || 0);
   };
 
@@ -1377,11 +1465,13 @@ export const Dashboard: React.FC = () => {
   }, [quotes, invoices, shipments, checklists, freightRates, tasks, leads]);
 
   const quoteClient = (quote: Quote) => quote.client || clients.find((client) => client.id === quote.client_id);
+  const companyKey = (record?: { company_name?: string } | null) => (record?.company_name || '').trim().toLowerCase();
 
   const clientCountries = useMemo(() => {
     const map: Record<string, string> = {};
     clients.forEach((client) => {
-      const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+      const clientCompanyKey = companyKey(client);
+      const linkedLead = leads.find((lead) => lead.client_id === client.id || (clientCompanyKey && companyKey(lead) === clientCompanyKey));
       if (linkedLead?.country) {
         map[client.id] = titleCaseCountry(linkedLead.country.trim());
         return;
@@ -1400,11 +1490,30 @@ export const Dashboard: React.FC = () => {
         map[client.id] = client.phone;
         return;
       }
-      const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+      const clientCompanyKey = companyKey(client);
+      const linkedLead = leads.find((lead) => lead.client_id === client.id || (clientCompanyKey && companyKey(lead) === clientCompanyKey));
       map[client.id] = linkedLead?.phone || '';
     });
     return map;
   }, [clients, leads]);
+
+  const quotedClientKeys = useMemo(() => {
+    const keys = new Set<string>();
+    quotes.forEach((quote) => {
+      if (quote.client_id) keys.add(`id:${quote.client_id}`);
+      const companyName = quote.client?.company_name?.trim().toLowerCase();
+      if (companyName) keys.add(`company:${companyName}`);
+    });
+    return keys;
+  }, [quotes]);
+
+  const paidInvoiceClientIds = useMemo(() => {
+    const ids = new Set<string>();
+    invoices.forEach((invoice) => {
+      if (invoice.client_id && invoice.payment_status === 'Paid') ids.add(invoice.client_id);
+    });
+    return ids;
+  }, [invoices]);
 
   const leadScoreValue = useMemo(() => {
     const calculateScore = (l: Lead) => {
@@ -1414,10 +1523,14 @@ export const Dashboard: React.FC = () => {
       if (l.country) score += 10;
       if (l.product_interest) score += 10;
 
-      const hasQuotes = quotes.some(q => q.client_id === l.client_id || q.client?.company_name.toLowerCase() === l.company_name.toLowerCase());
+      const leadCompanyKey = companyKey(l);
+      const hasQuotes = Boolean(
+        (l.client_id && quotedClientKeys.has(`id:${l.client_id}`)) ||
+        (leadCompanyKey && quotedClientKeys.has(`company:${leadCompanyKey}`))
+      );
       if (hasQuotes) score += 10;
 
-      const hasInvoices = invoices.some(i => i.client_id === l.client_id && i.payment_status === 'Paid');
+      const hasInvoices = Boolean(l.client_id && paidInvoiceClientIds.has(l.client_id));
       if (hasInvoices) score += 10;
 
       return Math.min(100, Math.max(0, score));
@@ -1428,7 +1541,7 @@ export const Dashboard: React.FC = () => {
       map[l.id] = calculateScore(l);
     });
     return map;
-  }, [leads, quotes, invoices]);
+  }, [leads, quotedClientKeys, paidInvoiceClientIds]);
 
   const leadVelocityScore = useMemo(() => {
     const calculateVelocity = (l: Lead) => {
@@ -1544,6 +1657,18 @@ export const Dashboard: React.FC = () => {
     if (leadHasOutreach(lead)) return 'Waiting Reply';
     return 'Review';
   }, [activities, todayEnd]);
+
+  const leadActionCategoryById = useMemo(() => {
+    const map: Record<string, string> = {};
+    leads.forEach((lead) => {
+      map[lead.id] = leadActionCategory(lead);
+    });
+    return map;
+  }, [leads, leadActionCategory]);
+
+  const getLeadActionCategory = useCallback((lead: Lead) => {
+    return leadActionCategoryById[lead.id] || leadActionCategory(lead);
+  }, [leadActionCategoryById, leadActionCategory]);
   const dateAfterDays = (days: number) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
@@ -1585,6 +1710,7 @@ export const Dashboard: React.FC = () => {
   const resetActivityForm = () => { setEditingActivityId(null); setActivityForm(blankActivity); };
   const resetTaskForm = () => { setEditingTaskId(null); setTaskForm(blankTask); };
   const resetTemplateForm = () => { setEditingTemplateId(null); setTemplateForm(blankTemplate); };
+  const resetBlogForm = () => { setEditingBlogId(null); setBlogForm(blankBlogPost); };
   const resetRateForm = () => { setEditingRateId(null); setRateForm(blankRate); };
   const resetInvoiceForm = () => { setEditingInvoiceId(null); setInvoiceForm(blankInvoice); };
   const resetShipmentForm = () => { setEditingShipmentId(null); setShipmentForm(blankShipment); };
@@ -1613,7 +1739,7 @@ export const Dashboard: React.FC = () => {
     const { data, error } = await query as any;
     if (error) {
       alert(error.message || `Failed to save ${table}`);
-      return;
+      return false;
     }
 
     // Sync CRM lead updates to registered buyer profiles, or automatically create profiles for new leads
@@ -1623,7 +1749,8 @@ export const Dashboard: React.FC = () => {
       const leadCompany = payloadObj.company_name;
 
       if (leadCompany) {
-        const client = clients.find(c => c.company_name.toLowerCase() === leadCompany.toLowerCase());
+          const normalizedLeadCompany = (leadCompany || '').trim().toLowerCase();
+          const client = clients.find((c) => normalizedLeadCompany && companyKey(c) === normalizedLeadCompany);
 
         if (isNew) {
           const insertedLead = Array.isArray(data) ? data[0] : data;
@@ -1673,7 +1800,8 @@ export const Dashboard: React.FC = () => {
     if (table === 'shipments' && !editingId && (finalPayload as any).client_id) {
       const clientId = (finalPayload as any).client_id;
       const clientObj = clients.find(c => c.id === clientId);
-      const lead = leads.find(l => l.client_id === clientId || (clientObj && l.company_name.toLowerCase() === clientObj.company_name.toLowerCase()));
+      const clientCompanyKey = companyKey(clientObj);
+      const lead = leads.find((l) => l.client_id === clientId || (clientCompanyKey && companyKey(l) === clientCompanyKey));
       if (lead) {
         await supabase.from('leads').update({
           stage: 'Won'
@@ -1711,6 +1839,7 @@ export const Dashboard: React.FC = () => {
 
     reset();
     await fetchData();
+    return true;
   };
 
   const deleteRecord = async (table: string, id: string, label: string) => {
@@ -2178,12 +2307,12 @@ export const Dashboard: React.FC = () => {
   const leadsByCompanyName = useMemo(() => {
     const map: Record<string, Lead> = {};
     leads.forEach((lead) => {
-      const key = lead.company_name.toLowerCase();
+      const key = companyKey(lead);
       if (key && !map[key]) map[key] = lead;
     });
     return map;
   }, [leads]);
-  const linkedLeadForBuyer = (client: Client) => leadsByClientId[client.id] || leadsByCompanyName[client.company_name.toLowerCase()];
+  const linkedLeadForBuyer = (client: Client) => leadsByClientId[client.id] || leadsByCompanyName[companyKey(client)];
   const buyerActionCategory = (client: Client) => {
     const linkedLead = linkedLeadForBuyer(client);
     return linkedLead ? leadActionCategory(linkedLead) : 'Need Reach Out';
@@ -2214,7 +2343,7 @@ export const Dashboard: React.FC = () => {
     const searchedList = query
       ? list.filter((client) => {
           return (
-            client.company_name.toLowerCase().includes(query) ||
+            companyKey(client).includes(query) ||
             (client.contact_name || '').toLowerCase().includes(query) ||
             (client.contact_email || '').toLowerCase().includes(query) ||
             (client.phone || '').toLowerCase().includes(query) ||
@@ -2245,10 +2374,10 @@ export const Dashboard: React.FC = () => {
         const rankA = buyerActionRank(a, buyerSortKey);
         const rankB = buyerActionRank(b, buyerSortKey);
         if (rankA !== rankB) return rankA - rankB;
-        return a.company_name.localeCompare(b.company_name);
+        return companyKey(a).localeCompare(companyKey(b));
       });
     } else {
-      return [...searchedList].sort((a, b) => a.company_name.localeCompare(b.company_name));
+      return [...searchedList].sort((a, b) => companyKey(a).localeCompare(companyKey(b)));
     }
   }, [clients, clientCountries, buyerCountryFilter, buyerActionFilter, buyerSortKey, clientPhones, deferredBuyerSearchQuery, leads]);
 
@@ -2272,7 +2401,7 @@ export const Dashboard: React.FC = () => {
       ? countryFiltered.filter((buyer) => {
           const phone = buyer.phone || clientPhones[buyer.id] || '';
           return (
-            buyer.company_name.toLowerCase().includes(query) ||
+            companyKey(buyer).includes(query) ||
             (buyer.contact_name || '').toLowerCase().includes(query) ||
             (buyer.contact_email || '').toLowerCase().includes(query) ||
             buyerCountry(buyer).toLowerCase().includes(query) ||
@@ -2286,7 +2415,7 @@ export const Dashboard: React.FC = () => {
         const countryCompare = buyerCountry(a).localeCompare(buyerCountry(b));
         if (countryCompare !== 0) return countryCompare;
       }
-      return a.company_name.localeCompare(b.company_name);
+      return companyKey(a).localeCompare(companyKey(b));
     });
   }, [reachoutBuyers, deferredReachoutSearchQuery, reachoutCountryFilter, reachoutSortKey, clientPhones, clientCountries]);
 
@@ -2587,7 +2716,8 @@ export const Dashboard: React.FC = () => {
       || templates.find((item) => item.channel === 'WhatsApp')
       || { name: 'Default Intro', body: 'Hello {{buyer_name}}, this is Sheshaan Global from India. We can support {{company_name}} with export-ready products. Please let us know your requirement and destination port.' };
 
-    const linkedLead = leads.find((l) => l.client_id === client.id || l.company_name.toLowerCase() === client.company_name.toLowerCase());
+    const clientCompanyKey = companyKey(client);
+    const linkedLead = leads.find((l) => l.client_id === client.id || (clientCompanyKey && companyKey(l) === clientCompanyKey));
     const leadObj: Lead = linkedLead || {
       id: '',
       company_name: client.company_name,
@@ -2636,7 +2766,8 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+    const clientCompanyKey = companyKey(client);
+    const linkedLead = leads.find((lead) => lead.client_id === client.id || (clientCompanyKey && companyKey(lead) === clientCompanyKey));
     if (linkedLead) {
       await handleLeadEmail({ ...linkedLead, contact_email: linkedLead.contact_email || email }, mode);
       return;
@@ -2912,7 +3043,8 @@ export const Dashboard: React.FC = () => {
     // Sync phone and details with linked lead or insert new lead
     const targetClientId = editingClientId || data?.id;
     if (targetClientId) {
-      const linkedLead = leads.find((l) => l.client_id === targetClientId || l.company_name.toLowerCase() === payload.company_name.toLowerCase());
+      const payloadCompanyKey = companyKey(payload);
+      const linkedLead = leads.find((l) => l.client_id === targetClientId || (payloadCompanyKey && companyKey(l) === payloadCompanyKey));
       if (linkedLead) {
         await supabase.from('leads').update({
           ...linkedLead,
@@ -2980,7 +3112,8 @@ export const Dashboard: React.FC = () => {
     }
 
     // Sync phone with linked lead
-    const linkedLead = leads.find((l) => l.client_id === clientId || l.company_name.toLowerCase() === client.company_name.toLowerCase());
+    const clientCompanyKey = companyKey(client);
+    const linkedLead = leads.find((l) => l.client_id === clientId || (clientCompanyKey && companyKey(l) === clientCompanyKey));
     if (linkedLead && linkedLead.phone !== newPhone) {
       await supabase.from('leads').update({
         ...linkedLead,
@@ -3010,7 +3143,8 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+    const clientCompanyKey = companyKey(client);
+    const linkedLead = leads.find((lead) => lead.client_id === client.id || (clientCompanyKey && companyKey(lead) === clientCompanyKey));
     if (linkedLead?.phone) {
       await supabase.from('leads').update({
         ...linkedLead,
@@ -3389,7 +3523,8 @@ export const Dashboard: React.FC = () => {
 
   const exportCrmImportTemplateData = (exportLeads: Lead[]) => {
     const rows = exportLeads.map((lead, index) => {
-      const client = clients.find((item) => item.id === lead.client_id || item.company_name.toLowerCase() === lead.company_name.toLowerCase());
+      const leadCompanyKey = companyKey(lead);
+      const client = clients.find((item) => item.id === lead.client_id || (leadCompanyKey && companyKey(item) === leadCompanyKey));
       const productParts = (lead.product_interest || '').split(',').map((item) => item.trim()).filter(Boolean);
       const product = productParts[0] || 'Other';
       const productCategory = productParts.slice(1).join(', ') || leadNoteValue(lead, 'Product Category') || 'General export product range';
@@ -3542,7 +3677,7 @@ export const Dashboard: React.FC = () => {
     return query
       ? countryFiltered.filter((lead) => {
           return (
-            lead.company_name.toLowerCase().includes(query) ||
+            companyKey(lead).includes(query) ||
             (lead.contact_name || '').toLowerCase().includes(query) ||
             (lead.contact_email || '').toLowerCase().includes(query) ||
             (lead.phone || '').toLowerCase().includes(query) ||
@@ -3557,30 +3692,31 @@ export const Dashboard: React.FC = () => {
     let finalLeads = searchedCrmLeads;
     if (crmQueueFilter) {
       finalLeads = searchedCrmLeads.filter((lead) => {
-        if (crmQueueFilter === 'Need Reach Out') return lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Need Reach Out';
-        if (crmQueueFilter === 'Follow-up Due') return lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Follow-up Due';
-        if (crmQueueFilter === 'Next Follow-up') return lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Next Follow-up';
-        if (crmQueueFilter === 'Waiting Reply') return lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Waiting Reply';
+        const category = getLeadActionCategory(lead);
+        if (crmQueueFilter === 'Need Reach Out') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Need Reach Out';
+        if (crmQueueFilter === 'Follow-up Due') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Follow-up Due';
+        if (crmQueueFilter === 'Next Follow-up') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Next Follow-up';
+        if (crmQueueFilter === 'Waiting Reply') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Waiting Reply';
         return true;
       });
     }
 
     return [...finalLeads].sort((a, b) => {
       if (crmSortKey === 'reachout') {
-        const catA = leadActionCategory(a);
-        const catB = leadActionCategory(b);
+        const catA = getLeadActionCategory(a);
+        const catB = getLeadActionCategory(b);
         if (catA === 'Need Reach Out' && catB !== 'Need Reach Out') return -1;
         if (catA !== 'Need Reach Out' && catB === 'Need Reach Out') return 1;
       }
       if (crmSortKey === 'followup') {
-        const catA = leadActionCategory(a);
-        const catB = leadActionCategory(b);
+        const catA = getLeadActionCategory(a);
+        const catB = getLeadActionCategory(b);
         if (catA === 'Follow-up Due' && catB !== 'Follow-up Due') return -1;
         if (catA !== 'Follow-up Due' && catB === 'Follow-up Due') return 1;
       }
       if (crmSortKey === 'emailfix') {
-        const catA = leadActionCategory(a);
-        const catB = leadActionCategory(b);
+        const catA = getLeadActionCategory(a);
+        const catB = getLeadActionCategory(b);
         if (catA === 'Needs Email Fix' && catB !== 'Needs Email Fix') return -1;
         if (catA !== 'Needs Email Fix' && catB === 'Needs Email Fix') return 1;
       }
@@ -3612,43 +3748,45 @@ export const Dashboard: React.FC = () => {
         return (leadVelocityScore[b.id] || 0) - (leadVelocityScore[a.id] || 0);
       }
       if (crmSortKey === 'action') {
+        const categoryA = getLeadActionCategory(a);
+        const categoryB = getLeadActionCategory(b);
         const scoreA = 
-          leadActionCategory(a) === 'Needs Email Fix' ? 10 :
-          leadActionCategory(a) === 'Need Reach Out' ? 9 :
-          leadActionCategory(a) === 'Follow-up Due' ? 8 :
-          leadActionCategory(a) === 'Responded / Qualify' ? 7 :
-          leadActionCategory(a) === 'Next Follow-up' ? 6 :
-          leadActionCategory(a) === 'Waiting Reply' ? 5 :
-          leadActionCategory(a) === 'Review' ? 4 : 1;
+          categoryA === 'Needs Email Fix' ? 10 :
+          categoryA === 'Need Reach Out' ? 9 :
+          categoryA === 'Follow-up Due' ? 8 :
+          categoryA === 'Responded / Qualify' ? 7 :
+          categoryA === 'Next Follow-up' ? 6 :
+          categoryA === 'Waiting Reply' ? 5 :
+          categoryA === 'Review' ? 4 : 1;
         const scoreB = 
-          leadActionCategory(b) === 'Needs Email Fix' ? 10 :
-          leadActionCategory(b) === 'Need Reach Out' ? 9 :
-          leadActionCategory(b) === 'Follow-up Due' ? 8 :
-          leadActionCategory(b) === 'Responded / Qualify' ? 7 :
-          leadActionCategory(b) === 'Next Follow-up' ? 6 :
-          leadActionCategory(b) === 'Waiting Reply' ? 5 :
-          leadActionCategory(b) === 'Review' ? 4 : 1;
+          categoryB === 'Needs Email Fix' ? 10 :
+          categoryB === 'Need Reach Out' ? 9 :
+          categoryB === 'Follow-up Due' ? 8 :
+          categoryB === 'Responded / Qualify' ? 7 :
+          categoryB === 'Next Follow-up' ? 6 :
+          categoryB === 'Waiting Reply' ? 5 :
+          categoryB === 'Review' ? 4 : 1;
         if (scoreB !== scoreA) return scoreB - scoreA;
       }
       if (crmSortKey === 'country') {
         const countryCompare = (a.country || 'Uncategorized').localeCompare(b.country || 'Uncategorized');
         if (countryCompare !== 0) return countryCompare;
       }
-      return a.company_name.localeCompare(b.company_name);
+      return companyKey(a).localeCompare(companyKey(b));
     });
-  }, [searchedCrmLeads, crmSortKey, crmQueueFilter, leadActionCategory, leadVelocityScore]);
+  }, [searchedCrmLeads, crmSortKey, crmQueueFilter, getLeadActionCategory, leadVelocityScore]);
 
   const crmQueues = useMemo(() => [
-    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Need Reach Out') },
-    { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Follow-up Due') },
-    { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
-    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Waiting Reply') },
-    { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Responded / Qualify') },
-    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Needs Email Fix') },
-    { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && leadActionCategory(lead) === 'Review') },
+    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Need Reach Out') },
+    { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Follow-up Due') },
+    { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
+    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Waiting Reply') },
+    { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Responded / Qualify') },
+    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Needs Email Fix') },
+    { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Review') },
     { label: 'Won / Approved', description: 'Pipeline deals successfully won', tone: 'emerald' as const, leads: searchedCrmLeads.filter((lead) => lead.stage === 'Won') },
     { label: 'Lost / Declined', description: 'Pipeline deals lost/declined', tone: 'rose' as const, leads: searchedCrmLeads.filter((lead) => lead.stage === 'Lost') }
-  ], [searchedCrmLeads, leadActionCategory]);
+  ], [searchedCrmLeads, getLeadActionCategory]);
 
   const visibleCrmLeads = useMemo(() => filteredCrmLeads.slice(0, crmVisibleCount), [filteredCrmLeads, crmVisibleCount]);
 
@@ -3693,7 +3831,7 @@ export const Dashboard: React.FC = () => {
         const dateCompare = (a.next_follow_up || '9999-12-31').localeCompare(b.next_follow_up || '9999-12-31');
         if (dateCompare !== 0) return dateCompare;
       }
-      return a.company_name.localeCompare(b.company_name);
+      return companyKey(a).localeCompare(companyKey(b));
     });
   }, [leads, deferredSourceSearchQuery, sourceTypeFilter, sourceCountryFilter, sourceActionFilter, sourceSortKey]);
 
@@ -3893,6 +4031,7 @@ export const Dashboard: React.FC = () => {
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
       { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
       { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
+      { key: 'blogs', label: 'Blog Management', icon: <FileText className="h-4 w-4" />, count: blogs.length },
       { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" /> },
       { key: 'tasks', label: 'Tasks & Reminders', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter((task) => task.status !== 'Done').length },
       { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, count: invoices.length },
@@ -3916,6 +4055,7 @@ export const Dashboard: React.FC = () => {
     quotes,
     activities,
     templates,
+    blogs,
     tasks,
     invoices,
     shipments,
@@ -3932,7 +4072,7 @@ export const Dashboard: React.FC = () => {
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
   const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'dataSources', 'tasks'].includes(item.key)), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'phoneReachout', 'quotes', 'communications', 'templates', 'tasks', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'manager'].includes(item.key)) }
   ], [navItems]);
@@ -4040,7 +4180,8 @@ export const Dashboard: React.FC = () => {
     setLeadForm(lead);
   };
   const openBuyerAsCrmLead = (client: Client) => {
-    const linkedLead = leads.find((lead) => lead.client_id === client.id || lead.company_name.toLowerCase() === client.company_name.toLowerCase());
+    const clientCompanyKey = companyKey(client);
+    const linkedLead = leads.find((lead) => lead.client_id === client.id || (clientCompanyKey && companyKey(lead) === clientCompanyKey));
     if (linkedLead) {
       setEditingLeadId(linkedLead.id);
       setLeadForm(linkedLead);
@@ -4210,14 +4351,29 @@ export const Dashboard: React.FC = () => {
 
   const handleSaveLeadFromDrawer = useCallback(async (updates: Partial<CrmLead>) => {
     if (!selectedCrmLead) return;
-    
-    const updatedLead = { ...selectedCrmLead, ...updates };
+
+    const updatedLead = { ...selectedCrmLead, ...updates } as Lead;
+    if (!updatedLead.company_name?.trim()) {
+      alert('Company name is required before saving this lead.');
+      return false;
+    }
+
     setSelectedCrmLead(updatedLead);
     setLeads((prevLeads) =>
-      prevLeads.map((l) => (l.id === selectedCrmLead.id ? { ...l, ...updates } : l))
+      selectedCrmLead.id.startsWith('new-')
+        ? prevLeads
+        : prevLeads.map((l) => (l.id === selectedCrmLead.id ? { ...l, ...updates } : l))
     );
 
-    await saveRecord<Lead>('leads', selectedCrmLead.id.startsWith('new-') ? null : selectedCrmLead.id, updates, () => {});
+    const saved = await saveRecord<Lead>(
+      'leads',
+      selectedCrmLead.id.startsWith('new-') ? null : selectedCrmLead.id,
+      updatedLead,
+      () => {}
+    );
+    if (!saved) return false;
+    setSelectedCrmLead(null);
+    return true;
   }, [selectedCrmLead, saveRecord]);
 
   const handleToggleSelection = useCallback((id: string | string[], checked: boolean) => {
@@ -4353,11 +4509,69 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <span className="sbadge sbadge-sky text-[8px] shrink-0">{currentRole}</span>
               </div>
-              <div className="flex items-center justify-between px-1">
-                <span className="text-[9px] text-zinc-600 font-semibold">USD/INR</span>
-                <span className={`text-[10px] font-black ${fxRateLoading ? 'text-zinc-600 animate-pulse' : 'text-emerald-400'}`}>
-                  ₹{fxRate.toFixed(2)}
-                </span>
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="block text-[9px] text-zinc-500 font-semibold">USD/INR</span>
+                    <span className={`block text-[11px] font-black ${fxRateLoading ? 'text-zinc-500 animate-pulse' : 'text-emerald-400'}`}>
+                      ₹{fxRate.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setFxRateEditing((value) => !value)}
+                      className="h-7 w-7 rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white flex items-center justify-center"
+                      title="Edit USD/INR rate"
+                      aria-label="Edit USD INR rate"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={fetchMarketFxRate}
+                      disabled={fxRateLoading}
+                      className="h-7 w-7 rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white disabled:opacity-50 flex items-center justify-center"
+                      title="Refresh market USD/INR rate"
+                      aria-label="Refresh market USD INR rate"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${fxRateLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[8px] font-bold uppercase tracking-wide text-zinc-600">
+                  <span>{fxRateSource} Rate</span>
+                  <span>{fxRateFetchedAt ? new Date(fxRateFetchedAt).toLocaleDateString('en-IN') : 'Not synced'}</span>
+                </div>
+                {fxRateEditing && (
+                  <div className="mt-2 flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.0001"
+                      value={fxRateDraft}
+                      onChange={(event) => setFxRateDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') saveManualFxRate();
+                        if (event.key === 'Escape') {
+                          setFxRateDraft(fxRate.toString());
+                          setFxRateEditing(false);
+                        }
+                      }}
+                      className="h-8 min-h-8 w-full rounded-md border border-white/10 bg-zinc-950 px-2 text-[11px] font-black text-white outline-none focus:border-sky-400"
+                      aria-label="Manual USD INR rate"
+                    />
+                    <button
+                      type="button"
+                      onClick={saveManualFxRate}
+                      className="h-8 w-8 rounded-md bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center"
+                      title="Save manual rate"
+                      aria-label="Save manual USD INR rate"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-sky-200/80">
                 {portalBuildLabel}
@@ -5265,8 +5479,17 @@ export const Dashboard: React.FC = () => {
                       onClick={() => {
                         const emptyLead: CrmLead = {
                           id: 'new-' + Math.random().toString(36).substring(2, 9),
-                          company_name: 'New Company Ltd',
+                          company_name: '',
                           stage: 'New Lead' as CrmStage,
+                          priority: 'Medium',
+                          owner: 'Sana Zeba',
+                          contact_name: '',
+                          contact_email: '',
+                          phone: '',
+                          country: '',
+                          product_interest: '',
+                          next_follow_up: '',
+                          notes: '',
                           estimated_value: 0
                         };
                         setSelectedCrmLead(emptyLead);
@@ -5359,7 +5582,7 @@ export const Dashboard: React.FC = () => {
                       leadVelocityScore={leadVelocityScore}
                       bestSendWindowIST={bestSendWindowIST}
                       leadCategoryClass={leadCategoryClass}
-                      leadActionCategory={leadActionCategory}
+                      leadActionCategory={getLeadActionCategory}
                     />
                     {filteredCrmLeads.length > crmVisibleCount && (
                       <div className="mt-3 flex justify-center">
@@ -5375,7 +5598,7 @@ export const Dashboard: React.FC = () => {
                   </>
                 ) : (
                   <CrmKanban
-                    leads={filteredCrmLeads.slice(0, 140)}
+                    leads={filteredCrmLeads}
                     selectedLeadIds={selectedLeadIds}
                     onToggleSelection={handleToggleSelection}
                     onEditLead={handleEditLead}
@@ -5385,7 +5608,7 @@ export const Dashboard: React.FC = () => {
                     leadScoreValue={leadScoreValue}
                     leadVelocityScore={leadVelocityScore}
                     leadCategoryClass={leadCategoryClass}
-                    leadActionCategory={leadActionCategory}
+                    leadActionCategory={getLeadActionCategory}
                   />
                 )}
               </div>
@@ -5395,13 +5618,12 @@ export const Dashboard: React.FC = () => {
                 lead={selectedCrmLead}
                 onClose={() => {
                   setSelectedCrmLead(null);
-                  fetchData();
                 }}
                 onSaveLead={handleSaveLeadFromDrawer}
                 activities={activities}
                 leadScore={selectedCrmLead ? leadScoreValue[selectedCrmLead.id] || 0 : 0}
                 velocityScore={selectedCrmLead ? leadVelocityScore[selectedCrmLead.id] || 0 : 0}
-                actionCategory={selectedCrmLead ? leadActionCategory(selectedCrmLead) : 'Review'}
+                actionCategory={selectedCrmLead ? getLeadActionCategory(selectedCrmLead) : 'Review'}
                 bestSendWindow={selectedCrmLead ? bestSendWindowIST(selectedCrmLead.country || '') : 'Best send: office hours'}
                 onSendEmail={handleSendEmail}
                 onSendWhatsApp={handleLeadWhatsApp}
@@ -5698,6 +5920,99 @@ export const Dashboard: React.FC = () => {
                     Copy Filled Message
                   </button>
                 </div>
+              </div>
+            </TwoColumnManager>
+          )}
+
+          {activeTab === 'blogs' && (
+            <TwoColumnManager
+              formTitle={editingBlogId ? 'Edit Blog Post' : 'Create Blog Post'}
+              scrollableForm
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!blogForm.title || !stripHtml(blogForm.content || '')) return alert('Please enter blog title and content.');
+                const now = new Date().toISOString();
+                const status = blogForm.status || 'Draft';
+                saveRecord<BlogPost>('blogs', editingBlogId, {
+                  ...blogForm,
+                  title: blogForm.title.trim(),
+                  slug: generateBlogSlug(blogForm.title),
+                  content: sanitizeBlogHtml(blogForm.content || ''),
+                  author: blogForm.author || 'Sheshaan Global',
+                  status,
+                  published_at: status === 'Published' ? (blogForm.published_at || now) : undefined
+                }, resetBlogForm);
+              }}
+              onCancel={resetBlogForm}
+              isEditing={Boolean(editingBlogId)}
+              form={
+                <>
+                  <TextInput label="Title *" value={blogForm.title || ''} onChange={(value) => setBlogForm({ ...blogForm, title: value, slug: generateBlogSlug(value) })} required />
+                  <TextInput label="Slug" value={blogForm.slug || generateBlogSlug(blogForm.title || '')} onChange={(value) => setBlogForm({ ...blogForm, slug: generateBlogSlug(value) })} />
+                  <TextInput label="Cover Image URL" value={blogForm.cover_image_url || ''} onChange={(value) => setBlogForm({ ...blogForm, cover_image_url: value })} />
+                  <TextInput label="Author" value={blogForm.author || ''} onChange={(value) => setBlogForm({ ...blogForm, author: value })} />
+                  <SelectInput label="Status" value={blogForm.status || 'Draft'} onChange={(value) => setBlogForm({
+                    ...blogForm,
+                    status: value as BlogPost['status'],
+                    published_at: value === 'Published' ? (blogForm.published_at || new Date().toISOString()) : undefined
+                  })} options={['Draft', 'Published']} />
+                  <TextArea label="SEO Keywords" value={blogForm.seo_keywords || ''} onChange={(value) => setBlogForm({ ...blogForm, seo_keywords: value })} />
+                  <RichTextEditor label="Content *" value={blogForm.content || ''} onChange={(value) => setBlogForm({ ...blogForm, content: value })} />
+                </>
+              }
+            >
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="metric-tile p-4">
+                    <span className="block text-[10px] font-black uppercase text-slate-500">Total Posts</span>
+                    <span className="mt-1 block text-2xl font-black text-slate-950">{blogs.length}</span>
+                  </div>
+                  <div className="metric-tile p-4">
+                    <span className="block text-[10px] font-black uppercase text-slate-500">Published</span>
+                    <span className="mt-1 block text-2xl font-black text-emerald-600">{blogs.filter((post) => post.status === 'Published').length}</span>
+                  </div>
+                  <div className="metric-tile p-4">
+                    <span className="block text-[10px] font-black uppercase text-slate-500">Drafts</span>
+                    <span className="mt-1 block text-2xl font-black text-amber-600">{blogs.filter((post) => post.status === 'Draft').length}</span>
+                  </div>
+                </div>
+
+                <DataTable headers={['Title', 'Status', 'Date', 'Actions']} pageSize={10}>
+                  {blogs.map((post) => (
+                    <tr key={post.id} className="border-b border-slate-100 align-top">
+                      <td className="p-3">
+                        <div className="font-black text-slate-900">{post.title}</div>
+                        <div className="mt-1 text-[10px] text-slate-400">/blog/{post.slug}</div>
+                        {post.seo_keywords && <div className="mt-1 text-[10px] text-slate-500 line-clamp-1">{post.seo_keywords}</div>}
+                      </td>
+                      <td className="p-3">
+                        <span className={`sbadge ${post.status === 'Published' ? 'sbadge-green' : 'sbadge-amber'}`}>{post.status}</span>
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        {post.status === 'Published'
+                          ? new Date(post.published_at || post.updated_at || '').toLocaleDateString()
+                          : new Date(post.updated_at || post.created_at || '').toLocaleDateString()}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center justify-end gap-2">
+                          {post.status === 'Published' && (
+                            <a href={`/blog/${post.slug}`} target="_blank" className="px-2 py-1 rounded bg-sky-50 text-sky-700 text-[11px] font-bold hover:bg-sky-100">
+                              View
+                            </a>
+                          )}
+                          <RowActions
+                            currentRole={currentRole}
+                            onEdit={() => {
+                              setEditingBlogId(post.id);
+                              setBlogForm(post);
+                            }}
+                            onDelete={() => deleteRecord('blogs', post.id, 'blog post')}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </DataTable>
               </div>
             </TwoColumnManager>
           )}
@@ -6425,8 +6740,8 @@ export const Dashboard: React.FC = () => {
                 const shipper = q?.shipper_details;
                 const bank = q?.bank_details;
                 const items = q?.items || [];
-                const totalVal = items.reduce((s, it) => s + Number(it.quantity || 0) * Number(it.unit_price || 0), 0);
-                const totalWt = items.reduce((s, it) => s + Number(it.weight || 0) * Number(it.quantity || 0), 0);
+                const totalVal = items.reduce((s, it) => s + getQuoteItemSellTotal(it), 0);
+                const totalWt = items.reduce((s, it) => s + getQuoteItemNetWeight(it), 0);
                 const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
                 const invoiceNo = `CI-${(q?.quote_number || 'DRAFT').replace('Q-', '')}`;
                 return (
@@ -6485,7 +6800,7 @@ export const Dashboard: React.FC = () => {
                             <table className="w-full text-[10px] mb-4">
                               <thead><tr className="border-b-2 border-slate-900"><th className="text-left py-1">Description</th><th className="text-center py-1">HS Code</th><th className="text-right py-1">Qty</th><th className="text-right py-1">Unit Price</th><th className="text-right py-1">Amount</th></tr></thead>
                               <tbody>
-                                {items.map((it, i) => <tr key={i} className="border-b border-slate-200"><td className="py-1.5">{it.description} {it.packing_container ? `— ${it.packing_container}` : ''}</td><td className="text-center py-1.5 font-mono">{it.hs_code || '—'}</td><td className="text-right py-1.5">{it.quantity} kg</td><td className="text-right py-1.5">{q?.currency === 'USD' ? '$' : '₹'}{Number(it.unit_price || 0).toFixed(2)}</td><td className="text-right py-1.5 font-bold">{q?.currency === 'USD' ? '$' : '₹'}{(Number(it.quantity || 0) * Number(it.unit_price || 0)).toFixed(2)}</td></tr>)}
+                                {items.map((it, i) => <tr key={i} className="border-b border-slate-200"><td className="py-1.5">{it.description} {it.packing_container ? `— ${it.packing_container}` : ''}</td><td className="text-center py-1.5 font-mono">{it.hs_code || '—'}</td><td className="text-right py-1.5">{getQuoteItemQuantityLabel(it)}</td><td className="text-right py-1.5">{q?.currency === 'USD' ? '$' : '₹'}{Number(getQuoteItemPricingBasis(it) === 'package' ? it.package_unit_price : it.unit_price || 0).toFixed(2)}</td><td className="text-right py-1.5 font-bold">{q?.currency === 'USD' ? '$' : '₹'}{getQuoteItemSellTotal(it).toFixed(2)}</td></tr>)}
                                 <tr className="border-t-2 border-slate-900 font-black"><td colSpan={4} className="text-right py-2">TOTAL CFR VALUE:</td><td className="text-right py-2">{q?.currency === 'USD' ? '$' : '₹'}{totalVal.toFixed(2)}</td></tr>
                               </tbody>
                             </table>
@@ -6518,7 +6833,7 @@ export const Dashboard: React.FC = () => {
                             <table className="w-full text-[10px] mb-4">
                               <thead><tr className="border-b-2 border-slate-900"><th className="text-left py-1">Description</th><th className="text-center py-1">Packing</th><th className="text-right py-1">Net Wt (kg)</th><th className="text-right py-1">Gross Wt (kg)</th></tr></thead>
                               <tbody>
-                                {items.map((it, i) => { const netWt = Number(it.weight || 0) * Number(it.quantity || 0); return <tr key={i} className="border-b border-slate-200"><td className="py-1.5">{it.description}</td><td className="text-center py-1.5">{it.packing_container || '—'}</td><td className="text-right py-1.5">{netWt.toFixed(0)}</td><td className="text-right py-1.5">{(netWt * 1.02).toFixed(0)}</td></tr>; })}
+                                {items.map((it, i) => { const netWt = getQuoteItemNetWeight(it); return <tr key={i} className="border-b border-slate-200"><td className="py-1.5">{it.description}</td><td className="text-center py-1.5">{it.packing_container || '—'}</td><td className="text-right py-1.5">{netWt.toFixed(0)}</td><td className="text-right py-1.5">{(netWt * 1.02).toFixed(0)}</td></tr>; })}
                                 <tr className="border-t-2 border-slate-900 font-black"><td colSpan={2} className="py-2">TOTAL</td><td className="text-right py-2">{totalWt.toFixed(0)} kg</td><td className="text-right py-2">{(totalWt * 1.02).toFixed(0)} kg</td></tr>
                               </tbody>
                             </table>
@@ -6667,10 +6982,12 @@ export const Dashboard: React.FC = () => {
                         const vesselName = selectedShipment?.vessel_name || 'MAERSK MC-KINNEY MOLLER';
                         const items = ((relatedQuote?.items && relatedQuote.items.length > 0)
                           ? relatedQuote.items
-                          : [{ description: 'High Grade Raw Peanuts (Bold 40/50)', quantity: 24, unit_price: 1150, packing_container: 'MT' }]) as any[];
+                          : [{ description: 'High Grade Raw Peanuts (Bold 40/50)', quantity: 24000, unit_price: 1.15, package_quantity: 480, weight: 50, packing_container: '50 kg PP Bags' }]) as QuoteItem[];
 
                         const currency = relatedQuote?.currency || 'USD';
-                        const totalVal = items.reduce((acc, it) => acc + (it.quantity * (it.unit_price || 0)), 0);
+                        const totalVal = items.reduce((acc, it) => acc + getQuoteItemSellTotal(it), 0);
+                        const totalNetWeight = items.reduce((acc, it) => acc + getQuoteItemNetWeight(it), 0);
+                        const totalPackages = items.reduce((acc, it) => acc + Number(it.package_quantity || 0), 0);
 
                         if (autoDocType === 'invoice') {
                           return (
@@ -6730,9 +7047,9 @@ export const Dashboard: React.FC = () => {
                                   {items.map((it, idx) => (
                                     <tr key={idx}>
                                       <td className="border p-1.5">{it.description}</td>
-                                      <td className="border p-1.5 text-right">{it.quantity} {it.packing_container || 'MT'}</td>
-                                      <td className="border p-1.5 text-right">{formatQuoteCurrency(it.unit_price || 0, currency)}</td>
-                                      <td className="border p-1.5 text-right">{formatQuoteCurrency(it.quantity * (it.unit_price || 0), currency)}</td>
+                                      <td className="border p-1.5 text-right">{getQuoteItemQuantityLabel(it)}</td>
+                                      <td className="border p-1.5 text-right">{formatQuoteCurrency(Number(getQuoteItemPricingBasis(it) === 'package' ? it.package_unit_price : it.unit_price || 0), currency)}</td>
+                                      <td className="border p-1.5 text-right">{formatQuoteCurrency(getQuoteItemSellTotal(it), currency)}</td>
                                     </tr>
                                   ))}
                                   <tr className="font-bold font-sans">
@@ -6753,8 +7070,9 @@ export const Dashboard: React.FC = () => {
                             </div>
                           );
                         } else {
-                          const totalQty = items.reduce((acc, it) => acc + it.quantity, 0);
-                          const grossWeight = totalQty * 1000 + 400;
+                          const totalQty = totalNetWeight;
+                          const grossWeight = totalQty * 1.02;
+                          const totalPackingUnits = totalPackages || Math.ceil(totalQty / 50);
                           return (
                             <div className="space-y-4">
                               <div className="border-b pb-4 flex justify-between">
@@ -6791,9 +7109,9 @@ export const Dashboard: React.FC = () => {
                                 </div>
                                 <div className="border p-2 rounded">
                                   <p className="font-sans font-black text-slate-700">Packaging Details:</p>
-                                  <p>Total Packages: {totalQty * 20} Bags (50kg PP Bags)</p>
+                                  <p>Total Packages: {totalPackingUnits.toLocaleString()} Bags</p>
                                   <p>Container Seal: {sealNo}</p>
-                                  <p>Total Cargo Net Weight: {totalQty * 1000} KGS</p>
+                                  <p>Total Cargo Net Weight: {totalQty.toLocaleString()} KGS</p>
                                 </div>
                               </div>
 
@@ -6810,15 +7128,15 @@ export const Dashboard: React.FC = () => {
                                   {items.map((it, idx) => (
                                     <tr key={idx}>
                                       <td className="border p-1.5">{it.description} <br />Packed in 50KG Net PP Bags</td>
-                                      <td className="border p-1.5 text-right">{it.quantity * 20} Bags</td>
-                                      <td className="border p-1.5 text-right">{(it.quantity * 1000).toLocaleString()} KGS</td>
-                                      <td className="border p-1.5 text-right">{(it.quantity * 1000 + 80).toLocaleString()} KGS</td>
+                                      <td className="border p-1.5 text-right">{Number(it.package_quantity || Math.ceil(getQuoteItemNetWeight(it) / 50)).toLocaleString()} Bags</td>
+                                      <td className="border p-1.5 text-right">{getQuoteItemNetWeight(it).toLocaleString()} KGS</td>
+                                      <td className="border p-1.5 text-right">{(getQuoteItemNetWeight(it) * 1.02).toFixed(0)} KGS</td>
                                     </tr>
                                   ))}
                                   <tr className="font-bold font-sans">
                                     <td className="border p-1.5 text-right">Total:</td>
-                                    <td className="border p-1.5 text-right">{totalQty * 20} Bags</td>
-                                    <td className="border p-1.5 text-right">{(totalQty * 1000).toLocaleString()} KGS</td>
+                                    <td className="border p-1.5 text-right">{totalPackingUnits.toLocaleString()} Bags</td>
+                                    <td className="border p-1.5 text-right">{totalQty.toLocaleString()} KGS</td>
                                     <td className="border p-1.5 text-right">{grossWeight.toLocaleString()} KGS</td>
                                   </tr>
                                 </tbody>
@@ -7341,6 +7659,8 @@ const useBufferedText = (value: string, onChange: (value: string) => void, delay
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
+    if (timer.current) return;
+    if (value === latestValue.current) return;
     latestValue.current = value;
     setDraft(value);
   }, [value]);
@@ -7354,6 +7674,7 @@ const useBufferedText = (value: string, onChange: (value: string) => void, delay
       clearTimeout(timer.current);
       timer.current = null;
     }
+    if (nextValue === latestValue.current) return;
     latestValue.current = nextValue;
     onChange(nextValue);
   }, [onChange]);
@@ -7361,6 +7682,10 @@ const useBufferedText = (value: string, onChange: (value: string) => void, delay
   const schedule = React.useCallback((nextValue: string) => {
     setDraft(nextValue);
     if (timer.current) clearTimeout(timer.current);
+    if (delay <= 0) {
+      commit(nextValue);
+      return;
+    }
     timer.current = setTimeout(() => commit(nextValue), delay);
   }, [commit, delay]);
 
@@ -7496,6 +7821,75 @@ const TextArea = ({ label, value, onChange }: { label: string; value: string; on
     />
   </label>
 );
+
+const RichTextEditor = ({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) => {
+  const editorRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value || '';
+    }
+  }, [value]);
+
+  const commit = () => {
+    onChange(sanitizeBlogHtml(editorRef.current?.innerHTML || ''));
+  };
+
+  const runCommand = (command: string, argument?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, argument);
+    commit();
+  };
+
+  const addImage = () => {
+    const url = window.prompt('Image URL');
+    if (url) runCommand('insertImage', url);
+  };
+
+  const addLink = () => {
+    const url = window.prompt('Link URL');
+    if (url) runCommand('createLink', url);
+  };
+
+  const toolbarButtons = [
+    { label: 'B', title: 'Bold', command: 'bold' },
+    { label: 'I', title: 'Italic', command: 'italic' },
+    { label: 'H2', title: 'Heading', command: 'formatBlock', argument: 'h2' },
+    { label: 'UL', title: 'Bulleted list', command: 'insertUnorderedList' },
+    { label: 'OL', title: 'Numbered list', command: 'insertOrderedList' }
+  ];
+
+  return (
+    <div>
+      <span className="block text-slate-600 mb-1.5 font-bold tracking-wide text-[11px] uppercase">{label}</span>
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-wrap gap-1 border-b border-slate-200 bg-slate-50 p-2">
+          {toolbarButtons.map((button) => (
+            <button
+              key={button.title}
+              type="button"
+              onClick={() => runCommand(button.command, button.argument)}
+              title={button.title}
+              className="min-w-8 h-8 px-2 rounded border border-slate-200 bg-white text-[11px] font-black text-slate-700 hover:bg-slate-100"
+            >
+              {button.label}
+            </button>
+          ))}
+          <button type="button" onClick={addLink} className="h-8 px-2 rounded border border-slate-200 bg-white text-[11px] font-black text-slate-700 hover:bg-slate-100">Link</button>
+          <button type="button" onClick={addImage} className="h-8 px-2 rounded border border-slate-200 bg-white text-[11px] font-black text-slate-700 hover:bg-slate-100">Image</button>
+        </div>
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={commit}
+          onBlur={commit}
+          className="prose prose-sm max-w-none min-h-[300px] p-4 text-sm text-slate-800 focus:outline-none [&_h2]:text-lg [&_h2]:font-black [&_h2]:text-slate-950 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_img]:max-w-full [&_img]:rounded-lg"
+        />
+      </div>
+    </div>
+  );
+};
 
 const DataTable = ({ headers, children, pageSize = 8 }: { headers: string[]; children: React.ReactNode; pageSize?: number }) => {
   const [currentPage, setCurrentPage] = React.useState(1);

@@ -4,7 +4,7 @@ import { firebaseApp, isFirebaseConfigured } from './firebaseClient';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const portalTables = ['clients', 'vendors', 'products', 'freight_presets', 'quotes', 'quote_items', 'leads', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users'] as const;
+const portalTables = ['clients', 'vendors', 'products', 'freight_presets', 'quotes', 'quote_items', 'blogs', 'leads', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users'] as const;
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 
 const cleanUndefined = (obj: any): any => {

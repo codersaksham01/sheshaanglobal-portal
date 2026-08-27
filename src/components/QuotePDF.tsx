@@ -1,6 +1,24 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { Quote, BankDetails } from '../lib/types';
+import { Quote, QuoteItem, BankDetails } from '../lib/types';
+
+const getItemPricingBasis = (item: QuoteItem) => item.pricing_basis || 'kg';
+const getItemPackageQuantity = (item: QuoteItem) => Number(item.package_quantity || 0);
+const getItemPackageWeight = (item: QuoteItem) => Number(item.weight || 0);
+const getItemSellTotal = (item: QuoteItem) => {
+  if (getItemPricingBasis(item) === 'package') {
+    return getItemPackageQuantity(item) * Number(item.package_unit_price || 0);
+  }
+  return Number(item.quantity || 0) * Number(item.unit_price || 0);
+};
+const getItemNetWeight = (item: QuoteItem) => {
+  if (getItemPricingBasis(item) === 'package') {
+    const packageQuantity = getItemPackageQuantity(item);
+    const packageWeight = getItemPackageWeight(item);
+    return packageQuantity > 0 && packageWeight > 0 ? packageQuantity * packageWeight : Number(item.quantity || 0);
+  }
+  return Number(item.quantity || 0);
+};
 
 // PDF Styling layout
 const styles = StyleSheet.create({
@@ -735,22 +753,24 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   };
 
   const lineItems = quote.items || [];
+  const showCifBreakdown = quote.show_cif_breakdown !== false;
   
   // Calculate item sum base (FOB base value)
   const itemsSubtotal = lineItems.reduce(
-    (sum, item) => sum + item.quantity * item.unit_price,
+    (sum, item) => sum + getItemSellTotal(item),
     0
   );
   
-  // Calculate Subtotal Base Product Value (FOB)
-  const totalFOB = itemsSubtotal + Number(quote.packaging_cost) + Number(quote.inland_haulage_cost) + Number(quote.customs_clearance_cost);
+  // Calculate commercial values shown in Section 2 and reconciled in the CIF breakdown.
+  const originExportCharges = Number(quote.packaging_cost) + Number(quote.inland_haulage_cost) + Number(quote.customs_clearance_cost);
+  const totalFOB = itemsSubtotal + originExportCharges;
   
   // Final CIF
   const totalCIF = totalFOB + Number(quote.freight_cost) + Number(quote.insurance_cost);
   
   // Total quantity
-  const totalQty = lineItems.reduce((sum, item) => sum + item.quantity, 0);
-  const totalWeight = lineItems.reduce((sum, item) => sum + (item.quantity * (item.weight || 0)), 0);
+  const totalQty = lineItems.reduce((sum, item) => sum + getItemNetWeight(item), 0);
+  const totalWeight = totalQty;
 
   const defaultShipper = {
     company_name: 'Sheshaan Global',
@@ -962,6 +982,14 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           {lineItems.map((item, index) => {
             const isAlternate = index % 2 === 1;
             const rowStyle = isAlternate ? styles.tableRowAlternate : styles.tableRow;
+            const pricingBasis = getItemPricingBasis(item);
+            const netWeight = getItemNetWeight(item);
+            const packageQuantity = getItemPackageQuantity(item);
+            const packageWeight = getItemPackageWeight(item);
+            const itemTotal = getItemSellTotal(item);
+            const unitPriceLabel = pricingBasis === 'package'
+              ? `${quote.currency === 'INR' ? 'INR' : '$'} ${(Number(item.package_unit_price) || 0).toFixed(2)} / pkg`
+              : `${quote.currency === 'INR' ? 'INR' : '$'} ${(Number(item.unit_price) || 0).toFixed(2)} / kg`;
             
             const descLines = (item.description || '').split('\n');
             const mainTitle = descLines[0];
@@ -984,16 +1012,18 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                     <Text style={[styles.tableCol, styles.colPack]}>{item.packing_container || 'Standard Carton'}</Text>
                     
                     <Text style={[styles.tableCol, styles.colQty]}>
-                      {new Intl.NumberFormat('en-US').format(Number(item.quantity) || 0)} kg{"\n"}
-                      {Number(item.quantity) === 13000 ? '(13.00 MT)' : `(${(Number(item.quantity) / 1000).toFixed(2)} MT)`}
+                      {pricingBasis === 'package' && packageQuantity > 0
+                        ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} pkg${packageWeight ? ` x ${packageWeight} kg` : ''}`
+                        : `${new Intl.NumberFormat('en-US').format(netWeight)} kg`}{"\n"}
+                      {`(${(netWeight / 1000).toFixed(2)} MT)`}
                     </Text>
                     
                     <Text style={[styles.tableCol, styles.colPrice]}>
-                      {quote.currency === 'INR' ? 'INR' : '$'} {(Number(item.unit_price) || 0).toFixed(2)}
+                      {unitPriceLabel}
                     </Text>
                     
                     <Text style={[styles.tableCol, styles.colTotal, { fontWeight: 'bold' }]}>
-                      {quote.currency === 'INR' ? 'INR' : '$'} {new Intl.NumberFormat('en-US').format((Number(item.quantity) || 0) * (Number(item.unit_price) || 0))}
+                      {quote.currency === 'INR' ? 'INR' : '$'} {new Intl.NumberFormat('en-US').format(itemTotal)}
                     </Text>
                   </>
                 ) : (
@@ -1007,8 +1037,10 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                     <Text style={[styles.tableCol, { width: '15%', textAlign: 'center' }]}>{item.hs_code || 'N/A'}</Text>
                     <Text style={[styles.tableCol, { width: '20%' }]}>{item.packing_container || 'Standard Carton'}</Text>
                     <Text style={[styles.tableCol, { width: '15%', textAlign: 'right', fontWeight: 'bold' }]}>
-                      {new Intl.NumberFormat('en-US').format(Number(item.quantity) || 0)} kg{"\n"}
-                      {Number(item.quantity) === 13000 ? '(13.00 MT)' : `(${(Number(item.quantity) / 1000).toFixed(2)} MT)`}
+                      {pricingBasis === 'package' && packageQuantity > 0
+                        ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} pkg`
+                        : `${new Intl.NumberFormat('en-US').format(netWeight)} kg`}{"\n"}
+                      {`${new Intl.NumberFormat('en-US').format(netWeight)} kg`}
                     </Text>
                   </>
                 )}
@@ -1035,7 +1067,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         )}
 
         {/* 3. TRANSPARENT CIF COST STRUCTURE BREAKDOWN / BANK INSTRUCTIONS */}
-        {documentType === 'quotation' && (
+        {documentType === 'quotation' && showCifBreakdown && (
           <>
             <Text style={styles.sectionTitle}>3. Transparent CIF Cost Structure Breakdown</Text>
             <View style={styles.table} wrap={false}>
@@ -1048,25 +1080,35 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                 <Text style={[styles.tableHeaderCol, styles.colBdTotal]}>Total Amount ({quote.currency})</Text>
               </View>
 
-              {/* Row 1: FOB Base Product Value */}
+              {/* Row 1: Offered goods value */}
               <View style={styles.tableRow} wrap={false}>
                 <Text style={[styles.tableCol, styles.colBdSr]}>1</Text>
                 <View style={[styles.tableCol, styles.colBdDesc]}>
-                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Base Product Value (FOB {(quote.loading_port || 'Mundra').split(',')[0].trim()})</Text>
+                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Offered Goods Value</Text>
                   <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>
-                    FOB package value including raw product cost, packaging, loading, haulage and origin port charges.
+                    Commercial offer value from Section 2, inclusive of quoted selling margin.
                   </Text>
                 </View>
-                <Text style={[styles.tableCol, styles.colBdBasis]}>Per kg ({new Intl.NumberFormat('en-US').format(totalQty)} kg)</Text>
-                <Text style={[styles.tableCol, styles.colBdRate]}>
-                  {quote.currency === 'INR' ? 'INR' : '$'} {(totalFOB / (totalQty || 1)).toFixed(2)} / kg
-                </Text>
-                <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(totalFOB)}</Text>
+                <Text style={[styles.tableCol, styles.colBdBasis]}>As per Section 2</Text>
+                <Text style={[styles.tableCol, styles.colBdRate]}>Offered Rate</Text>
+                <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(itemsSubtotal)}</Text>
               </View>
 
-              {/* Row 2: Main Ocean Freight */}
+              {/* Row 2: Origin export charges */}
               <View style={styles.tableRowAlternate} wrap={false}>
                 <Text style={[styles.tableCol, styles.colBdSr]}>2</Text>
+                <View style={[styles.tableCol, styles.colBdDesc]}>
+                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Origin Export & Handling Charges</Text>
+                  <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>Export packing, inland haulage, THC, loading, and customs clearance as applicable.</Text>
+                </View>
+                <Text style={[styles.tableCol, styles.colBdBasis]}>Origin Services</Text>
+                <Text style={[styles.tableCol, styles.colBdRate]}>Overall Order</Text>
+                <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(originExportCharges)}</Text>
+              </View>
+
+              {/* Row 3: Main Ocean Freight */}
+              <View style={styles.tableRow} wrap={false}>
+                <Text style={[styles.tableCol, styles.colBdSr]}>3</Text>
                 <View style={[styles.tableCol, styles.colBdDesc]}>
                   <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Main Ocean Freight</Text>
                   <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>Lump-sum ocean freight from {(quote.loading_port || 'Mundra').split(',')[0].trim()} to {(client.destination_port || 'Destination').split(',')[0].trim()}.</Text>
@@ -1076,9 +1118,9 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                 <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(quote.freight_cost)}</Text>
               </View>
 
-              {/* Row 3: Insurance */}
-              <View style={styles.tableRow} wrap={false}>
-                <Text style={[styles.tableCol, styles.colBdSr]}>3</Text>
+              {/* Row 4: Insurance */}
+              <View style={styles.tableRowAlternate} wrap={false}>
+                <Text style={[styles.tableCol, styles.colBdSr]}>4</Text>
                 <View style={[styles.tableCol, styles.colBdDesc]}>
                   <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Marine Cargo Transit Insurance</Text>
                   <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>Comprehensive marine transit cargo insurance policy up to destination port.</Text>
@@ -1153,7 +1195,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         )}
 
         {/* Note on commercial structure */}
-        {documentType === 'quotation' && quote.commercial_note && (
+        {(documentType === 'quotation' || documentType === 'invoice') && quote.commercial_note?.trim() && (
           <View style={styles.commercialNoteBlock} wrap={false}>
             <Text style={styles.commercialNoteText}>
               Note on Commercial Structure: {quote.commercial_note}

@@ -158,6 +158,53 @@ CREATE INDEX IF NOT EXISTS invoices_payment_status_idx ON public.invoices(paymen
 CREATE INDEX IF NOT EXISTS shipments_status_idx ON public.shipments(status);
 CREATE INDEX IF NOT EXISTS tasks_quote_invoice_idx ON public.tasks(quote_id, invoice_id);
 
+-- Dynamic blog engine table + public read policy
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_cif_breakdown BOOLEAN NOT NULL DEFAULT true;
+
+ALTER TABLE public.quote_items ADD COLUMN IF NOT EXISTS pricing_basis TEXT NOT NULL DEFAULT 'kg';
+ALTER TABLE public.quote_items ADD COLUMN IF NOT EXISTS package_quantity NUMERIC(14,3) NOT NULL DEFAULT 0;
+ALTER TABLE public.quote_items ADD COLUMN IF NOT EXISTS package_unit_price NUMERIC(14,2) NOT NULL DEFAULT 0;
+ALTER TABLE public.quote_items ADD COLUMN IF NOT EXISTS package_cost_price NUMERIC(14,2) NOT NULL DEFAULT 0;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'quote_items_pricing_basis_check'
+    ) THEN
+        ALTER TABLE public.quote_items
+        ADD CONSTRAINT quote_items_pricing_basis_check CHECK (pricing_basis IN ('kg', 'package'));
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.blogs (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    title TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    content TEXT NOT NULL DEFAULT '',
+    cover_image_url TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT 'Sheshaan Global',
+    status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Published')),
+    seo_keywords TEXT NOT NULL DEFAULT '',
+    published_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+CREATE INDEX IF NOT EXISTS blogs_status_published_idx ON public.blogs(status, published_at DESC);
+CREATE INDEX IF NOT EXISTS blogs_slug_idx ON public.blogs(slug);
+
+ALTER TABLE public.blogs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS blog_admin_write ON public.blogs;
+CREATE POLICY blog_admin_write ON public.blogs
+FOR ALL TO authenticated
+USING (public.has_portal_role(ARRAY['Admin','Sales']))
+WITH CHECK (public.has_portal_role(ARRAY['Admin','Sales']));
+
+DROP POLICY IF EXISTS public_published_blog_read ON public.blogs;
+CREATE POLICY public_published_blog_read ON public.blogs
+FOR SELECT TO anon
+USING (status = 'Published');
+
+
 -- ── 4. VERIFICATION QUERY ────────────────────────────────────────────────────
 -- Execute to verify the active triggers in the database:
 -- SELECT trigger_name, event_manipulation, event_object_table, action_statement

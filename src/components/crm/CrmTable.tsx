@@ -179,7 +179,8 @@ const CrmTableComponent: React.FC<CrmTableProps> = ({
   leadCategoryClass,
   leadActionCategory,
 }) => {
-  const allSelected = leads.length > 0 && selectedLeadIds.length === leads.length;
+  const selectedLeadIdSet = React.useMemo(() => new Set(selectedLeadIds), [selectedLeadIds]);
+  const allSelected = leads.length > 0 && leads.every((lead) => selectedLeadIdSet.has(lead.id));
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -217,7 +218,7 @@ const CrmTableComponent: React.FC<CrmTableProps> = ({
               <CrmTableRow
                 key={lead.id}
                 lead={lead}
-                selected={selectedLeadIds.includes(lead.id)}
+                selected={selectedLeadIdSet.has(lead.id)}
                 onToggleSelection={onToggleSelection}
                 onEditLead={onEditLead}
                 onDeleteLead={onDeleteLead}

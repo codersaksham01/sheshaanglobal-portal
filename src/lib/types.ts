@@ -120,6 +120,20 @@ export interface MessageTemplate {
   updated_at?: string;
 }
 
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  cover_image_url?: string;
+  author: string;
+  status: 'Draft' | 'Published';
+  seo_keywords?: string;
+  published_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface FreightRateHistory {
   id: string;
   loading_port: string;
@@ -230,6 +244,7 @@ export interface Quote {
   shipper_details?: ShipperDetails;
   bank_details?: BankDetails;
   commercial_note?: string; // Note on Commercial Structure
+  show_cif_breakdown?: boolean;
   
   // Page 2 parameters
   included_responsibilities?: string[];
@@ -254,6 +269,10 @@ export interface QuoteItem {
   unit_price: number;
   cost_price?: number;
   weight?: number; // unit weight in kg
+  pricing_basis?: 'kg' | 'package';
+  package_quantity?: number;
+  package_unit_price?: number;
+  package_cost_price?: number;
   
   // Specific offer parameters
   hs_code?: string;

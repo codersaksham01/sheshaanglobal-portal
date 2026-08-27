@@ -201,6 +201,13 @@ input,
 select,
 textarea {
   min-height: 38px;
+  pointer-events: auto;
+}
+
+select {
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 input:focus,

@@ -123,6 +123,7 @@ create table if not exists public.quotes (
   shipper_details jsonb,
   bank_details jsonb,
   commercial_note text not null default '',
+  show_cif_breakdown boolean not null default true,
   included_responsibilities text[] not null default '{}',
   excluded_responsibilities text[] not null default '{}',
   included_docs text[] not null default '{}',
@@ -142,6 +143,10 @@ create table if not exists public.quote_items (
   unit_price numeric(14,2) not null check (unit_price >= 0),
   cost_price numeric(14,2) not null default 0 check (cost_price >= 0),
   weight numeric(14,3) not null default 0 check (weight >= 0),
+  pricing_basis text not null default 'kg' check (pricing_basis in ('kg', 'package')),
+  package_quantity numeric(14,3) not null default 0 check (package_quantity >= 0),
+  package_unit_price numeric(14,2) not null default 0 check (package_unit_price >= 0),
+  package_cost_price numeric(14,2) not null default 0 check (package_cost_price >= 0),
   hs_code text not null default '',
   packing_container text not null default '',
   basis_of_calculation text not null default '',
@@ -281,6 +286,20 @@ create table if not exists public.message_templates (
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
+create table if not exists public.blogs (
+  id text primary key default gen_random_uuid()::text,
+  title text not null,
+  slug text not null unique,
+  content text not null default '',
+  cover_image_url text not null default '',
+  author text not null default 'Sheshaan Global',
+  status text not null default 'Draft' check (status in ('Draft', 'Published')),
+  seo_keywords text not null default '',
+  published_at timestamptz,
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
 create table if not exists public.freight_rate_history (
   id text primary key default gen_random_uuid()::text,
   loading_port text not null,
@@ -321,6 +340,8 @@ create index if not exists activities_lead_date_idx on public.activities(lead_id
 create index if not exists quotes_client_status_idx on public.quotes(client_id, status);
 create index if not exists leads_outreach_status_idx on public.leads(outreach_status);
 create index if not exists leads_smart_score_idx on public.leads(smart_score desc);
+create index if not exists blogs_status_published_idx on public.blogs(status, published_at desc);
+create index if not exists blogs_slug_idx on public.blogs(slug);
 
 create or replace function public.calculate_lead_outreach_status(
   lead_stage text,
@@ -467,7 +488,7 @@ declare
 begin
   foreach table_name in array array[
     'app_users', 'clients', 'products', 'vendors', 'freight_presets', 'quotes', 'quote_items',
-    'leads', 'invoices', 'shipments', 'activities', 'tasks', 'message_templates',
+    'leads', 'invoices', 'shipments', 'activities', 'tasks', 'message_templates', 'blogs',
     'freight_rate_history', 'document_checklists'
   ] loop
     execute format('drop trigger if exists set_%I_updated_at on public.%I', table_name, table_name);
@@ -501,7 +522,7 @@ declare
 begin
   foreach table_name in array array[
     'clients', 'products', 'vendors', 'freight_presets', 'quotes', 'quote_items', 'leads',
-    'invoices', 'shipments', 'activities', 'tasks', 'message_templates',
+    'invoices', 'shipments', 'activities', 'tasks', 'message_templates', 'blogs',
     'freight_rate_history', 'document_checklists'
   ] loop
     execute format('drop policy if exists portal_read on public.%I', table_name);
@@ -522,6 +543,10 @@ drop policy if exists sales_write on public.activities;
 create policy sales_write on public.activities for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
 drop policy if exists sales_write on public.message_templates;
 create policy sales_write on public.message_templates for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
+drop policy if exists sales_write on public.blogs;
+create policy sales_write on public.blogs for all to authenticated using (public.has_portal_role(array['Admin','Sales'])) with check (public.has_portal_role(array['Admin','Sales']));
+drop policy if exists public_published_read on public.blogs;
+create policy public_published_read on public.blogs for select to anon using (status = 'Published');
 
 drop policy if exists shared_task_write on public.tasks;
 create policy shared_task_write on public.tasks for all to authenticated using (public.has_portal_role(array['Admin','Sales','Accounts','Operations'])) with check (public.has_portal_role(array['Admin','Sales','Accounts','Operations']));

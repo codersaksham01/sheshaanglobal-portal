@@ -27,6 +27,55 @@ const quoteStatuses: Quote['status'][] = [
   'Declined'
 ];
 
+const blankManualBuyer: Partial<Client> = {
+  company_name: '',
+  address: '',
+  contact_name: '',
+  contact_email: '',
+  phone: '',
+  destination_port: ''
+};
+
+const defaultCommercialNoteText = 'Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.';
+const commercialNotePlaceholder = 'Example: Base FOB price includes product cost, export packing, handling, ocean freight, insurance, and agreed export margin. Final charges remain subject to confirmed freight, insurance, and exchange rate at booking.';
+const itemPricingBasisLabel = {
+  kg: 'Per kg',
+  package: 'Per package'
+} as const;
+
+const getItemPricingBasis = (item: QuoteItem) => item.pricing_basis || 'kg';
+const getItemPackageQuantity = (item: QuoteItem) => Number(item.package_quantity || 0);
+const getItemPackageWeight = (item: QuoteItem) => Number(item.weight || 0);
+const getItemSellTotal = (item: QuoteItem) => {
+  if (getItemPricingBasis(item) === 'package') {
+    return getItemPackageQuantity(item) * Number(item.package_unit_price || 0);
+  }
+  return Number(item.quantity || 0) * Number(item.unit_price || 0);
+};
+const getItemCostTotal = (item: QuoteItem) => {
+  if (getItemPricingBasis(item) === 'package') {
+    const packageCost = item.package_cost_price ?? ((Number(item.cost_price || 0) || 0) * getItemPackageWeight(item));
+    return getItemPackageQuantity(item) * Number(packageCost || 0);
+  }
+  return Number(item.quantity || 0) * Number(item.cost_price || 0);
+};
+const getItemNetWeight = (item: QuoteItem) => {
+  if (getItemPricingBasis(item) === 'package') {
+    const packageWeight = getItemPackageWeight(item);
+    const packageQuantity = getItemPackageQuantity(item);
+    return packageQuantity > 0 && packageWeight > 0 ? packageQuantity * packageWeight : Number(item.quantity || 0);
+  }
+  return Number(item.quantity || 0);
+};
+const formatItemBasis = (item: QuoteItem) => {
+  if (getItemPricingBasis(item) === 'package') {
+    const packageQuantity = getItemPackageQuantity(item);
+    const packageWeight = getItemPackageWeight(item);
+    return `Per package (${new Intl.NumberFormat('en-US').format(packageQuantity)} packages${packageWeight ? ` x ${packageWeight} kg` : ''})`;
+  }
+  return `Per kg (${new Intl.NumberFormat('en-US').format(Number(item.quantity || 0))} kg)`;
+};
+
 const useBufferedText = (value: string, onChange: (value: string) => void, delay = 120) => {
   const [draft, setDraft] = useState(value);
   const committedValue = useRef(value);
@@ -233,6 +282,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   // Core Form States
   const [quoteNumber, setQuoteNumber] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [buyerEntryMode, setBuyerEntryMode] = useState<'existing' | 'manual'>('existing');
+  const [manualBuyer, setManualBuyer] = useState<Partial<Client>>(blankManualBuyer);
   const [currency, setCurrency] = useState<'USD' | 'INR'>('INR');
   const [originCountry, setOriginCountry] = useState('India');
   const [loadingPort, setLoadingPort] = useState('Mundra Port, India');
@@ -253,7 +304,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [shipper, setShipper] = useState<ShipperDetails>(defaultShipper);
   const [bankDetails, setBankDetails] = useState<BankDetails>(defaultBankDetails);
   const [lineItems, setLineItems] = useState<QuoteItem[]>([]);
-  const [commercialNote, setCommercialNote] = useState('Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.');
+  const [commercialNote, setCommercialNote] = useState(defaultCommercialNoteText);
+  const [showCifBreakdown, setShowCifBreakdown] = useState(true);
 
   // Page 2 Lists States
   const [includedScope, setIncludedScope] = useState<string[]>(defaultIncluded);
@@ -272,6 +324,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const getDraftPayload = () => ({
     quoteNumber,
     selectedClientId,
+    buyerEntryMode,
+    manualBuyer,
     currency,
     originCountry,
     loadingPort,
@@ -290,6 +344,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     bankDetails,
     lineItems,
     commercialNote,
+    showCifBreakdown,
     includedScope,
     excludedScope,
     docList,
@@ -314,6 +369,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const applyDraftPayload = (draft: ReturnType<typeof getDraftPayload>) => {
     setQuoteNumber(draft.quoteNumber || '');
     setSelectedClientId(draft.selectedClientId || '');
+    setBuyerEntryMode(draft.buyerEntryMode || 'existing');
+    setManualBuyer({ ...blankManualBuyer, ...(draft.manualBuyer || {}) });
     setCurrency(draft.currency || 'INR');
     setOriginCountry(draft.originCountry || 'India');
     setLoadingPort(draft.loadingPort || 'Mundra Port, India');
@@ -332,6 +389,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setBankDetails(draft.bankDetails || readDefaultBankDetails());
     setLineItems(draft.lineItems || []);
     setCommercialNote(draft.commercialNote || '');
+    setShowCifBreakdown(draft.showCifBreakdown ?? true);
     setIncludedScope(draft.includedScope || defaultIncluded);
     setExcludedScope(draft.excludedScope || defaultExcluded);
     setDocList(draft.docList || defaultDocs);
@@ -535,6 +593,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         if (q.shipper_details) setShipper(q.shipper_details as ShipperDetails);
         setBankDetails((q.bank_details as BankDetails) || readDefaultBankDetails());
         setCommercialNote(q.commercial_note || '');
+        setShowCifBreakdown(q.show_cif_breakdown ?? true);
         setLineItems(q.items || []);
 
         setIncludedScope(q.included_responsibilities || defaultIncluded);
@@ -563,6 +622,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         unit_price: 228.27,
         cost_price: 218.27,
         weight: 1.0,
+        pricing_basis: 'kg',
+        package_quantity: 325,
+        package_unit_price: 228.27 * 40,
+        package_cost_price: 218.27 * 40,
         hs_code: '09093129',
         packing_container: '325 Jute Bags (40 kg Net / Bag)',
         basis_of_calculation: 'Per kg (13,000 kg)'
@@ -582,6 +645,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       unit_price: Number(prod.unit_price) || 0,
       cost_price: Number(prod.cost_price) || Math.max((Number(prod.unit_price) || 0) - marginPerKg, 0),
       weight: Number(prod.weight) || 1.0,
+      pricing_basis: 'kg',
+      package_quantity: 325,
+      package_unit_price: (Number(prod.unit_price) || 0) * 40,
+      package_cost_price: (Number(prod.cost_price) || Math.max((Number(prod.unit_price) || 0) - marginPerKg, 0)) * 40,
       hs_code: '09093129',
       packing_container: '325 Jute Bags (40 kg Net / Bag)',
       basis_of_calculation: 'Per kg (13,000 kg)'
@@ -592,10 +659,51 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const handleUpdateLineItem = (index: number, fields: Partial<QuoteItem>) => {
     const updated = [...lineItems];
     updated[index] = { ...updated[index], ...fields };
+    const item = updated[index];
+
+    if (fields.pricing_basis === 'package') {
+      const packageWeight = Number(item.weight || 40);
+      const netQuantity = Number(item.quantity || 0);
+      const packageQuantity = Number(item.package_quantity || Math.ceil(netQuantity / (packageWeight || 1)) || 0);
+      item.weight = packageWeight;
+      item.package_quantity = packageQuantity;
+      item.package_unit_price = Number(item.package_unit_price || ((Number(item.unit_price || 0) || 0) * packageWeight));
+      item.package_cost_price = Number(item.package_cost_price || ((Number(item.cost_price || 0) || 0) * packageWeight));
+      item.quantity = packageQuantity * packageWeight;
+    }
+
+    if (fields.pricing_basis === 'kg') {
+      const packageWeight = Number(item.weight || 1);
+      if (packageWeight > 0 && Number(item.package_unit_price || 0) > 0) {
+        item.unit_price = Number(item.package_unit_price || 0) / packageWeight;
+      }
+      if (packageWeight > 0 && Number(item.package_cost_price || 0) > 0) {
+        item.cost_price = Number(item.package_cost_price || 0) / packageWeight;
+      }
+    }
+
+    if (getItemPricingBasis(item) === 'package') {
+      const packageQuantity = Number(item.package_quantity || 0);
+      const packageWeight = Number(item.weight || 0);
+      if (fields.package_quantity !== undefined || fields.weight !== undefined) {
+        item.quantity = packageQuantity * packageWeight;
+      }
+      if (fields.package_unit_price !== undefined && packageWeight > 0) {
+        item.unit_price = Number(fields.package_unit_price || 0) / packageWeight;
+      }
+      if (fields.package_cost_price !== undefined && packageWeight > 0) {
+        item.cost_price = Number(fields.package_cost_price || 0) / packageWeight;
+      }
+    }
     
     // Auto sync basis of calculation on quantity change
-    if (fields.quantity !== undefined) {
-      updated[index].basis_of_calculation = `Per kg (${new Intl.NumberFormat('en-US').format(fields.quantity)} kg)`;
+    if (
+      fields.quantity !== undefined ||
+      fields.pricing_basis !== undefined ||
+      fields.package_quantity !== undefined ||
+      fields.weight !== undefined
+    ) {
+      item.basis_of_calculation = formatItemBasis(item);
     }
     
     setLineItems(updated);
@@ -623,9 +731,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
   // Calculations
   const quoteTotals = useMemo(() => {
-    const goods = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-    const internalCost = lineItems.reduce((sum, item) => sum + item.quantity * Number(item.cost_price || 0), 0);
-    const weight = lineItems.reduce((sum, item) => sum + (item.quantity * (item.weight || 0)), 0);
+    const goods = lineItems.reduce((sum, item) => sum + getItemSellTotal(item), 0);
+    const internalCost = lineItems.reduce((sum, item) => sum + getItemCostTotal(item), 0);
+    const weight = lineItems.reduce((sum, item) => sum + getItemNetWeight(item), 0);
     const margin = goods - internalCost;
     const marginPerUnit = weight > 0 ? margin / weight : 0;
     const fob = goods + packagingCost + inlandHaulageCost + customsClearanceCost;
@@ -702,13 +810,62 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     }
   };
 
+  const normalizeBuyerKey = (value?: string) => (value || '').trim().toLowerCase();
+
+  const resolveQuoteBuyer = async () => {
+    if (buyerEntryMode === 'existing') {
+      if (!selectedClientId) {
+        throw new Error('Please select a Buyer/Client.');
+      }
+      return clients.find((client) => client.id === selectedClientId) || ({ id: selectedClientId } as Client);
+    }
+
+    const companyName = (manualBuyer.company_name || '').trim();
+    if (!companyName) {
+      throw new Error('Please enter the manual buyer company name.');
+    }
+
+    const emailKey = normalizeBuyerKey(manualBuyer.contact_email);
+    const companyKey = normalizeBuyerKey(companyName);
+    const existingClient = clients.find((client) => {
+      const sameEmail = emailKey && normalizeBuyerKey(client.contact_email) === emailKey;
+      const sameCompany = normalizeBuyerKey(client.company_name) === companyKey;
+      return sameEmail || sameCompany;
+    });
+
+    if (existingClient) {
+      setSelectedClientId(existingClient.id);
+      return existingClient;
+    }
+
+    const buyerPayload = {
+      company_name: companyName,
+      address: (manualBuyer.address || '').trim(),
+      contact_name: (manualBuyer.contact_name || '').trim(),
+      contact_email: (manualBuyer.contact_email || '').trim(),
+      phone: (manualBuyer.phone || '').trim(),
+      destination_port: (manualBuyer.destination_port || '').trim(),
+      products_dealing: manualBuyer.products_dealing || []
+    };
+
+    const { data, error } = await supabase
+      .from('clients')
+      .insert([buyerPayload])
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data?.id) throw new Error('Manual buyer could not be saved. Please try again.');
+
+    const savedClient = data as Client;
+    setClients((prev) => [savedClient, ...prev.filter((client) => client.id !== savedClient.id)]);
+    setSelectedClientId(savedClient.id);
+    return savedClient;
+  };
+
   // Save Quote
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedClientId) {
-      alert('Please select a Buyer/Client.');
-      return;
-    }
     if (lineItems.length === 0) {
       alert('Please add at least one product line item.');
       return;
@@ -716,9 +873,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
     setLoading(true);
     try {
+      const quoteClient = await resolveQuoteBuyer();
       const quotePayload = {
         quote_number: quoteNumber,
-        client_id: selectedClientId,
+        client_id: quoteClient.id,
         currency,
         origin_country: originCountry,
         loading_port: loadingPort,
@@ -738,6 +896,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         shipper_details: shipper,
         bank_details: bankDetails,
         commercial_note: commercialNote,
+        show_cif_breakdown: showCifBreakdown,
         
         included_responsibilities: includedScope,
         excluded_responsibilities: excludedScope,
@@ -784,9 +943,13 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         unit_price: item.unit_price,
         cost_price: item.cost_price || 0,
         weight: item.weight || 0,
+        pricing_basis: getItemPricingBasis(item),
+        package_quantity: item.package_quantity || null,
+        package_unit_price: item.package_unit_price || null,
+        package_cost_price: item.package_cost_price || null,
         hs_code: item.hs_code,
         packing_container: item.packing_container,
-        basis_of_calculation: item.basis_of_calculation
+        basis_of_calculation: item.basis_of_calculation || formatItemBasis(item)
       }));
 
       const { error: itemsErr } = await supabase
@@ -796,17 +959,16 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       if (itemsErr) throw itemsErr;
 
       // Update CRM lead stage to 'Quoted'
-      if (selectedClientId) {
-        const { data: leadData } = await supabase.from('leads').select('*').eq('client_id', selectedClientId);
+      if (quoteClient.id) {
+        const { data: leadData } = await supabase.from('leads').select('*').eq('client_id', quoteClient.id);
         const lead = leadData?.[0];
         if (lead) {
           await supabase.from('leads').update({
             stage: 'Quoted'
           }).eq('id', lead.id);
         } else {
-          const clientObj = clients.find(c => c.id === selectedClientId);
-          if (clientObj) {
-            const { data: leadByCompany } = await supabase.from('leads').select('*').eq('company_name', clientObj.company_name);
+          if (quoteClient.company_name) {
+            const { data: leadByCompany } = await supabase.from('leads').select('*').eq('company_name', quoteClient.company_name);
             const leadComp = leadByCompany?.[0];
             if (leadComp) {
               await supabase.from('leads').update({
@@ -822,15 +984,36 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       onSaveSuccess();
     } catch (err: any) {
       console.warn('Error saving quote:', err);
+      alert(err?.message || 'Could not save this quote. Please check the buyer and product details.');
       setLoading(false);
     }
   };
 
-  const currentClient = useMemo(() => clients.find(c => c.id === selectedClientId), [clients, selectedClientId]);
+  const manualPreviewClient = useMemo<Client | undefined>(() => {
+    if (buyerEntryMode !== 'manual') return undefined;
+    const companyName = (manualBuyer.company_name || '').trim();
+    if (!companyName) return undefined;
+
+    return {
+      id: 'manual-buyer-preview',
+      company_name: companyName,
+      address: (manualBuyer.address || '').trim(),
+      contact_name: (manualBuyer.contact_name || '').trim(),
+      contact_email: (manualBuyer.contact_email || '').trim(),
+      phone: (manualBuyer.phone || '').trim(),
+      destination_port: (manualBuyer.destination_port || '').trim(),
+      products_dealing: manualBuyer.products_dealing || []
+    };
+  }, [buyerEntryMode, manualBuyer, selectedClientId]);
+
+  const currentClient = useMemo(
+    () => manualPreviewClient || clients.find(c => c.id === selectedClientId),
+    [clients, manualPreviewClient, selectedClientId]
+  );
   const tempQuoteForPDF: Quote = useMemo(() => ({
     id: quoteId || 'temp',
     quote_number: quoteNumber,
-    client_id: selectedClientId,
+    client_id: currentClient?.id || selectedClientId,
     currency,
     origin_country: originCountry,
     loading_port: loadingPort,
@@ -848,6 +1031,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     shipper_details: shipper,
     bank_details: bankDetails,
     commercial_note: commercialNote,
+    show_cif_breakdown: showCifBreakdown,
     client: currentClient,
     items: lineItems,
     included_responsibilities: includedScope,
@@ -880,6 +1064,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     selectedClientId,
     shipper,
     shipmentMode,
+    showCifBreakdown,
     specMap,
     status,
     validityDays,
@@ -1023,21 +1208,6 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b pb-1">1. Exporter & Buyer Parties</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] text-slate-500 mb-1">Buyer Consignee *</label>
-                <select
-                  value={selectedClientId}
-                  onChange={(e) => setSelectedClientId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none"
-                  required
-                >
-                  <option value="">-- Choose Buyer --</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.company_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
                 <label className="block text-[10px] text-slate-500 mb-1">Signatory Representative (Exporter)</label>
                 <FastInput
                   type="text"
@@ -1046,6 +1216,110 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   className="w-full px-3 py-2 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-sky-500"
                 />
               </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-3 grid grid-cols-2 rounded-lg bg-white p-1 text-xs font-bold shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setBuyerEntryMode('existing')}
+                  className={`rounded-md px-3 py-2 transition ${buyerEntryMode === 'existing' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  Saved Buyer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBuyerEntryMode('manual')}
+                  className={`rounded-md px-3 py-2 transition ${buyerEntryMode === 'manual' ? 'bg-slate-900 text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}
+                >
+                  Manual Buyer
+                </button>
+              </div>
+
+              {buyerEntryMode === 'existing' ? (
+                <div>
+                  <label className="block text-[10px] text-slate-500 mb-1">Buyer Consignee *</label>
+                  <select
+                    value={selectedClientId}
+                    onChange={(e) => setSelectedClientId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none"
+                    required={buyerEntryMode === 'existing'}
+                  >
+                    <option value="">-- Choose Buyer --</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.company_name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-[11px] font-medium text-slate-500">
+                    Select a CRM buyer when this quote should link to an existing account.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Buyer Company *</label>
+                    <FastInput
+                      type="text"
+                      value={manualBuyer.company_name || ''}
+                      onChange={(value) => setManualBuyer((prev) => ({ ...prev, company_name: value }))}
+                      placeholder="e.g. ABC Imports GmbH"
+                      className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Contact Person</label>
+                    <FastInput
+                      type="text"
+                      value={manualBuyer.contact_name || ''}
+                      onChange={(value) => setManualBuyer((prev) => ({ ...prev, contact_name: value }))}
+                      placeholder="Buyer contact name"
+                      className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Email</label>
+                    <FastInput
+                      type="email"
+                      value={manualBuyer.contact_email || ''}
+                      onChange={(value) => setManualBuyer((prev) => ({ ...prev, contact_email: value }))}
+                      placeholder="buyer@example.com"
+                      className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Phone / WhatsApp</label>
+                    <FastInput
+                      type="text"
+                      value={manualBuyer.phone || ''}
+                      onChange={(value) => setManualBuyer((prev) => ({ ...prev, phone: value }))}
+                      placeholder="+971..."
+                      className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 mb-1">Destination Port</label>
+                    <FastInput
+                      type="text"
+                      value={manualBuyer.destination_port || ''}
+                      onChange={(value) => setManualBuyer((prev) => ({ ...prev, destination_port: value }))}
+                      placeholder="e.g. Jebel Ali Port, UAE"
+                      className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] text-slate-500 mb-1">Buyer Address</label>
+                    <FastTextarea
+                      value={manualBuyer.address || ''}
+                      onChange={(value) => setManualBuyer((prev) => ({ ...prev, address: value }))}
+                      placeholder="Full consignee billing or delivery address"
+                      rows={3}
+                      className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div className="md:col-span-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-semibold text-emerald-800">
+                    Manual buyers are saved automatically during quote save, then linked to the quotation, PDF, invoice, and CRM records.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1199,56 +1473,142 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-slate-400">Quantity (kg)</label>
-                        <FastInput
-                          type="number"
-                          value={item.quantity}
-                          onChange={(value) => handleUpdateLineItem(index, { quantity: parseInt(value) || 0 })}
-                          className="w-full px-2 py-1 border rounded bg-white"
-                        />
+                        <label className="block text-[10px] text-slate-400">Pricing Basis</label>
+                        <select
+                          value={getItemPricingBasis(item)}
+                          onChange={(event) => handleUpdateLineItem(index, { pricing_basis: event.target.value as QuoteItem['pricing_basis'] })}
+                          className="w-full px-2 py-1 border rounded bg-white font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        >
+                          <option value="kg">Per kg</option>
+                          <option value="package">Per package</option>
+                        </select>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-[10px] text-slate-400">Unit Price ({currency}/kg)</label>
-                        <FastInput
-                          type="number"
-                          step="0.01"
-                          value={item.unit_price}
-                          onChange={(value) => handleUpdateLineItem(index, { unit_price: parseFloat(value) || 0 })}
-                          className="w-full px-2 py-1 border rounded bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-400">Internal Cost ({currency}/kg)</label>
-                        <FastInput
-                          type="number"
-                          step="0.01"
-                          value={item.cost_price || ''}
-                          onChange={(value) => handleUpdateLineItem(index, { cost_price: parseFloat(value) || 0 })}
-                          className="w-full px-2 py-1 border rounded bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-400">Unit Weight (kg/bag)</label>
-                        <FastInput
-                          type="number"
-                          step="0.1"
-                          value={item.weight || 0}
-                          onChange={(value) => handleUpdateLineItem(index, { weight: parseFloat(value) || 0 })}
-                          className="w-full px-2 py-1 border rounded bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-400">Basis of Calculation</label>
-                        <FastInput
-                          type="text"
-                          value={item.basis_of_calculation || ''}
-                          onChange={() => undefined}
-                          disabled
-                          className="w-full px-2 py-1 border rounded bg-slate-100 text-slate-500 font-medium"
-                        />
+                    <div className="rounded-lg border border-slate-200 bg-white p-3">
+                      {getItemPricingBasis(item) === 'package' ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Package Quantity</label>
+                            <FastInput
+                              type="number"
+                              step="1"
+                              value={item.package_quantity || ''}
+                              onChange={(value) => handleUpdateLineItem(index, { package_quantity: parseFloat(value) || 0 })}
+                              placeholder="325"
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Kg Per Package</label>
+                            <FastInput
+                              type="number"
+                              step="0.01"
+                              value={item.weight || ''}
+                              onChange={(value) => handleUpdateLineItem(index, { weight: parseFloat(value) || 0 })}
+                              placeholder="40"
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Sell Price ({currency}/package)</label>
+                            <FastInput
+                              type="number"
+                              step="0.01"
+                              value={item.package_unit_price || ''}
+                              onChange={(value) => handleUpdateLineItem(index, { package_unit_price: parseFloat(value) || 0 })}
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Cost ({currency}/package)</label>
+                            <FastInput
+                              type="number"
+                              step="0.01"
+                              value={item.package_cost_price || ''}
+                              onChange={(value) => handleUpdateLineItem(index, { package_cost_price: parseFloat(value) || 0 })}
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Auto Net Weight</label>
+                            <FastInput
+                              type="text"
+                              value={`${new Intl.NumberFormat('en-US').format(getItemNetWeight(item))} kg`}
+                              onChange={() => undefined}
+                              disabled
+                              className="w-full px-2 py-1 border rounded bg-slate-100 text-slate-500 font-medium"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Quantity (kg)</label>
+                            <FastInput
+                              type="number"
+                              value={item.quantity}
+                              onChange={(value) => handleUpdateLineItem(index, { quantity: parseFloat(value) || 0 })}
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Unit Price ({currency}/kg)</label>
+                            <FastInput
+                              type="number"
+                              step="0.01"
+                              value={item.unit_price}
+                              onChange={(value) => handleUpdateLineItem(index, { unit_price: parseFloat(value) || 0 })}
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Internal Cost ({currency}/kg)</label>
+                            <FastInput
+                              type="number"
+                              step="0.01"
+                              value={item.cost_price || ''}
+                              onChange={(value) => handleUpdateLineItem(index, { cost_price: parseFloat(value) || 0 })}
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Package Count</label>
+                            <FastInput
+                              type="number"
+                              step="1"
+                              value={item.package_quantity || ''}
+                              onChange={(value) => handleUpdateLineItem(index, { package_quantity: parseFloat(value) || 0 })}
+                              placeholder="Optional"
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400">Kg Per Package</label>
+                            <FastInput
+                              type="number"
+                              step="0.01"
+                              value={item.weight || ''}
+                              onChange={(value) => handleUpdateLineItem(index, { weight: parseFloat(value) || 0 })}
+                              placeholder="Optional"
+                              className="w-full px-2 py-1 border rounded bg-white"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                        <div>
+                          <label className="block text-[10px] text-slate-400">Basis of Calculation</label>
+                          <FastInput
+                            type="text"
+                            value={item.basis_of_calculation || formatItemBasis(item)}
+                            onChange={(value) => handleUpdateLineItem(index, { basis_of_calculation: value })}
+                            className="w-full px-2 py-1 border rounded bg-white text-slate-600 font-medium"
+                          />
+                        </div>
+                        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700">
+                          {itemPricingBasisLabel[getItemPricingBasis(item)]} total: {formatCurrency(getItemSellTotal(item))}
+                        </div>
                       </div>
                     </div>
 
@@ -1268,7 +1628,27 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
           {/* Section 4: Transparent Cost Component Breakdown */}
           <div className="space-y-4">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b pb-1">4. Cost Breakdown Components ({currency})</h3>
+            <div className="flex flex-col gap-3 border-b pb-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">4. Cost Breakdown Components ({currency})</h3>
+                <p className="mt-1 text-[11px] font-medium text-slate-500">
+                  Control whether the Transparent CIF Cost Structure Breakdown appears in the quotation PDF.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCifBreakdown((value) => !value)}
+                className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition ${
+                  showCifBreakdown
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
+                }`}
+                aria-pressed={showCifBreakdown}
+              >
+                <span className={`h-2.5 w-2.5 rounded-full ${showCifBreakdown ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                {showCifBreakdown ? 'Show In Quote' : 'Hide In Quote'}
+              </button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
                 <label className="block text-slate-500 mb-1">Export Packaging (1.2)</label>
@@ -1415,21 +1795,39 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             </div>
           </details>
 
-          {/* Section 5: Page 2 specifications */}
+          {/* Section 6: Document notes and page 2 specifications */}
           <details className="group border border-slate-200 rounded-lg">
             <summary className="flex justify-between items-center p-3 font-medium text-xs text-slate-700 bg-slate-50 cursor-pointer hover:bg-slate-100 list-none select-none">
-              <span>Page 2: Export Responsibilities, Documentation, & Terms Editor</span>
+              <span>Quotation & Invoice Notes, Documentation, and Terms Editor</span>
               <span className="transition group-open:rotate-180">v</span>
             </summary>
             <div className="p-4 border-t border-slate-200 space-y-4 bg-white text-xs">
               
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Commercial Structure Footnote</label>
+              <div className="rounded-lg border border-sky-100 bg-sky-50 p-3">
+                <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <label className="block font-semibold text-slate-800">PDF Note Under Total Value</label>
+                    <p className="mt-1 text-[11px] font-medium text-slate-500">
+                      This edits the note shown under the total in quotation and commercial invoice PDFs.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCommercialNote(defaultCommercialNoteText)}
+                    className="inline-flex items-center justify-center rounded-md border border-sky-200 bg-white px-3 py-1.5 text-[11px] font-bold text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-100"
+                  >
+                    Use Default Note
+                  </button>
+                </div>
                 <FastTextarea
                   value={commercialNote}
                   onChange={setCommercialNote}
-                  className="w-full p-2 border rounded h-16 resize-none"
+                  placeholder={commercialNotePlaceholder}
+                  className="w-full min-h-24 resize-y rounded-md border border-sky-200 bg-white p-3 text-xs leading-5 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-300"
                 />
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Leave blank if you do not want this note printed.
+                </p>
               </div>
 
               {/* Responsibilities lists */}

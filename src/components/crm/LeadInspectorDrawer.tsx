@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { CrmLead, CrmStage, CrmPriority } from '../../lib/types/crm';
 import { X, Clock, Mail, Phone, Gauge, Globe2, PackageSearch, Target, Database } from 'lucide-react';
 
 interface LeadInspectorDrawerProps {
   lead: CrmLead | null;
   onClose: () => void;
-  onSaveLead: (updates: Partial<CrmLead>) => void;
+  onSaveLead: (updates: Partial<CrmLead>) => Promise<boolean | void> | boolean | void;
   activities: { id: string; lead_id?: string; type: string; title: string; details?: string; activity_date: string }[];
   leadScore?: number;
   velocityScore?: number;
@@ -31,10 +31,16 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [country, setCountry] = useState('');
+  const [productInterest, setProductInterest] = useState('');
+  const [estimatedValue, setEstimatedValue] = useState('');
+  const [nextFollowUp, setNextFollowUp] = useState('');
   const [priority, setPriority] = useState<CrmPriority>('Medium');
   const [stage, setStage] = useState<CrmStage>('New Lead');
   const [sequence, setSequence] = useState('');
   const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const drawerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,10 +49,16 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
       setContactName(lead.contact_name || '');
       setContactEmail(lead.contact_email || '');
       setPhone(lead.phone || '');
+      setCountry(lead.country || '');
+      setProductInterest(lead.product_interest || '');
+      setEstimatedValue(Number(lead.estimated_value || 0) > 0 ? String(lead.estimated_value) : '');
+      setNextFollowUp(lead.next_follow_up || '');
       setPriority(lead.priority || 'Medium');
       setStage(lead.stage || 'New Lead');
       setSequence(lead.sequence_enrolled || '');
       setNotes(lead.notes || '');
+      setError('');
+      setSaving(false);
     }
   }, [lead]);
 
@@ -59,15 +71,49 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
     return () => window.removeEventListener('keydown', handleEsc);
   }, [onClose]);
 
+  const leadActivities = useMemo(() => {
+    if (!lead) return [];
+    return activities.filter((act) => act.lead_id === lead.id);
+  }, [activities, lead]);
+
   if (!lead) return null;
 
-  const handleFieldBlur = (fieldName: keyof CrmLead, value: string) => {
-    onSaveLead({ [fieldName]: value });
+  const handleSave = async () => {
+    const trimmedCompanyName = companyName.trim();
+    if (!trimmedCompanyName) {
+      setError('Company name is required before saving this buyer lead.');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      const result = await onSaveLead({
+        company_name: trimmedCompanyName,
+        contact_name: contactName.trim(),
+        contact_email: contactEmail.trim(),
+        phone: phone.trim(),
+        country: country.trim(),
+        product_interest: productInterest.trim(),
+        estimated_value: Number(estimatedValue) || 0,
+        priority,
+        stage,
+        sequence_enrolled: sequence,
+        next_follow_up: nextFollowUp,
+        notes
+      });
+      if (result !== false) onClose();
+    } catch (saveError) {
+      console.warn('Lead save failed:', saveError);
+      setError(saveError instanceof Error ? saveError.message : 'Could not save this lead. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const leadActivities = activities.filter((act) => act.lead_id === lead.id);
   const leadSource = (lead as CrmLead & { data_source?: string }).data_source || 'Uncategorized';
   const scoreTone = leadScore >= 70 ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : leadScore >= 50 ? 'text-sky-700 bg-sky-50 border-sky-100' : 'text-slate-700 bg-slate-50 border-slate-200';
+  const isNewLead = lead.id.startsWith('new-');
 
   return (
     <div className="fixed inset-0 z-40 overflow-hidden flex justify-end" role="dialog" aria-modal="true">
@@ -86,7 +132,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-950 text-white">
           <div>
             <span className="text-[9px] font-black uppercase text-sky-400 tracking-wider">Buyer 360 Workspace</span>
-            <h3 className="text-sm font-extrabold truncate max-w-[320px]">{companyName}</h3>
+            <h3 className="text-sm font-extrabold truncate max-w-[320px]">{isNewLead ? 'Add Buyer / Lead' : companyName}</h3>
           </div>
           <button
             type="button"
@@ -121,7 +167,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                   <Globe2 className="h-3.5 w-3.5" />
                   Market
                 </div>
-                <p className="mt-1 font-black">{lead.country || 'Global'}</p>
+                <p className="mt-1 font-black">{country || 'Global'}</p>
                 <p className="mt-1 text-[10px] font-bold text-slate-500">{bestSendWindow}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
@@ -138,7 +184,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 <PackageSearch className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
                 <div className="min-w-0">
                   <p className="text-[10px] font-black uppercase text-slate-400">Product Interest</p>
-                  <p className="mt-1 font-bold text-slate-900 break-words">{lead.product_interest || 'General Sheshaan export range'}</p>
+                  <p className="mt-1 font-bold text-slate-900 break-words">{productInterest || 'General Sheshaan export range'}</p>
                 </div>
               </div>
             </div>
@@ -153,7 +199,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
               </button>
               <button
                 type="button"
-                disabled={!lead.phone}
+                disabled={!phone}
                 onClick={() => onSendWhatsApp?.(lead)}
                 className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-600 text-xs font-black text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -172,8 +218,8 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
-                onBlur={() => handleFieldBlur('company_name', companyName)}
                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 bg-white font-bold"
+                placeholder="Buyer company name"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -183,8 +229,8 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                   type="text"
                   value={contactName}
                   onChange={(e) => setContactName(e.target.value)}
-                  onBlur={() => handleFieldBlur('contact_name', contactName)}
                   className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 bg-white"
+                  placeholder="Contact name"
                 />
               </div>
               <div>
@@ -193,8 +239,8 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  onBlur={() => handleFieldBlur('phone', phone)}
                   className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 bg-white font-mono"
+                  placeholder="+46..."
                 />
               </div>
             </div>
@@ -204,8 +250,40 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 type="email"
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
-                onBlur={() => handleFieldBlur('contact_email', contactEmail)}
                 className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 bg-white"
+                placeholder="buyer@example.com"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-500 font-bold mb-1 uppercase text-[10px]">Country</label>
+                <input
+                  type="text"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 bg-white"
+                  placeholder="Sweden"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 font-bold mb-1 uppercase text-[10px]">Estimated Value</label>
+                <input
+                  type="number"
+                  value={estimatedValue}
+                  onChange={(e) => setEstimatedValue(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 bg-white"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-slate-500 font-bold mb-1 uppercase text-[10px]">Product Interest</label>
+              <input
+                type="text"
+                value={productInterest}
+                onChange={(e) => setProductInterest(e.target.value)}
+                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 bg-white"
+                placeholder="Cumin Seeds, Spices, General export range"
               />
             </div>
           </div>
@@ -221,7 +299,6 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                   value={stage}
                   onChange={(e) => {
                     setStage(e.target.value as CrmStage);
-                    onSaveLead({ stage: e.target.value as CrmStage });
                   }}
                   className="w-full h-8 px-2 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-sky-500 bg-white font-bold"
                 >
@@ -240,7 +317,6 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                   value={priority}
                   onChange={(e) => {
                     setPriority(e.target.value as CrmPriority);
-                    onSaveLead({ priority: e.target.value as CrmPriority });
                   }}
                   className="w-full h-8 px-2 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-sky-500 bg-white font-bold"
                 >
@@ -260,7 +336,6 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                   value={sequence}
                   onChange={(e) => {
                     setSequence(e.target.value);
-                    onSaveLead({ sequence_enrolled: e.target.value });
                   }}
                   className="w-full h-8 px-2 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-sky-500 bg-white font-bold"
                 >
@@ -274,8 +349,8 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 <label className="block text-slate-500 font-bold mb-1 uppercase text-[10px]">Follow-up Schedule</label>
                 <input
                   type="date"
-                  value={lead.next_follow_up || ''}
-                  onChange={(e) => onSaveLead({ next_follow_up: e.target.value })}
+                  value={nextFollowUp}
+                  onChange={(e) => setNextFollowUp(e.target.value)}
                   className="w-full h-8 px-2 border border-slate-200 rounded-lg text-slate-800 outline-none focus:border-sky-500 bg-white font-bold"
                 />
               </div>
@@ -289,7 +364,6 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
               rows={4}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              onBlur={() => handleFieldBlur('notes', notes)}
               className="w-full p-2.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-sky-500 bg-slate-50/50"
               placeholder="Log outreach call outcomes, freight quote adjustments, or inspection milestones here..."
             />
@@ -317,6 +391,31 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 ))
               )}
             </div>
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-slate-200 bg-white p-3">
+          {error && (
+            <div className="mb-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700">
+              {error}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 rounded-lg bg-slate-950 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? 'Saving Lead...' : isNewLead ? 'Save Buyer / Lead' : 'Save Changes'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       </div>

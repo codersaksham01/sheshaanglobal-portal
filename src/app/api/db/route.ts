@@ -17,6 +17,7 @@ const emptyDB = {
   freight_presets: [],
   quotes: [],
   quote_items: [],
+  blogs: [],
   leads: [],
   activities: [],
   freight_rate_history: [],
@@ -195,6 +196,7 @@ export async function POST(req: NextRequest) {
           swift_code: 'SBININBBXXX'
         },
         commercial_note: 'Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.',
+        show_cif_breakdown: true,
         included_responsibilities: [
           'Complete raw product cost & export packing in 40 kg Jute Bags',
           'Inland haulage and transportation from factory to Mundra Port',
@@ -251,6 +253,10 @@ export async function POST(req: NextRequest) {
         unit_price: 228.27,
         cost_price: 218.27,
         weight: 1.0,
+        pricing_basis: 'kg',
+        package_quantity: 325,
+        package_unit_price: 9130.8,
+        package_cost_price: 8730.8,
         hs_code: '09093129',
         packing_container: '325 Jute Bags (40 kg Net / Bag)\n1 x 20ft FCL',
         basis_of_calculation: 'Per kg (13,000 kg)'
