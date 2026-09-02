@@ -360,7 +360,7 @@ begin
     return 'Closed';
   end if;
 
-  if coalesce(lead_email, '') = '' or note_text like '%invalid email%' or note_text like '%verify email%' then
+  if coalesce(trim(lead_email), '') = '' then
     return 'Needs Email Fix';
   end if;
 

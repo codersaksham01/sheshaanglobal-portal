@@ -30,6 +30,7 @@ const emptyDB = {
 };
 
 const allowedTables = new Set(Object.keys(emptyDB));
+type LocalTable = keyof typeof emptyDB;
 
 function readDB() {
   try {
@@ -518,8 +519,45 @@ export async function DELETE(req: NextRequest) {
   const db = readDB();
   db[table] = (db[table] || []).filter((r: any) => r.id !== id);
 
+  const clearRelation = (targetTable: LocalTable, field: string) => {
+    db[targetTable] = (db[targetTable] || []).map((record: any) => {
+      if (record?.[field] !== id) return record;
+      return { ...record, [field]: null, updated_at: new Date().toISOString() };
+    });
+  };
+
+  if (table === 'clients') {
+    clearRelation('quotes', 'client_id');
+    clearRelation('invoices', 'client_id');
+    clearRelation('shipments', 'client_id');
+    clearRelation('leads', 'client_id');
+    clearRelation('tasks', 'client_id');
+    clearRelation('activities', 'client_id');
+  }
+
+  if (table === 'leads') {
+    clearRelation('tasks', 'lead_id');
+    clearRelation('activities', 'lead_id');
+  }
+
   if (table === 'quotes') {
     db.quote_items = (db.quote_items || []).filter((qi: any) => qi.quote_id !== id);
+    clearRelation('invoices', 'quote_id');
+    clearRelation('shipments', 'quote_id');
+    clearRelation('tasks', 'quote_id');
+    clearRelation('activities', 'quote_id');
+    clearRelation('document_checklists', 'quote_id');
+  }
+
+  if (table === 'invoices') {
+    clearRelation('shipments', 'invoice_id');
+    clearRelation('tasks', 'invoice_id');
+    clearRelation('document_checklists', 'invoice_id');
+  }
+
+  if (table === 'shipments') {
+    clearRelation('tasks', 'shipment_id');
+    clearRelation('document_checklists', 'shipment_id');
   }
 
   if (!writeDB(db)) {

@@ -287,6 +287,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [currency, setCurrency] = useState<'USD' | 'INR'>('INR');
   const [originCountry, setOriginCountry] = useState('India');
   const [loadingPort, setLoadingPort] = useState('Mundra Port, India');
+  const [destinationPort, setDestinationPort] = useState('');
   const [shipmentMode, setShipmentMode] = useState('Sea Freight (1x20ft FCL)');
   const [paymentTerms, setPaymentTerms] = useState('50% Advance, 50% vs Shipping Bill');
   const [validityDays, setValidityDays] = useState<number>(15);
@@ -329,6 +330,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     currency,
     originCountry,
     loadingPort,
+    destinationPort,
     shipmentMode,
     paymentTerms,
     validityDays,
@@ -374,6 +376,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setCurrency(draft.currency || 'INR');
     setOriginCountry(draft.originCountry || 'India');
     setLoadingPort(draft.loadingPort || 'Mundra Port, India');
+    setDestinationPort(draft.destinationPort || '');
     setShipmentMode(draft.shipmentMode || 'Sea Freight (1x20ft FCL)');
     setPaymentTerms(draft.paymentTerms || '50% Advance, 50% vs Shipping Bill');
     setValidityDays(Number(draft.validityDays) || 15);
@@ -444,6 +447,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setCurrency('INR');
       setOriginCountry('India');
       setLoadingPort('Mundra Port, India');
+      setDestinationPort('');
       setShipmentMode('Sea Freight (1x20ft FCL)');
       setPaymentTerms('50% Advance, 50% vs Shipping Bill');
       setValidityDays(15);
@@ -497,6 +501,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     currency,
     originCountry,
     loadingPort,
+    destinationPort,
     shipmentMode,
     paymentTerms,
     validityDays,
@@ -577,6 +582,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         setCurrency(q.currency || 'INR');
         setOriginCountry(q.origin_country || 'India');
         setLoadingPort(q.loading_port || 'Mundra Port, India');
+        setDestinationPort((q.client as Client | undefined)?.destination_port || '');
         setShipmentMode(q.shipment_mode || 'Sea Freight (1x20ft FCL)');
         setPaymentTerms(q.payment_terms || '50% Advance, 50% vs Shipping Bill');
         setValidityDays(Number(q.validity_days) || 15);
@@ -763,6 +769,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     if (!preset) return;
 
     setLoadingPort(preset.loading_port);
+    setDestinationPort(preset.destination_port || '');
     setShipmentMode(preset.shipment_mode);
     setFreightCost(Number(preset.freight_cost) || 0);
     setInsuranceCost(Number(preset.insurance_cost) || 0);
@@ -817,7 +824,19 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       if (!selectedClientId) {
         throw new Error('Please select a Buyer/Client.');
       }
-      return clients.find((client) => client.id === selectedClientId) || ({ id: selectedClientId } as Client);
+      const selectedClient = clients.find((client) => client.id === selectedClientId);
+      const trimmedDestinationPort = destinationPort.trim();
+      if (selectedClient && trimmedDestinationPort && trimmedDestinationPort !== (selectedClient.destination_port || '').trim()) {
+        const { error } = await supabase
+          .from('clients')
+          .update({ destination_port: trimmedDestinationPort })
+          .eq('id', selectedClient.id);
+        if (error) throw error;
+        const updatedClient = { ...selectedClient, destination_port: trimmedDestinationPort };
+        setClients((prev) => prev.map((client) => client.id === selectedClient.id ? updatedClient : client));
+        return updatedClient;
+      }
+      return selectedClient || ({ id: selectedClientId, destination_port: trimmedDestinationPort } as Client);
     }
 
     const companyName = (manualBuyer.company_name || '').trim();
@@ -834,6 +853,18 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     });
 
     if (existingClient) {
+      const trimmedDestinationPort = (destinationPort || manualBuyer.destination_port || '').trim();
+      if (trimmedDestinationPort && trimmedDestinationPort !== (existingClient.destination_port || '').trim()) {
+        const { error } = await supabase
+          .from('clients')
+          .update({ destination_port: trimmedDestinationPort })
+          .eq('id', existingClient.id);
+        if (error) throw error;
+        const updatedClient = { ...existingClient, destination_port: trimmedDestinationPort };
+        setClients((prev) => prev.map((client) => client.id === existingClient.id ? updatedClient : client));
+        setSelectedClientId(updatedClient.id);
+        return updatedClient;
+      }
       setSelectedClientId(existingClient.id);
       return existingClient;
     }
@@ -844,7 +875,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       contact_name: (manualBuyer.contact_name || '').trim(),
       contact_email: (manualBuyer.contact_email || '').trim(),
       phone: (manualBuyer.phone || '').trim(),
-      destination_port: (manualBuyer.destination_port || '').trim(),
+      destination_port: (destinationPort || manualBuyer.destination_port || '').trim(),
       products_dealing: manualBuyer.products_dealing || []
     };
 
@@ -944,9 +975,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         cost_price: item.cost_price || 0,
         weight: item.weight || 0,
         pricing_basis: getItemPricingBasis(item),
-        package_quantity: item.package_quantity || null,
-        package_unit_price: item.package_unit_price || null,
-        package_cost_price: item.package_cost_price || null,
+        package_quantity: Number(item.package_quantity || 0),
+        package_unit_price: Number(item.package_unit_price || 0),
+        package_cost_price: Number(item.package_cost_price || 0),
         hs_code: item.hs_code,
         packing_container: item.packing_container,
         basis_of_calculation: item.basis_of_calculation || formatItemBasis(item)
@@ -1001,14 +1032,19 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       contact_name: (manualBuyer.contact_name || '').trim(),
       contact_email: (manualBuyer.contact_email || '').trim(),
       phone: (manualBuyer.phone || '').trim(),
-      destination_port: (manualBuyer.destination_port || '').trim(),
+      destination_port: (destinationPort || manualBuyer.destination_port || '').trim(),
       products_dealing: manualBuyer.products_dealing || []
     };
-  }, [buyerEntryMode, manualBuyer, selectedClientId]);
+  }, [buyerEntryMode, destinationPort, manualBuyer, selectedClientId]);
 
   const currentClient = useMemo(
-    () => manualPreviewClient || clients.find(c => c.id === selectedClientId),
-    [clients, manualPreviewClient, selectedClientId]
+    () => {
+      const selectedClient = manualPreviewClient || clients.find(c => c.id === selectedClientId);
+      if (!selectedClient) return undefined;
+      const trimmedDestinationPort = destinationPort.trim();
+      return trimmedDestinationPort ? { ...selectedClient, destination_port: trimmedDestinationPort } : selectedClient;
+    },
+    [clients, destinationPort, manualPreviewClient, selectedClientId]
   );
   const tempQuoteForPDF: Quote = useMemo(() => ({
     id: quoteId || 'temp',
@@ -1240,7 +1276,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   <label className="block text-[10px] text-slate-500 mb-1">Buyer Consignee *</label>
                   <select
                     value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
+                    onChange={(e) => {
+                      const nextClientId = e.target.value;
+                      setSelectedClientId(nextClientId);
+                      const nextClient = clients.find((client) => client.id === nextClientId);
+                      setDestinationPort(nextClient?.destination_port || '');
+                    }}
                     className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none"
                     required={buyerEntryMode === 'existing'}
                   >
@@ -1300,7 +1341,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                     <FastInput
                       type="text"
                       value={manualBuyer.destination_port || ''}
-                      onChange={(value) => setManualBuyer((prev) => ({ ...prev, destination_port: value }))}
+                      onChange={(value) => {
+                        setManualBuyer((prev) => ({ ...prev, destination_port: value }));
+                        setDestinationPort(value);
+                      }}
                       placeholder="e.g. Jebel Ali Port, UAE"
                       className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500"
                     />
@@ -1389,11 +1433,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                 <label className="block text-slate-500 mb-1">Discharge Destination Port</label>
                 <FastInput
                   type="text"
-                  value={currentClient?.destination_port || 'N/A'}
-                  onChange={() => undefined}
-                  disabled
-                  className="w-full px-3 py-1.5 border border-slate-200 bg-slate-100 text-slate-500 rounded"
+                  value={destinationPort || currentClient?.destination_port || ''}
+                  onChange={setDestinationPort}
+                  placeholder="e.g. Jebel Ali Port, UAE"
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500"
                 />
+                <p className="mt-1 text-[10px] text-slate-400">Used in quotation, invoice, packing list, and CIF PDF totals.</p>
               </div>
               <div>
                 <label className="block text-slate-500 mb-1">Quotation Validity (Days)</label>

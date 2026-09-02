@@ -270,22 +270,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#0f172a', // slate-900 (luxurious dark slate)
     paddingVertical: 5.5,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     alignItems: 'center',
   },
   tableHeaderCol: {
     color: '#ffffff',
-    fontSize: 7,
+    fontSize: 6.2,
     fontWeight: 'bold',
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0,
+    lineHeight: 1.2,
   },
   tableRow: {
     flexDirection: 'row',
     borderBottomWidth: 0.5,
     borderBottomColor: '#e2e8f0',
     paddingVertical: 5.5,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     alignItems: 'center',
     backgroundColor: '#ffffff',
   },
@@ -294,14 +295,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: '#e2e8f0',
     paddingVertical: 5.5,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     alignItems: 'center',
     backgroundColor: '#f8fafc',
   },
   tableCol: {
-    fontSize: 7.2,
+    fontSize: 6.7,
     color: '#334155',
-    lineHeight: 1.35,
+    lineHeight: 1.28,
   },
   tableColDescBlock: {
     flexDirection: 'column',
@@ -320,13 +321,13 @@ const styles = StyleSheet.create({
   },
 
   // Table Column Widths (Commercial offer)
-  colSr: { width: '5%' },
-  colDesc: { width: '40%' },
-  colHs: { width: '10%', textAlign: 'center' },
-  colPack: { width: '18%' },
-  colQty: { width: '10%', textAlign: 'right' },
-  colPrice: { width: '12%', textAlign: 'right' },
-  colTotal: { width: '15%', textAlign: 'right' },
+  colSr: { width: '4%' },
+  colDesc: { width: '32%' },
+  colHs: { width: '8%', textAlign: 'center' },
+  colPack: { width: '17%' },
+  colQty: { width: '14%', textAlign: 'right', paddingRight: 4 },
+  colPrice: { width: '12%', textAlign: 'right', paddingLeft: 4 },
+  colTotal: { width: '13%', textAlign: 'right' },
 
   // Table Column Widths (Packing List - no pricing)
   colPlPl: { width: '22%' },
@@ -987,9 +988,11 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
             const packageQuantity = getItemPackageQuantity(item);
             const packageWeight = getItemPackageWeight(item);
             const itemTotal = getItemSellTotal(item);
-            const unitPriceLabel = pricingBasis === 'package'
-              ? `${quote.currency === 'INR' ? 'INR' : '$'} ${(Number(item.package_unit_price) || 0).toFixed(2)} / pkg`
-              : `${quote.currency === 'INR' ? 'INR' : '$'} ${(Number(item.unit_price) || 0).toFixed(2)} / kg`;
+            const currencyLabel = quote.currency === 'INR' ? 'INR' : '$';
+            const unitPriceAmount = pricingBasis === 'package'
+              ? Number(item.package_unit_price) || 0
+              : Number(item.unit_price) || 0;
+            const unitPriceBasis = pricingBasis === 'package' ? 'pkg' : 'kg';
             
             const descLines = (item.description || '').split('\n');
             const mainTitle = descLines[0];
@@ -1013,13 +1016,16 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                     
                     <Text style={[styles.tableCol, styles.colQty]}>
                       {pricingBasis === 'package' && packageQuantity > 0
-                        ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} pkg${packageWeight ? ` x ${packageWeight} kg` : ''}`
+                        ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} packages`
                         : `${new Intl.NumberFormat('en-US').format(netWeight)} kg`}{"\n"}
-                      {`(${(netWeight / 1000).toFixed(2)} MT)`}
+                      {pricingBasis === 'package' && packageWeight ? `${packageWeight} kg/pkg` : ''}{"\n"}
+                      {`${new Intl.NumberFormat('en-US').format(netWeight)} kg (${(netWeight / 1000).toFixed(2)} MT)`}
                     </Text>
                     
                     <Text style={[styles.tableCol, styles.colPrice]}>
-                      {unitPriceLabel}
+                      {currencyLabel}{"\n"}
+                      {unitPriceAmount.toFixed(2)}{"\n"}
+                      / {unitPriceBasis}
                     </Text>
                     
                     <Text style={[styles.tableCol, styles.colTotal, { fontWeight: 'bold' }]}>

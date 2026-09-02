@@ -126,13 +126,27 @@ const getQuoteItemQuantityLabel = (item: QuoteItem) => (
     : `${Number(item.quantity || 0).toLocaleString()} kg`
 );
 
-type TabKey = 'overview' | 'actionQueue' | 'crm' | 'dataSources' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
+type TabKey = 'overview' | 'actionQueue' | 'crm' | 'dataSources' | 'dataCleanup' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
 type ImportDataSource = 'Embassy Data' | 'Custom Researched Data';
 type LeadTrackingAction = 'email_sent' | 'followup_1' | 'followup_2' | 'followup_3' | 'responded' | 'followup_due';
 type BuyerSortKey = 'name' | 'phone_asc' | 'phone_desc' | 'followup_first' | 'reachout_first' | 'waiting_first' | 'responded_first';
+type CleanupIssueFilter = 'All' | 'Email Issue' | 'Contact Issue' | 'Email + Contact';
+type CleanupRecord = {
+  id: string;
+  company: string;
+  source: 'Buyer' | 'Lead' | 'Buyer + Lead';
+  country: string;
+  email: string;
+  contact: string;
+  phone: string;
+  issue: CleanupIssueFilter;
+  reason: string;
+  clientId?: string;
+  leadId?: string;
+};
 
 const blankClient: Partial<Client> = {
   company_name: '',
@@ -1247,6 +1261,9 @@ export const Dashboard: React.FC = () => {
   const [sourceActionFilter, setSourceActionFilter] = useState('All');
   const [sourceSortKey, setSourceSortKey] = useState<'source' | 'action' | 'country' | 'followup'>('source');
   const [sourceVisibleCount, setSourceVisibleCount] = useState(sourceListPageSize);
+  const [cleanupSearchQuery, setCleanupSearchQuery] = useState('');
+  const [cleanupIssueFilter, setCleanupIssueFilter] = useState<CleanupIssueFilter>('All');
+  const [selectedCleanupRecordIds, setSelectedCleanupRecordIds] = useState<string[]>([]);
   const [crmColumnVisibleCounts, setCrmColumnVisibleCounts] = useState<Record<string, number>>({});
   const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
   const [activityForm, setActivityForm] = useState<Partial<TimelineActivity>>(blankActivity);
@@ -1619,6 +1636,24 @@ export const Dashboard: React.FC = () => {
   const leadEmailStatus = (lead: Lead) => leadNoteValue(lead, 'Email Status') || 'Not tracked';
   const leadResponseStatus = (lead: Lead) => leadNoteValue(lead, 'Response Received') || 'No';
   const leadNextAction = (lead: Lead) => leadNoteValue(lead, 'Next Action') || 'Review lead';
+  const extractContactEmails = (value?: string) => Array.from(new Set(
+    ((value || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).map((email) => email.toLowerCase())
+  ));
+  const hasContactableEmail = (value?: string) => extractContactEmails(value).length > 0;
+  const hasEmailQualityIssue = (value?: string) => !hasContactableEmail(value);
+  const hasContactQualityIssue = (contact?: string, phone?: string) => !(contact || '').trim() && !(phone || '').trim();
+  const isContactNameNoise = (value?: string) => {
+    const text = (value || '').trim();
+    if (!text) return true;
+    const digits = text.replace(/\D/g, '');
+    const hasEmail = extractContactEmails(text).length > 0;
+    const hasUrl = /(https?:\/\/|www\.|\.com\b|\.net\b|\.org\b)/i.test(text);
+    const hasPhonePattern = /(\+\d{1,4}|\(\d{2,5}\)|\d{3,}[\s.-]\d{3,})/.test(text);
+    const hasPersonLetterPattern = /[a-z]{2,}\s+[a-z]{2,}/i.test(text);
+    return hasEmail || hasUrl || (digits.length >= 7 && !hasPersonLetterPattern) || hasPhonePattern;
+  };
+  const cleanContactName = (value?: string) => isContactNameNoise(value) ? '' : (value || '').trim();
+  const buyerGreetingName = (contactName?: string, companyName?: string) => cleanContactName(contactName) || (companyName || '').trim() || 'Buyer';
   const leadDataSource = (lead: Lead): ImportDataSource | 'Uncategorized' => {
     const source = leadNoteValue(lead, 'Data Source').toLowerCase();
     if (source.includes('embassy')) return 'Embassy Data';
@@ -1634,7 +1669,7 @@ export const Dashboard: React.FC = () => {
   const leadFollowUpDue = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() <= todayEnd && !['Won', 'Lost'].includes(lead.stage));
   const leadNextFollowUpScheduled = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() > todayEnd && !leadResponded(lead) && !['Won', 'Lost'].includes(lead.stage));
   const leadNeedsFirstReach = (lead: Lead) => !leadHasOutreach(lead) && !['Won', 'Lost'].includes(lead.stage);
-  const leadMissingEmail = (lead: Lead) => !lead.contact_email || leadEmailStatus(lead).toLowerCase().includes('invalid');
+  const leadMissingEmail = (lead: Lead) => hasEmailQualityIssue(lead.contact_email);
   const leadNextActionRequiresFollowUp = (lead: Lead) => {
     const nextAction = leadNextAction(lead).toLowerCase();
     return (
@@ -1649,7 +1684,7 @@ export const Dashboard: React.FC = () => {
   const leadActionCategory = useCallback((lead: Lead) => {
     const nextAction = leadNextAction(lead).toLowerCase();
     if (lead.stage === 'Won' || lead.stage === 'Lost') return 'Closed';
-    if (leadMissingEmail(lead) || nextAction.includes('fix') || nextAction.includes('verify email')) return 'Needs Email Fix';
+    if (leadMissingEmail(lead)) return 'Needs Email Fix';
     if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
     if (leadResponded(lead)) return 'Responded / Qualify';
     if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
@@ -1759,7 +1794,7 @@ export const Dashboard: React.FC = () => {
           if (!client) {
             const newClientPayload = {
               company_name: payloadObj.company_name,
-              contact_name: payloadObj.contact_name || '',
+              contact_name: cleanContactName(payloadObj.contact_name),
               contact_email: payloadObj.contact_email || '',
               destination_port: payloadObj.country || 'Not specified',
               address: payloadObj.country ? `Country: ${payloadObj.country}` : '',
@@ -1786,7 +1821,7 @@ export const Dashboard: React.FC = () => {
           if (client) {
             await supabase.from('clients').update({
               company_name: payloadObj.company_name || client.company_name,
-              contact_name: payloadObj.contact_name !== undefined ? payloadObj.contact_name : client.contact_name,
+              contact_name: payloadObj.contact_name !== undefined ? cleanContactName(payloadObj.contact_name) : client.contact_name,
               contact_email: payloadObj.contact_email !== undefined ? payloadObj.contact_email : client.contact_email,
               phone: payloadObj.phone !== undefined ? payloadObj.phone : client.phone,
               destination_port: payloadObj.country || client.destination_port
@@ -2562,10 +2597,11 @@ export const Dashboard: React.FC = () => {
     const selectedProduct = options.product === undefined ? templatePreviewProduct : options.product;
     const productName = selectedProduct?.sku || quote?.items?.[0]?.sku || 'our complete export product range';
     const productDescription = selectedProduct?.description?.split('\n')[0] || 'quality export-ready spices, agro commodities, and customized sourcing support';
+    const greetingName = buyerGreetingName(buyer?.contact_name, buyer?.company_name);
     return text
-      .replaceAll('{{buyer_name}}', buyer?.contact_name || buyer?.company_name || 'Buyer')
+      .replaceAll('{{buyer_name}}', greetingName)
       .replaceAll('{{company_name}}', buyer?.company_name || 'Buyer Company')
-      .replaceAll('{{client_name}}', buyer?.contact_name || buyer?.company_name || 'Buyer')
+      .replaceAll('{{client_name}}', greetingName)
       .replaceAll('{{quote_number}}', quote?.quote_number || 'SG-CIF-XXXX-0000')
       .replaceAll('{{product_name}}', productName)
       .replaceAll('{{product_description}}', productDescription)
@@ -2581,8 +2617,9 @@ export const Dashboard: React.FC = () => {
     const client = clients.find((item) => item.id === lead.client_id);
     const quote = quotes.find((item) => item.client_id === client?.id);
     const shipment = shipments.find((item) => item.client_id === client?.id || item.quote_id === quote?.id);
+    const greetingName = buyerGreetingName(lead.contact_name || client?.contact_name, lead.company_name || client?.company_name);
     return text
-      .replaceAll('{{buyer_name}}', lead.contact_name || client?.contact_name || lead.company_name)
+      .replaceAll('{{buyer_name}}', greetingName)
       .replaceAll('{{company_name}}', lead.company_name || client?.company_name || 'Buyer Company')
       .replaceAll('{{quote_number}}', quote?.quote_number || 'your quotation')
       .replaceAll('{{product_name}}', lead.product_interest || quote?.items?.[0]?.sku || 'our export product')
@@ -2594,7 +2631,8 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleLeadEmail = useCallback(async (lead: Lead, mode: 'First Reach' | 'Follow-up') => {
-    if (!lead.contact_email) {
+    const cleanEmails = extractContactEmails(lead.contact_email);
+    if (!cleanEmails.length) {
       alert('Please add a lead email address before sending.');
       return;
     }
@@ -2627,7 +2665,7 @@ export const Dashboard: React.FC = () => {
           };
 
     // 1. Launch email client instantly (non-blocking)
-    const mailtoUrl = `mailto:${encodeURIComponent(lead.contact_email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const mailtoUrl = `mailto:${cleanEmails.join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     iframe.src = mailtoUrl;
@@ -2654,12 +2692,12 @@ export const Dashboard: React.FC = () => {
         lead_id: lead.id,
         type: 'Email',
         title: `${mode} email prepared for ${lead.company_name}`,
-        details: `Template: ${template?.name || 'Default message'}\nTo: ${lead.contact_email}`,
+        details: `Template: ${template?.name || 'Default message'}\nTo: ${cleanEmails.join(', ')}`,
         activity_date: today,
         owner: lead.owner || 'Sana Zeba'
       }, resetActivityForm);
     })();
-  }, [resolveCrmEmailTemplate, replaceLeadTemplateVars, saveRecord, fetchData]);
+  }, [extractContactEmails, resolveCrmEmailTemplate, replaceLeadTemplateVars, saveRecord, fetchData]);
 
   const handleLeadWhatsApp = useCallback(async (lead: Lead) => {
     if (!lead.phone) {
@@ -3023,7 +3061,7 @@ export const Dashboard: React.FC = () => {
       id: editingClientId || undefined,
       company_name: clientForm.company_name,
       address: clientForm.address || '',
-      contact_name: clientForm.contact_name || '',
+      contact_name: cleanContactName(clientForm.contact_name),
       contact_email: clientForm.contact_email || '',
       destination_port: clientForm.destination_port,
       phone: clientForm.phone || '',
@@ -3278,7 +3316,7 @@ export const Dashboard: React.FC = () => {
         clientPayloads.push({
           id: clientId,
           company_name: company,
-          contact_name: String(row['Contact Person'] || '').trim(),
+          contact_name: cleanContactName(String(row['Contact Person'] || '')),
           contact_email: email,
           destination_port: String(row.Country || '').trim() || 'Not specified',
           address: [
@@ -3294,7 +3332,7 @@ export const Dashboard: React.FC = () => {
         leadPayloads.push({
           id: leadId,
           company_name: company,
-          contact_name: String(row['Contact Person'] || '').trim(),
+          contact_name: cleanContactName(String(row['Contact Person'] || '')),
           contact_email: email,
           phone,
           country: String(row.Country || '').trim(),
@@ -3782,7 +3820,7 @@ export const Dashboard: React.FC = () => {
     { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
     { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Waiting Reply') },
     { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Responded / Qualify') },
-    { label: 'Needs Email Fix', description: 'Missing or invalid email', tone: 'red' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Needs Email Fix') },
+    { label: 'Needs Email Fix', description: 'No contactable email found', tone: 'red' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Needs Email Fix') },
     { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Review') },
     { label: 'Won / Approved', description: 'Pipeline deals successfully won', tone: 'emerald' as const, leads: searchedCrmLeads.filter((lead) => lead.stage === 'Won') },
     { label: 'Lost / Declined', description: 'Pipeline deals lost/declined', tone: 'rose' as const, leads: searchedCrmLeads.filter((lead) => lead.stage === 'Lost') }
@@ -3852,6 +3890,89 @@ export const Dashboard: React.FC = () => {
     reachout: sourceFilteredLeads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out').length
   }), [leads, sourceFilteredLeads]);
   const visibleSourceLeads = useMemo(() => sourceFilteredLeads.slice(0, sourceVisibleCount), [sourceFilteredLeads, sourceVisibleCount]);
+
+  const cleanupRecords = useMemo<CleanupRecord[]>(() => {
+    const records: CleanupRecord[] = [];
+    const coveredClientIds = new Set<string>();
+    const buildIssue = (emailIssue: boolean, contactIssue: boolean): CleanupIssueFilter => {
+      if (emailIssue && contactIssue) return 'Email + Contact';
+      if (emailIssue) return 'Email Issue';
+      if (contactIssue) return 'Contact Issue';
+      return 'All';
+    };
+
+    leads.forEach((lead) => {
+      const linkedClient = lead.client_id ? clients.find((client) => client.id === lead.client_id) : undefined;
+      const email = lead.contact_email || linkedClient?.contact_email || '';
+      const contact = lead.contact_name || linkedClient?.contact_name || '';
+      const phone = lead.phone || linkedClient?.phone || '';
+      const emailIssue = hasEmailQualityIssue(email);
+      const contactIssue = hasContactQualityIssue(contact, phone);
+      if (!emailIssue && !contactIssue) return;
+
+      if (linkedClient?.id) coveredClientIds.add(linkedClient.id);
+      const issue = buildIssue(emailIssue, contactIssue);
+      records.push({
+        id: `lead-${lead.id}`,
+        company: lead.company_name || linkedClient?.company_name || 'Unnamed lead',
+        source: linkedClient ? 'Buyer + Lead' : 'Lead',
+        country: lead.country || (linkedClient ? buyerCountry(linkedClient) : 'Uncategorized'),
+        email,
+        contact,
+        phone,
+        issue,
+        reason: [
+          emailIssue ? 'No contactable email found' : '',
+          contactIssue ? 'Contact name and phone are missing' : ''
+        ].filter(Boolean).join(' | '),
+        clientId: linkedClient?.id,
+        leadId: lead.id
+      });
+    });
+
+    clients.forEach((client) => {
+      if (coveredClientIds.has(client.id)) return;
+      const emailIssue = hasEmailQualityIssue(client.contact_email);
+      const contactIssue = hasContactQualityIssue(client.contact_name, client.phone);
+      if (!emailIssue && !contactIssue) return;
+
+      const issue = buildIssue(emailIssue, contactIssue);
+      records.push({
+        id: `client-${client.id}`,
+        company: client.company_name || 'Unnamed buyer',
+        source: 'Buyer',
+        country: buyerCountry(client),
+        email: client.contact_email || '',
+        contact: client.contact_name || '',
+        phone: client.phone || '',
+        issue,
+        reason: [
+          emailIssue ? 'No contactable email found' : '',
+          contactIssue ? 'Contact name and phone are missing' : ''
+        ].filter(Boolean).join(' | '),
+        clientId: client.id
+      });
+    });
+
+    return records.sort((a, b) => a.company.localeCompare(b.company));
+  }, [clients, leads]);
+
+  const filteredCleanupRecords = useMemo(() => {
+    const query = cleanupSearchQuery.trim().toLowerCase();
+    return cleanupRecords.filter((record) => {
+      const matchesIssue = cleanupIssueFilter === 'All' || record.issue === cleanupIssueFilter;
+      const searchable = [record.company, record.country, record.email, record.contact, record.phone, record.reason, record.source].join(' ').toLowerCase();
+      return matchesIssue && (!query || searchable.includes(query));
+    });
+  }, [cleanupIssueFilter, cleanupRecords, cleanupSearchQuery]);
+
+  const cleanupStats = useMemo(() => ({
+    total: cleanupRecords.length,
+    email: cleanupRecords.filter((record) => record.issue === 'Email Issue' || record.issue === 'Email + Contact').length,
+    contact: cleanupRecords.filter((record) => record.issue === 'Contact Issue' || record.issue === 'Email + Contact').length,
+    linked: cleanupRecords.filter((record) => record.source === 'Buyer + Lead').length
+  }), [cleanupRecords]);
+
   const crmBoardColumns = crmQueues.filter((queue) => ['Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix', 'Won / Approved', 'Lost / Declined'].includes(queue.label));
   const selectedLeads = leads.filter((lead) => selectedLeadIds.includes(lead.id));
 
@@ -3863,6 +3984,14 @@ export const Dashboard: React.FC = () => {
     setSelectedLeadIds(Array.from(new Set([...selectedLeadIds, ...group.map((lead) => lead.id)])));
   };
 
+  useEffect(() => {
+    const availableIds = new Set(cleanupRecords.map((record) => record.id));
+    setSelectedCleanupRecordIds((current) => {
+      const next = current.filter((id) => availableIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [cleanupRecords]);
+
   const deleteRecordsByIds = async (table: string, ids: string[]) => {
     const chunkSize = 25;
     for (let index = 0; index < ids.length; index += chunkSize) {
@@ -3870,6 +3999,56 @@ export const Dashboard: React.FC = () => {
       const results = await Promise.all(chunk.map((id) => supabase.from(table).delete().eq('id', id)));
       const failed = results.find((result) => result.error);
       if (failed?.error) throw new Error(failed.error.message || `Failed to delete ${table}`);
+    }
+  };
+
+  const handleBulkDeleteCleanupRecords = async () => {
+    const selectedRecords = cleanupRecords.filter((record) => selectedCleanupRecordIds.includes(record.id));
+    if (!selectedRecords.length) {
+      alert('Select at least one cleanup record first.');
+      return;
+    }
+
+    const leadIds = Array.from(new Set(selectedRecords.flatMap((record) => record.leadId ? [record.leadId] : [])));
+    const clientIds = Array.from(new Set(selectedRecords.flatMap((record) => record.clientId ? [record.clientId] : [])));
+    const leadIdSet = new Set(leadIds);
+    const clientIdSet = new Set(clientIds);
+    const linkedLeadIds = leads
+      .filter((lead) => lead.client_id && clientIdSet.has(lead.client_id))
+      .map((lead) => lead.id);
+    const finalLeadIds = Array.from(new Set([...leadIds, ...linkedLeadIds]));
+    const finalLeadIdSet = new Set(finalLeadIds);
+    const activityIds = activities
+      .filter((activity) => (activity.lead_id && finalLeadIdSet.has(activity.lead_id)) || (activity.client_id && clientIdSet.has(activity.client_id)))
+      .map((activity) => activity.id);
+    const taskIds = tasks
+      .filter((task) => (task.lead_id && finalLeadIdSet.has(task.lead_id)) || (task.client_id && clientIdSet.has(task.client_id)))
+      .map((task) => task.id);
+
+    const confirmed = confirm(
+      `Delete selected bad contact records?\n\nThis will delete ${clientIds.length} buyer profile${clientIds.length === 1 ? '' : 's'}, ${finalLeadIds.length} lead${finalLeadIds.length === 1 ? '' : 's'}, ${activityIds.length} linked activit${activityIds.length === 1 ? 'y' : 'ies'}, and ${taskIds.length} linked task${taskIds.length === 1 ? '' : 's'}.\n\nQuotes, invoices, products, and shipments will remain safe.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      await deleteRecordsByIds('activities', activityIds);
+      await deleteRecordsByIds('tasks', taskIds);
+      await deleteRecordsByIds('leads', finalLeadIds);
+      await deleteRecordsByIds('clients', clientIds);
+
+      setSelectedCleanupRecordIds([]);
+      setActivities((current) => current.filter((activity) => !activityIds.includes(activity.id)));
+      setTasks((current) => current.filter((task) => !taskIds.includes(task.id)));
+      setLeads((current) => current.filter((lead) => !finalLeadIds.includes(lead.id)));
+      setClients((current) => current.filter((client) => !clientIds.includes(client.id)));
+      await fetchData();
+      showToast(`Deleted ${selectedRecords.length} cleanup record${selectedRecords.length === 1 ? '' : 's'}`, 'success');
+    } catch (err) {
+      console.warn('Cleanup delete failed:', err);
+      alert(err instanceof Error ? err.message : 'Could not delete selected cleanup records.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -4027,6 +4206,7 @@ export const Dashboard: React.FC = () => {
       { key: 'actionQueue', label: 'Action Queue', icon: <Target className="h-4 w-4" />, count: actionQueueItems.length },
       { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
       { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, count: sourceFilteredLeads.length },
+      { key: 'dataCleanup', label: 'Data Cleanup', icon: <Trash2 className="h-4 w-4" />, count: cleanupRecords.length },
       { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
       { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
@@ -4051,6 +4231,7 @@ export const Dashboard: React.FC = () => {
     actionQueueItems,
     leads,
     sourceFilteredLeads,
+    cleanupRecords,
     reachoutBuyers,
     quotes,
     activities,
@@ -4070,9 +4251,9 @@ export const Dashboard: React.FC = () => {
   const activeNavItem = navItems.find((item) => item.key === activeTab);
   const appBusy = loading || importingBuyers;
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
-  const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'dataSources', 'tasks'].includes(item.key)), [navItems]);
+  const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'dataCleanup', 'tasks'].includes(item.key)), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'manager'].includes(item.key)) }
   ], [navItems]);
@@ -5801,6 +5982,178 @@ export const Dashboard: React.FC = () => {
                     </div>
                   )}
                   </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'dataCleanup' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-rose-200 bg-slate-950 p-4 text-white shadow-sm">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-rose-300">CRM Data Hygiene</p>
+                    <h3 className="text-xl font-black">Need email/contact fix cleanup</h3>
+                    <p className="mt-1 max-w-3xl text-xs text-slate-300">
+                      All buyers and leads with no contactable email or missing contact details appear here for fast bulk deletion.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-950">
+                    <CrmMetric label="Total Issues" value={cleanupStats.total.toString()} helper="Bad records" />
+                    <CrmMetric label="Email Fix" value={cleanupStats.email.toString()} helper="No email found" />
+                    <CrmMetric label="Contact Fix" value={cleanupStats.contact.toString()} helper="No person/phone" />
+                    <CrmMetric label="Linked" value={cleanupStats.linked.toString()} helper="Buyer + lead" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_220px_auto] gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <SmoothInput
+                      type="text"
+                      placeholder="Search bad data by company, country, email, contact, phone, or reason..."
+                      value={cleanupSearchQuery}
+                      onChange={setCleanupSearchQuery}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-9 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none transition focus:border-rose-500 focus:bg-white focus:ring-2 focus:ring-rose-500/20"
+                    />
+                    {cleanupSearchQuery && (
+                      <button type="button" onClick={() => setCleanupSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" title="Clear search">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-label="Cleanup Issue Filter"
+                      value={cleanupIssueFilter}
+                      onChange={(event) => setCleanupIssueFilter(event.target.value as CleanupIssueFilter)}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
+                    >
+                      <option value="All">All Issues</option>
+                      <option value="Email Issue">Email Issue</option>
+                      <option value="Contact Issue">Contact Issue</option>
+                      <option value="Email + Contact">Email + Contact</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBulkDeleteCleanupRecords}
+                    disabled={!selectedCleanupRecordIds.length || loading}
+                    className="h-10 rounded-lg bg-rose-600 px-4 text-xs font-black text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Delete Selected ({selectedCleanupRecordIds.length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-xs font-semibold text-slate-500">
+                    Showing <strong className="text-slate-950">{filteredCleanupRecords.length}</strong> cleanup record{filteredCleanupRecords.length === 1 ? '' : 's'}
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCleanupRecordIds(filteredCleanupRecords.map((record) => record.id))}
+                      disabled={!filteredCleanupRecords.length}
+                      className="rounded-lg bg-slate-100 px-3 py-2 font-black text-slate-700 hover:bg-slate-200 disabled:opacity-40"
+                    >
+                      Select All Shown
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCleanupRecordIds([])}
+                      disabled={!selectedCleanupRecordIds.length}
+                      className="rounded-lg bg-white px-3 py-2 font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-40"
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+                </div>
+
+                {filteredCleanupRecords.length === 0 ? (
+                  <div className="p-6">
+                    <EmptyState text="No bad email/contact records found. Your CRM cleanup queue is clear." />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[920px] text-left text-xs">
+                      <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="w-10 p-3">
+                            <input
+                              type="checkbox"
+                              aria-label="Select all cleanup records"
+                              checked={filteredCleanupRecords.length > 0 && filteredCleanupRecords.every((record) => selectedCleanupRecordIds.includes(record.id))}
+                              onChange={(event) => setSelectedCleanupRecordIds(event.target.checked ? filteredCleanupRecords.map((record) => record.id) : [])}
+                              className="rounded border-slate-300"
+                            />
+                          </th>
+                          <th className="p-3">Company</th>
+                          <th className="p-3">Issue</th>
+                          <th className="p-3">Email</th>
+                          <th className="p-3">Contact / Phone</th>
+                          <th className="p-3">Country</th>
+                          <th className="p-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredCleanupRecords.map((record) => (
+                          <tr key={record.id} className={selectedCleanupRecordIds.includes(record.id) ? 'bg-rose-50/70' : 'hover:bg-slate-50'}>
+                            <td className="p-3">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${record.company}`}
+                                checked={selectedCleanupRecordIds.includes(record.id)}
+                                onChange={(event) => setSelectedCleanupRecordIds((current) => event.target.checked ? Array.from(new Set([...current, record.id])) : current.filter((id) => id !== record.id))}
+                                className="rounded border-slate-300"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <div className="font-black text-slate-950">{record.company}</div>
+                              <div className="mt-1 text-[10px] font-bold text-slate-400">{record.source}</div>
+                            </td>
+                            <td className="p-3">
+                              <span className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                                record.issue === 'Email + Contact' ? 'bg-rose-100 text-rose-700' :
+                                record.issue === 'Email Issue' ? 'bg-amber-100 text-amber-700' :
+                                'bg-sky-100 text-sky-700'
+                              }`}>
+                                {record.issue}
+                              </span>
+                              <div className="mt-1 max-w-xs text-[10px] font-medium text-slate-500">{record.reason}</div>
+                            </td>
+                            <td className="p-3 font-mono text-[11px] text-slate-600">{record.email || 'Missing'}</td>
+                            <td className="p-3">
+                              <div className="font-semibold text-slate-700">{record.contact || 'No contact name'}</div>
+                              <div className="mt-1 font-mono text-[11px] text-slate-500">{record.phone || 'No phone'}</div>
+                            </td>
+                            <td className="p-3"><SmallBadge text={record.country || 'Uncategorized'} /></td>
+                            <td className="p-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (record.leadId) {
+                                    const lead = leads.find((item) => item.id === record.leadId);
+                                    if (lead) editLeadFromCard(lead);
+                                  } else {
+                                    setCrmSearchQuery(record.company);
+                                  }
+                                  navigateToTab('crm');
+                                }}
+                                className="rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-black text-white hover:bg-slate-800"
+                              >
+                                Review
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>

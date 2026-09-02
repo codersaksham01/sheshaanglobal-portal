@@ -80,3 +80,46 @@ CREATE TRIGGER tr_log_crm_stage_changes
 AFTER UPDATE OF stage ON public.leads
 FOR EACH ROW
 EXECUTE FUNCTION public.fn_log_crm_stage_change_activity();
+
+-- 4. EMAIL-FIX CLASSIFICATION GUARD
+-- Multiple emails in one field are still contactable. Only empty email fields belong in "Needs Email Fix".
+CREATE OR REPLACE FUNCTION public.calculate_lead_outreach_status(
+  lead_stage text,
+  lead_email text,
+  lead_next_follow_up date,
+  lead_notes text
+)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  note_text text := lower(coalesce(lead_notes, ''));
+BEGIN
+  IF lead_stage IN ('Won', 'Lost') THEN
+    RETURN 'Closed';
+  END IF;
+
+  IF coalesce(trim(lead_email), '') = '' THEN
+    RETURN 'Needs Email Fix';
+  END IF;
+
+  IF note_text LIKE '%response received: yes%' OR note_text LIKE '%responded%' THEN
+    RETURN 'Responded / Qualify';
+  END IF;
+
+  IF lead_next_follow_up IS NOT NULL AND lead_next_follow_up <= current_date THEN
+    RETURN 'Follow-up Due';
+  END IF;
+
+  IF lead_next_follow_up IS NOT NULL AND lead_next_follow_up > current_date THEN
+    RETURN 'Next Follow-up';
+  END IF;
+
+  IF note_text LIKE '%email sent%' OR note_text LIKE '%whatsapp sent%' OR note_text LIKE '%contacted%' THEN
+    RETURN 'Waiting Reply';
+  END IF;
+
+  RETURN 'Need Reach Out';
+END;
+$$;
