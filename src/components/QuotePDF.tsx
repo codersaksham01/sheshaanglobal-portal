@@ -755,6 +755,8 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
   const lineItems = quote.items || [];
   const showCifBreakdown = quote.show_cif_breakdown !== false;
+  const showDetailsPage = quote.show_details_page !== false;
+  const showCifPortInTotal = quote.show_cif_port_in_total === true;
   
   // Calculate item sum base (FOB base value)
   const itemsSubtotal = lineItems.reduce(
@@ -801,6 +803,12 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   };
   const clientEmail = client.contact_email || 'N/A';
   const buyerPhone = clientEmail.includes('busyexim') ? '+971 4 388 9100' : 'N/A';
+  const destinationPortLabel = (client.destination_port || 'Destination').trim();
+  const incotermLabel = (quote.incoterm || 'CIF (Cost, Insurance & Freight)').trim();
+  const incotermCode = incotermLabel.split(/[ (]/)[0].trim().toUpperCase() || 'CIF';
+  const grandTotalLabel = showCifPortInTotal ? `GRAND TOTAL ${incotermCode} ${destinationPortLabel.toUpperCase()}` : 'GRAND TOTAL';
+  const offeredTotalLabel = showCifPortInTotal ? `TOTAL OFFERED ${incotermCode} VALUE (${destinationPortLabel.split(',')[0].toUpperCase()})` : 'TOTAL OFFERED VALUE';
+  const commercialBreakdownTitle = `3. Transparent ${incotermCode} Cost Structure Breakdown`;
 
   // Pre-filled scope fallbacks matching the Sheshaan Global sample
   const includedScope = quote.included_responsibilities || [
@@ -926,7 +934,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           <View style={styles.logisticsRow}>
             <View style={styles.logisticsCell}>
               <Text style={styles.logisticsLabel}>Incoterm</Text>
-              <Text style={styles.logisticsVal}>CIF (Cost, Insurance & Freight)</Text>
+              <Text style={styles.logisticsVal}>{incotermLabel}</Text>
             </View>
             <View style={styles.logisticsCell}>
               <Text style={styles.logisticsLabel}>Origin</Text>
@@ -1057,7 +1065,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           {/* Grand total header row of section 2 */}
           {documentType !== 'packing_list' && (
             <View style={styles.grandTotalRow} wrap={false}>
-              <Text style={styles.grandTotalLabel}>Grand Total CIF {client.destination_port}</Text>
+              <Text style={styles.grandTotalLabel}>{grandTotalLabel}</Text>
               <Text style={styles.grandTotalVal}>{formatValue(totalCIF)}</Text>
             </View>
           )}
@@ -1075,7 +1083,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {/* 3. TRANSPARENT CIF COST STRUCTURE BREAKDOWN / BANK INSTRUCTIONS */}
         {documentType === 'quotation' && showCifBreakdown && (
           <>
-            <Text style={styles.sectionTitle}>3. Transparent CIF Cost Structure Breakdown</Text>
+            <Text style={styles.sectionTitle}>{commercialBreakdownTitle}</Text>
             <View style={styles.table} wrap={false}>
               {/* Header */}
               <View style={styles.tableHeader}>
@@ -1138,7 +1146,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
               {/* Grand total breakdown */}
               <View style={styles.tableRowGrandTotal} wrap={false}>
-                <Text style={styles.bdGrandLabel}>Total Offered CIF Value ({(client.destination_port || 'Destination').split(',')[0].toUpperCase()})</Text>
+                <Text style={styles.bdGrandLabel}>{offeredTotalLabel}</Text>
                 <Text style={styles.bdGrandVal}>{formatValue(totalCIF)}</Text>
               </View>
             </View>
@@ -1213,13 +1221,14 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         <Text
           style={styles.footer}
           render={() => (
-            `${shipper.company_name} | Office: Maharashtra, India | Email: ${shipper.contact_email} | Web: www.sheshaanglobal.com | Page 1 of 2`
+            `${shipper.company_name} | Office: Maharashtra, India | Email: ${shipper.contact_email} | Web: www.sheshaanglobal.com | Page 1 of ${showDetailsPage ? '2' : '1'}`
           )}
           fixed
         />
       </Page>
 
       {/* ==================== PAGE 2 ==================== */}
+      {showDetailsPage && (
       <Page size="A4" style={styles.page}>
         <View style={styles.brandAccent} fixed />
         <View style={styles.brandAccentGold} fixed />
@@ -1241,7 +1250,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
             <View style={styles.responsibilitiesContainer} wrap={false}>
               
               <View style={[styles.scopeBox, styles.scopeBoxIncluded]}>
-                <Text style={[styles.scopeTitle, styles.scopeTitleIncluded]}>Included in Seller&apos;s CIF Price</Text>
+                <Text style={[styles.scopeTitle, styles.scopeTitleIncluded]}>Included in Seller&apos;s {incotermCode} Price</Text>
                 <View style={styles.bulletList}>
                   {includedScope.map((item, idx) => (
                     <View key={idx} style={styles.bulletRow}>
@@ -1376,6 +1385,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           fixed
         />
       </Page>
+      )}
 
     </Document>
   );

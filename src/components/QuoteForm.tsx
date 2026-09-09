@@ -67,6 +67,11 @@ const getItemNetWeight = (item: QuoteItem) => {
   }
   return Number(item.quantity || 0);
 };
+
+const isMissingOptionalQuoteColumnError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String((error as { message?: string } | undefined)?.message || error || '');
+  return message.includes('incoterm') || message.includes('show_details_page') || message.includes('show_cif_port_in_total') || message.includes('schema cache');
+};
 const formatItemBasis = (item: QuoteItem) => {
   if (getItemPricingBasis(item) === 'package') {
     const packageQuantity = getItemPackageQuantity(item);
@@ -285,6 +290,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [buyerEntryMode, setBuyerEntryMode] = useState<'existing' | 'manual'>('existing');
   const [manualBuyer, setManualBuyer] = useState<Partial<Client>>(blankManualBuyer);
   const [currency, setCurrency] = useState<'USD' | 'INR'>('INR');
+  const [incoterm, setIncoterm] = useState('CIF (Cost, Insurance & Freight)');
   const [originCountry, setOriginCountry] = useState('India');
   const [loadingPort, setLoadingPort] = useState('Mundra Port, India');
   const [destinationPort, setDestinationPort] = useState('');
@@ -307,6 +313,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [lineItems, setLineItems] = useState<QuoteItem[]>([]);
   const [commercialNote, setCommercialNote] = useState(defaultCommercialNoteText);
   const [showCifBreakdown, setShowCifBreakdown] = useState(true);
+  const [showDetailsPage, setShowDetailsPage] = useState(true);
+  const [showCifPortInTotal, setShowCifPortInTotal] = useState(false);
 
   // Page 2 Lists States
   const [includedScope, setIncludedScope] = useState<string[]>(defaultIncluded);
@@ -328,6 +336,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     buyerEntryMode,
     manualBuyer,
     currency,
+    incoterm,
     originCountry,
     loadingPort,
     destinationPort,
@@ -347,6 +356,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     lineItems,
     commercialNote,
     showCifBreakdown,
+    showDetailsPage,
+    showCifPortInTotal,
     includedScope,
     excludedScope,
     docList,
@@ -374,6 +385,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setBuyerEntryMode(draft.buyerEntryMode || 'existing');
     setManualBuyer({ ...blankManualBuyer, ...(draft.manualBuyer || {}) });
     setCurrency(draft.currency || 'INR');
+    setIncoterm(draft.incoterm || 'CIF (Cost, Insurance & Freight)');
     setOriginCountry(draft.originCountry || 'India');
     setLoadingPort(draft.loadingPort || 'Mundra Port, India');
     setDestinationPort(draft.destinationPort || '');
@@ -393,6 +405,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setLineItems(draft.lineItems || []);
     setCommercialNote(draft.commercialNote || '');
     setShowCifBreakdown(draft.showCifBreakdown ?? true);
+    setShowDetailsPage(draft.showDetailsPage ?? true);
+    setShowCifPortInTotal(draft.showCifPortInTotal ?? false);
     setIncludedScope(draft.includedScope || defaultIncluded);
     setExcludedScope(draft.excludedScope || defaultExcluded);
     setDocList(draft.docList || defaultDocs);
@@ -445,6 +459,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       // Clear forms for creation
       setSelectedClientId('');
       setCurrency('INR');
+      setIncoterm('CIF (Cost, Insurance & Freight)');
       setOriginCountry('India');
       setLoadingPort('Mundra Port, India');
       setDestinationPort('');
@@ -465,6 +480,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setBankDetails(readDefaultBankDetails());
       setLineItems([]);
       setCommercialNote('Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.');
+      setShowDetailsPage(true);
+      setShowCifPortInTotal(false);
       
       setIncludedScope(defaultIncluded);
       setExcludedScope(defaultExcluded);
@@ -499,6 +516,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     quoteNumber,
     selectedClientId,
     currency,
+    incoterm,
     originCountry,
     loadingPort,
     destinationPort,
@@ -516,6 +534,9 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     shipper,
     lineItems,
     commercialNote,
+    showCifBreakdown,
+    showDetailsPage,
+    showCifPortInTotal,
     includedScope,
     excludedScope,
     docList,
@@ -580,6 +601,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         setQuoteNumber(q.quote_number);
         setSelectedClientId(q.client_id || '');
         setCurrency(q.currency || 'INR');
+        setIncoterm(q.incoterm || 'CIF (Cost, Insurance & Freight)');
         setOriginCountry(q.origin_country || 'India');
         setLoadingPort(q.loading_port || 'Mundra Port, India');
         setDestinationPort((q.client as Client | undefined)?.destination_port || '');
@@ -600,6 +622,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         setBankDetails((q.bank_details as BankDetails) || readDefaultBankDetails());
         setCommercialNote(q.commercial_note || '');
         setShowCifBreakdown(q.show_cif_breakdown ?? true);
+        setShowDetailsPage(q.show_details_page ?? true);
+        setShowCifPortInTotal(q.show_cif_port_in_total ?? false);
         setLineItems(q.items || []);
 
         setIncludedScope(q.included_responsibilities || defaultIncluded);
@@ -909,6 +933,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         quote_number: quoteNumber,
         client_id: quoteClient.id,
         currency,
+        incoterm: incoterm.trim() || 'CIF (Cost, Insurance & Freight)',
         origin_country: originCountry,
         loading_port: loadingPort,
         shipment_mode: shipmentMode,
@@ -928,6 +953,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         bank_details: bankDetails,
         commercial_note: commercialNote,
         show_cif_breakdown: showCifBreakdown,
+        show_details_page: showDetailsPage,
+        show_cif_port_in_total: showCifPortInTotal,
         
         included_responsibilities: includedScope,
         excluded_responsibilities: excludedScope,
@@ -939,13 +966,48 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       };
 
       let quoteResultId = quoteId;
+      const legacyQuotePayload: Omit<typeof quotePayload, 'incoterm' | 'show_details_page' | 'show_cif_port_in_total'> = {
+        quote_number: quotePayload.quote_number,
+        client_id: quotePayload.client_id,
+        currency: quotePayload.currency,
+        origin_country: quotePayload.origin_country,
+        loading_port: quotePayload.loading_port,
+        shipment_mode: quotePayload.shipment_mode,
+        payment_terms: quotePayload.payment_terms,
+        validity_days: quotePayload.validity_days,
+        packaging_cost: quotePayload.packaging_cost,
+        inland_haulage_cost: quotePayload.inland_haulage_cost,
+        customs_clearance_cost: quotePayload.customs_clearance_cost,
+        freight_cost: quotePayload.freight_cost,
+        insurance_cost: quotePayload.insurance_cost,
+        status: quotePayload.status,
+        margin_per_kg: quotePayload.margin_per_kg,
+        internal_notes: quotePayload.internal_notes,
+        shipper_details: quotePayload.shipper_details,
+        bank_details: quotePayload.bank_details,
+        commercial_note: quotePayload.commercial_note,
+        show_cif_breakdown: quotePayload.show_cif_breakdown,
+        included_responsibilities: quotePayload.included_responsibilities,
+        excluded_responsibilities: quotePayload.excluded_responsibilities,
+        included_docs: quotePayload.included_docs,
+        logistics_specs: quotePayload.logistics_specs,
+        commercial_terms: quotePayload.commercial_terms,
+        updated_at: quotePayload.updated_at
+      };
 
       if (quoteId) {
-        const { error: quoteErr } = await supabase
+        let { error: quoteErr } = await supabase
           .from('quotes')
           .update(quotePayload)
           .eq('id', quoteId);
 
+        if (quoteErr && isMissingOptionalQuoteColumnError(quoteErr)) {
+          const retry = await supabase
+            .from('quotes')
+            .update(legacyQuotePayload)
+            .eq('id', quoteId);
+          quoteErr = retry.error;
+        }
         if (quoteErr) throw quoteErr;
 
         const { error: deleteErr } = await supabase
@@ -955,12 +1017,21 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
         if (deleteErr) throw deleteErr;
       } else {
-        const { data: newQuote, error: quoteErr } = await supabase
+        let { data: newQuote, error: quoteErr } = await supabase
           .from('quotes')
           .insert([quotePayload])
           .select()
           .single();
 
+        if (quoteErr && isMissingOptionalQuoteColumnError(quoteErr)) {
+          const retry = await supabase
+            .from('quotes')
+            .insert([legacyQuotePayload])
+            .select()
+            .single();
+          newQuote = retry.data;
+          quoteErr = retry.error;
+        }
         if (quoteErr) throw quoteErr;
         quoteResultId = newQuote.id;
       }
@@ -1051,6 +1122,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     quote_number: quoteNumber,
     client_id: currentClient?.id || selectedClientId,
     currency,
+    incoterm: incoterm.trim() || 'CIF (Cost, Insurance & Freight)',
     origin_country: originCountry,
     loading_port: loadingPort,
     shipment_mode: shipmentMode,
@@ -1068,6 +1140,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     bank_details: bankDetails,
     commercial_note: commercialNote,
     show_cif_breakdown: showCifBreakdown,
+    show_details_page: showDetailsPage,
+    show_cif_port_in_total: showCifPortInTotal,
     client: currentClient,
     items: lineItems,
     included_responsibilities: includedScope,
@@ -1086,6 +1160,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     excludedScope,
     freightCost,
     includedScope,
+    incoterm,
     inlandHaulageCost,
     insuranceCost,
     internalNotes,
@@ -1101,6 +1176,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     shipper,
     shipmentMode,
     showCifBreakdown,
+    showDetailsPage,
+    showCifPortInTotal,
     specMap,
     status,
     validityDays,
@@ -1394,6 +1471,17 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
               <div>
+                <label className="block text-slate-500 mb-1">Incoterms</label>
+                <FastInput
+                  type="text"
+                  value={incoterm}
+                  onChange={setIncoterm}
+                  placeholder="e.g. CIF (Cost, Insurance & Freight)"
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">Shown in the quotation, invoice, and PDF logistics box.</p>
+              </div>
+              <div>
                 <label className="block text-slate-500 mb-1">Origin Country</label>
                 <FastInput
                   type="text"
@@ -1438,7 +1526,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   placeholder="e.g. Jebel Ali Port, UAE"
                   className="w-full px-3 py-1.5 border border-slate-300 rounded focus:ring-1 focus:ring-sky-500"
                 />
-                <p className="mt-1 text-[10px] text-slate-400">Used in quotation, invoice, packing list, and CIF PDF totals.</p>
+                <p className="mt-1 text-[10px] text-slate-400">Used in quotation, invoice, packing list, and PDF totals.</p>
               </div>
               <div>
                 <label className="block text-slate-500 mb-1">Quotation Validity (Days)</label>
@@ -1677,22 +1765,50 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               <div>
                 <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">4. Cost Breakdown Components ({currency})</h3>
                 <p className="mt-1 text-[11px] font-medium text-slate-500">
-                  Control whether the Transparent CIF Cost Structure Breakdown appears in the quotation PDF.
+                  Control optional PDF sections like the cost breakdown, detailed second page, and grand total label.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowCifBreakdown((value) => !value)}
-                className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition ${
-                  showCifBreakdown
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
-                }`}
-                aria-pressed={showCifBreakdown}
-              >
-                <span className={`h-2.5 w-2.5 rounded-full ${showCifBreakdown ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                {showCifBreakdown ? 'Show In Quote' : 'Hide In Quote'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCifBreakdown((value) => !value)}
+                  className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition ${
+                    showCifBreakdown
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
+                  }`}
+                  aria-pressed={showCifBreakdown}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${showCifBreakdown ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                  {showCifBreakdown ? 'Show Cost Breakdown' : 'Hide Cost Breakdown'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDetailsPage((value) => !value)}
+                  className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition ${
+                    showDetailsPage
+                      ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100'
+                      : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
+                  }`}
+                  aria-pressed={showDetailsPage}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${showDetailsPage ? 'bg-sky-500' : 'bg-slate-300'}`} />
+                  {showDetailsPage ? 'Show Details Page' : 'Hide Details Page'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCifPortInTotal((value) => !value)}
+                  className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition ${
+                    showCifPortInTotal
+                      ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                      : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
+                  }`}
+                  aria-pressed={showCifPortInTotal}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${showCifPortInTotal ? 'bg-amber-500' : 'bg-slate-300'}`} />
+                  {showCifPortInTotal ? 'Grand Total With CIF Port' : 'Grand Total Only'}
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
@@ -1847,6 +1963,29 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               <span className="transition group-open:rotate-180">v</span>
             </summary>
             <div className="p-4 border-t border-slate-200 space-y-4 bg-white text-xs">
+              <div className={`rounded-lg border p-3 ${
+                showDetailsPage
+                  ? 'border-sky-100 bg-sky-50 text-sky-800'
+                  : 'border-amber-200 bg-amber-50 text-amber-800'
+              }`}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wide">Detailed PDF Page</p>
+                    <p className="mt-1 text-[11px] font-semibold">
+                      {showDetailsPage
+                        ? 'Page 2 details will be included in generated PDFs.'
+                        : 'Page 2 details are saved here but hidden from generated PDFs.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailsPage((value) => !value)}
+                    className="rounded-md bg-white px-3 py-1.5 text-[11px] font-black text-slate-800 shadow-sm ring-1 ring-black/5 hover:bg-slate-50"
+                  >
+                    {showDetailsPage ? 'Hide Page 2' : 'Show Page 2'}
+                  </button>
+                </div>
+              </div>
               
               <div className="rounded-lg border border-sky-100 bg-sky-50 p-3">
                 <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

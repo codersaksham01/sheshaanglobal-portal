@@ -225,6 +225,7 @@ export interface Quote {
   
   // Currency and Logistics
   currency: 'USD' | 'INR';
+  incoterm?: string;
   origin_country: string;
   loading_port: string;
   shipment_mode: string;
@@ -245,6 +246,8 @@ export interface Quote {
   bank_details?: BankDetails;
   commercial_note?: string; // Note on Commercial Structure
   show_cif_breakdown?: boolean;
+  show_details_page?: boolean;
+  show_cif_port_in_total?: boolean;
   
   // Page 2 parameters
   included_responsibilities?: string[];

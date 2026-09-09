@@ -168,6 +168,7 @@ export async function POST(req: NextRequest) {
         quote_number: 'SG-CIF-2026-0001',
         client_id: 'client-sg-1',
         currency: 'INR',
+        incoterm: 'CIF (Cost, Insurance & Freight)',
         origin_country: 'India',
         loading_port: 'Mundra Port, India',
         shipment_mode: 'Sea Freight (1x20ft FCL)',
@@ -198,6 +199,8 @@ export async function POST(req: NextRequest) {
         },
         commercial_note: 'Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.',
         show_cif_breakdown: true,
+        show_details_page: true,
+        show_cif_port_in_total: false,
         included_responsibilities: [
           'Complete raw product cost & export packing in 40 kg Jute Bags',
           'Inland haulage and transportation from factory to Mundra Port',

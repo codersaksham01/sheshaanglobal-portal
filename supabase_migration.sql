@@ -159,7 +159,10 @@ CREATE INDEX IF NOT EXISTS shipments_status_idx ON public.shipments(status);
 CREATE INDEX IF NOT EXISTS tasks_quote_invoice_idx ON public.tasks(quote_id, invoice_id);
 
 -- Dynamic blog engine table + public read policy
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS incoterm TEXT NOT NULL DEFAULT 'CIF (Cost, Insurance & Freight)';
 ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_cif_breakdown BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_details_page BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_cif_port_in_total BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE public.quote_items ADD COLUMN IF NOT EXISTS pricing_basis TEXT NOT NULL DEFAULT 'kg';
 ALTER TABLE public.quote_items ADD COLUMN IF NOT EXISTS package_quantity NUMERIC(14,3) NOT NULL DEFAULT 0;
