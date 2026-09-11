@@ -748,9 +748,15 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   };
 
   const formatDate = (dateStr?: string) => {
-    if (!dateStr || dateStr === 'preview') return new Date().toLocaleDateString();
+    const toDayMonthYear = (date: Date) => {
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    };
+    if (!dateStr || dateStr === 'preview') return toDayMonthYear(new Date());
     const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? new Date().toLocaleDateString() : d.toLocaleDateString();
+    return isNaN(d.getTime()) ? toDayMonthYear(new Date()) : toDayMonthYear(d);
   };
 
   const lineItems = quote.items || [];
