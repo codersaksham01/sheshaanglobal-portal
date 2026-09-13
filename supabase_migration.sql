@@ -160,9 +160,14 @@ CREATE INDEX IF NOT EXISTS tasks_quote_invoice_idx ON public.tasks(quote_id, inv
 
 -- Dynamic blog engine table + public read policy
 ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS incoterm TEXT NOT NULL DEFAULT 'CIF (Cost, Insurance & Freight)';
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS cost_breakdown_notes JSONB;
 ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_cif_breakdown BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_details_page BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_cif_port_in_total BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_signature_block BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_origin_charges BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_ocean_freight BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS show_insurance_charge BOOLEAN NOT NULL DEFAULT true;
 
 ALTER TABLE public.quote_items ADD COLUMN IF NOT EXISTS pricing_basis TEXT NOT NULL DEFAULT 'kg';
 ALTER TABLE public.quote_items ADD COLUMN IF NOT EXISTS package_quantity NUMERIC(14,3) NOT NULL DEFAULT 0;

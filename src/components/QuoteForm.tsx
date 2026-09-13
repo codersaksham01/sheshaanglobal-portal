@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Client, Product, Quote, QuoteItem, ShipperDetails, LogisticsSpecs, FreightPreset, BankDetails } from '../lib/types';
+import { Client, Product, Quote, QuoteItem, ShipperDetails, LogisticsSpecs, FreightPreset, BankDetails, CostBreakdownNotes } from '../lib/types';
 import { Plus, Trash2, Save, Eye, ArrowLeft, Loader2, Download } from 'lucide-react';
 import { QuotePDF } from './QuotePDF';
 import dynamic from 'next/dynamic';
@@ -42,6 +42,12 @@ const itemPricingBasisLabel = {
   kg: 'Per kg',
   package: 'Per package'
 } as const;
+const defaultCostBreakdownNotes: Required<CostBreakdownNotes> = {
+  offered_goods: 'Commercial offer value from Section 2, inclusive of quoted selling margin.',
+  origin_charges: 'Export packing, inland haulage, THC, loading, and customs clearance as applicable.',
+  ocean_freight: 'Lump-sum ocean freight from loading port to destination port.',
+  insurance: 'Comprehensive marine transit cargo insurance policy up to destination port.'
+};
 
 const getItemPricingBasis = (item: QuoteItem) => item.pricing_basis || 'kg';
 const getItemPackageQuantity = (item: QuoteItem) => Number(item.package_quantity || 0);
@@ -70,7 +76,15 @@ const getItemNetWeight = (item: QuoteItem) => {
 
 const isMissingOptionalQuoteColumnError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String((error as { message?: string } | undefined)?.message || error || '');
-  return message.includes('incoterm') || message.includes('show_details_page') || message.includes('show_cif_port_in_total') || message.includes('schema cache');
+  return message.includes('incoterm')
+    || message.includes('show_details_page')
+    || message.includes('show_cif_port_in_total')
+    || message.includes('show_signature_block')
+    || message.includes('show_origin_charges')
+    || message.includes('show_ocean_freight')
+    || message.includes('show_insurance_charge')
+    || message.includes('cost_breakdown_notes')
+    || message.includes('schema cache');
 };
 const formatItemBasis = (item: QuoteItem) => {
   if (getItemPricingBasis(item) === 'package') {
@@ -165,6 +179,18 @@ const FastTextarea = ({
     />
   );
 };
+
+const CheckboxInput = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) => (
+  <label className="flex min-h-10 items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-700 shadow-sm transition hover:border-sky-200 hover:bg-sky-50">
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={(event) => onChange(event.target.checked)}
+      className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+    />
+    <span>{label}</span>
+  </label>
+);
 
 interface QuoteFormProps {
   quoteId?: string | null;
@@ -312,9 +338,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [bankDetails, setBankDetails] = useState<BankDetails>(defaultBankDetails);
   const [lineItems, setLineItems] = useState<QuoteItem[]>([]);
   const [commercialNote, setCommercialNote] = useState(defaultCommercialNoteText);
+  const [costBreakdownNotes, setCostBreakdownNotes] = useState<CostBreakdownNotes>(defaultCostBreakdownNotes);
   const [showCifBreakdown, setShowCifBreakdown] = useState(true);
   const [showDetailsPage, setShowDetailsPage] = useState(true);
   const [showCifPortInTotal, setShowCifPortInTotal] = useState(false);
+  const [showSignatureBlock, setShowSignatureBlock] = useState(true);
+  const [showOriginCharges, setShowOriginCharges] = useState(true);
+  const [showOceanFreight, setShowOceanFreight] = useState(true);
+  const [showInsuranceCharge, setShowInsuranceCharge] = useState(true);
 
   // Page 2 Lists States
   const [includedScope, setIncludedScope] = useState<string[]>(defaultIncluded);
@@ -355,9 +386,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     bankDetails,
     lineItems,
     commercialNote,
+    costBreakdownNotes,
     showCifBreakdown,
     showDetailsPage,
     showCifPortInTotal,
+    showSignatureBlock,
+    showOriginCharges,
+    showOceanFreight,
+    showInsuranceCharge,
     includedScope,
     excludedScope,
     docList,
@@ -404,9 +440,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setBankDetails(draft.bankDetails || readDefaultBankDetails());
     setLineItems(draft.lineItems || []);
     setCommercialNote(draft.commercialNote || '');
+    setCostBreakdownNotes({ ...defaultCostBreakdownNotes, ...(draft.costBreakdownNotes || {}) });
     setShowCifBreakdown(draft.showCifBreakdown ?? true);
     setShowDetailsPage(draft.showDetailsPage ?? true);
     setShowCifPortInTotal(draft.showCifPortInTotal ?? false);
+    setShowSignatureBlock(draft.showSignatureBlock ?? true);
+    setShowOriginCharges(draft.showOriginCharges ?? true);
+    setShowOceanFreight(draft.showOceanFreight ?? true);
+    setShowInsuranceCharge(draft.showInsuranceCharge ?? true);
     setIncludedScope(draft.includedScope || defaultIncluded);
     setExcludedScope(draft.excludedScope || defaultExcluded);
     setDocList(draft.docList || defaultDocs);
@@ -480,8 +521,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setBankDetails(readDefaultBankDetails());
       setLineItems([]);
       setCommercialNote('Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.');
+      setCostBreakdownNotes(defaultCostBreakdownNotes);
+      setShowCifBreakdown(true);
       setShowDetailsPage(true);
       setShowCifPortInTotal(false);
+      setShowSignatureBlock(true);
+      setShowOriginCharges(true);
+      setShowOceanFreight(true);
+      setShowInsuranceCharge(true);
       
       setIncludedScope(defaultIncluded);
       setExcludedScope(defaultExcluded);
@@ -534,9 +581,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     shipper,
     lineItems,
     commercialNote,
+    costBreakdownNotes,
     showCifBreakdown,
     showDetailsPage,
     showCifPortInTotal,
+    showSignatureBlock,
+    showOriginCharges,
+    showOceanFreight,
+    showInsuranceCharge,
     includedScope,
     excludedScope,
     docList,
@@ -621,9 +673,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         if (q.shipper_details) setShipper(q.shipper_details as ShipperDetails);
         setBankDetails((q.bank_details as BankDetails) || readDefaultBankDetails());
         setCommercialNote(q.commercial_note || '');
+        setCostBreakdownNotes({ ...defaultCostBreakdownNotes, ...((q.cost_breakdown_notes as CostBreakdownNotes | undefined) || {}) });
         setShowCifBreakdown(q.show_cif_breakdown ?? true);
         setShowDetailsPage(q.show_details_page ?? true);
         setShowCifPortInTotal(q.show_cif_port_in_total ?? false);
+        setShowSignatureBlock(q.show_signature_block ?? true);
+        setShowOriginCharges(q.show_origin_charges ?? true);
+        setShowOceanFreight(q.show_ocean_freight ?? true);
+        setShowInsuranceCharge(q.show_insurance_charge ?? true);
         setLineItems(q.items || []);
 
         setIncludedScope(q.included_responsibilities || defaultIncluded);
@@ -952,9 +1009,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         shipper_details: shipper,
         bank_details: bankDetails,
         commercial_note: commercialNote,
+        cost_breakdown_notes: costBreakdownNotes,
         show_cif_breakdown: showCifBreakdown,
         show_details_page: showDetailsPage,
         show_cif_port_in_total: showCifPortInTotal,
+        show_signature_block: showSignatureBlock,
+        show_origin_charges: showOriginCharges,
+        show_ocean_freight: showOceanFreight,
+        show_insurance_charge: showInsuranceCharge,
         
         included_responsibilities: includedScope,
         excluded_responsibilities: excludedScope,
@@ -966,7 +1028,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       };
 
       let quoteResultId = quoteId;
-      const legacyQuotePayload: Omit<typeof quotePayload, 'incoterm' | 'show_details_page' | 'show_cif_port_in_total'> = {
+      const legacyQuotePayload: Omit<typeof quotePayload, 'incoterm' | 'cost_breakdown_notes' | 'show_details_page' | 'show_cif_port_in_total' | 'show_signature_block' | 'show_origin_charges' | 'show_ocean_freight' | 'show_insurance_charge'> = {
         quote_number: quotePayload.quote_number,
         client_id: quotePayload.client_id,
         currency: quotePayload.currency,
@@ -1139,9 +1201,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     shipper_details: shipper,
     bank_details: bankDetails,
     commercial_note: commercialNote,
+    cost_breakdown_notes: costBreakdownNotes,
     show_cif_breakdown: showCifBreakdown,
     show_details_page: showDetailsPage,
     show_cif_port_in_total: showCifPortInTotal,
+    show_signature_block: showSignatureBlock,
+    show_origin_charges: showOriginCharges,
+    show_ocean_freight: showOceanFreight,
+    show_insurance_charge: showInsuranceCharge,
     client: currentClient,
     items: lineItems,
     included_responsibilities: includedScope,
@@ -1153,6 +1220,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   }), [
     bankDetails,
     commercialNote,
+    costBreakdownNotes,
     commercialTerms,
     currency,
     customsClearanceCost,
@@ -1178,6 +1246,10 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     showCifBreakdown,
     showDetailsPage,
     showCifPortInTotal,
+    showSignatureBlock,
+    showOriginCharges,
+    showOceanFreight,
+    showInsuranceCharge,
     specMap,
     status,
     validityDays,
@@ -1768,47 +1840,18 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   Control optional PDF sections like the cost breakdown, detailed second page, and grand total label.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCifBreakdown((value) => !value)}
-                  className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition ${
-                    showCifBreakdown
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                      : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
-                  }`}
-                  aria-pressed={showCifBreakdown}
-                >
-                  <span className={`h-2.5 w-2.5 rounded-full ${showCifBreakdown ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                  {showCifBreakdown ? 'Show Cost Breakdown' : 'Hide Cost Breakdown'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDetailsPage((value) => !value)}
-                  className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition ${
-                    showDetailsPage
-                      ? 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100'
-                      : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
-                  }`}
-                  aria-pressed={showDetailsPage}
-                >
-                  <span className={`h-2.5 w-2.5 rounded-full ${showDetailsPage ? 'bg-sky-500' : 'bg-slate-300'}`} />
-                  {showDetailsPage ? 'Show Details Page' : 'Hide Details Page'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCifPortInTotal((value) => !value)}
-                  className={`inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition ${
-                    showCifPortInTotal
-                      ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                      : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-100'
-                  }`}
-                  aria-pressed={showCifPortInTotal}
-                >
-                  <span className={`h-2.5 w-2.5 rounded-full ${showCifPortInTotal ? 'bg-amber-500' : 'bg-slate-300'}`} />
-                  {showCifPortInTotal ? 'Grand Total With CIF Port' : 'Grand Total Only'}
-                </button>
-              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-2 xl:grid-cols-4">
+              <CheckboxInput label="Show full cost breakdown table" checked={showCifBreakdown} onChange={setShowCifBreakdown} />
+              <CheckboxInput label="Show detailed terms page" checked={showDetailsPage} onChange={setShowDetailsPage} />
+              <CheckboxInput label="Show seller stamp/signature block" checked={showSignatureBlock} onChange={setShowSignatureBlock} />
+              <CheckboxInput label="Grand total label includes CIF port" checked={showCifPortInTotal} onChange={setShowCifPortInTotal} />
+              <CheckboxInput label="Show local transport/export charges row" checked={showOriginCharges} onChange={setShowOriginCharges} />
+              <CheckboxInput label="Show ocean freight row" checked={showOceanFreight} onChange={setShowOceanFreight} />
+              <CheckboxInput label="Show marine insurance row" checked={showInsuranceCharge} onChange={setShowInsuranceCharge} />
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold leading-5 text-amber-800">
+              The final CIF total still includes goods, local/export charges, ocean freight, and insurance. These checkboxes only control what is printed as separate rows in the buyer-facing PDF.
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
@@ -1864,6 +1907,57 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   onChange={(value) => setInsuranceCost(parseFloat(value) || 0)}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded font-medium"
                 />
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs shadow-sm">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h4 className="font-black uppercase tracking-wider text-slate-800">Cost Breakdown Row Notes</h4>
+                  <p className="mt-1 text-[11px] font-medium text-slate-500">
+                    These lines print directly under each cost component title in the PDF table.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCostBreakdownNotes(defaultCostBreakdownNotes)}
+                  className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-black text-slate-700 hover:bg-slate-100"
+                >
+                  Reset Notes
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Offered Goods Value Note</span>
+                  <FastTextarea
+                    value={costBreakdownNotes.offered_goods || ''}
+                    onChange={(value) => setCostBreakdownNotes((current) => ({ ...current, offered_goods: value }))}
+                    className="h-20 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Local Transport / Export Charges Note</span>
+                  <FastTextarea
+                    value={costBreakdownNotes.origin_charges || ''}
+                    onChange={(value) => setCostBreakdownNotes((current) => ({ ...current, origin_charges: value }))}
+                    className="h-20 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Main Ocean Freight Note</span>
+                  <FastTextarea
+                    value={costBreakdownNotes.ocean_freight || ''}
+                    onChange={(value) => setCostBreakdownNotes((current) => ({ ...current, ocean_freight: value }))}
+                    className="h-20 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Marine Insurance Note</span>
+                  <FastTextarea
+                    value={costBreakdownNotes.insurance || ''}
+                    onChange={(value) => setCostBreakdownNotes((current) => ({ ...current, insurance: value }))}
+                    className="h-20 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-300"
+                  />
+                </label>
               </div>
             </div>
           </div>
@@ -1973,17 +2067,13 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                     <p className="text-[10px] font-black uppercase tracking-wide">Detailed PDF Page</p>
                     <p className="mt-1 text-[11px] font-semibold">
                       {showDetailsPage
-                        ? 'Page 2 details will be included in generated PDFs.'
-                        : 'Page 2 details are saved here but hidden from generated PDFs.'}
+                        ? 'Page 2 terms, documentation, logistics specs, and optional stamp block will be included in generated PDFs.'
+                        : 'Page 2 details are saved here but hidden from generated PDFs. The stamp block can still print on page 1 if enabled above.'}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowDetailsPage((value) => !value)}
-                    className="rounded-md bg-white px-3 py-1.5 text-[11px] font-black text-slate-800 shadow-sm ring-1 ring-black/5 hover:bg-slate-50"
-                  >
-                    {showDetailsPage ? 'Hide Page 2' : 'Show Page 2'}
-                  </button>
+                  <div className="rounded-md bg-white px-3 py-1.5 shadow-sm ring-1 ring-black/5">
+                    <CheckboxInput label="Show detailed terms page" checked={showDetailsPage} onChange={setShowDetailsPage} />
+                  </div>
                 </div>
               </div>
               

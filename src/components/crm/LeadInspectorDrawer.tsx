@@ -11,6 +11,15 @@ interface LeadInspectorDrawerProps {
   velocityScore?: number;
   actionCategory?: string;
   bestSendWindow?: string;
+  relatedSummary?: {
+    quotes: number;
+    invoices: number;
+    shipments: number;
+    tasks: number;
+    lastQuote?: string;
+    paymentStatus?: string;
+    shipmentStatus?: string;
+  };
   onSendEmail?: (lead: CrmLead) => void;
   onSendWhatsApp?: (lead: CrmLead) => void;
 }
@@ -24,6 +33,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
   velocityScore = 0,
   actionCategory = 'Review',
   bestSendWindow = 'Best send: office hours',
+  relatedSummary,
   onSendEmail,
   onSendWhatsApp
 }) => {
@@ -206,6 +216,39 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 <Phone className="h-4 w-4" />
                 WhatsApp
               </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Linked Trade Context</p>
+                <p className="text-xs font-bold text-slate-900">Quotes, invoices, shipments, tasks</p>
+              </div>
+              <span className="rounded-full bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700">Buyer 360</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 text-center">
+                <p className="text-[9px] font-black uppercase text-slate-400">Quotes</p>
+                <p className="text-lg font-black text-slate-950">{relatedSummary?.quotes || 0}</p>
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 text-center">
+                <p className="text-[9px] font-black uppercase text-slate-400">Invoices</p>
+                <p className="text-lg font-black text-slate-950">{relatedSummary?.invoices || 0}</p>
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 text-center">
+                <p className="text-[9px] font-black uppercase text-slate-400">Ships</p>
+                <p className="text-lg font-black text-slate-950">{relatedSummary?.shipments || 0}</p>
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-2 text-center">
+                <p className="text-[9px] font-black uppercase text-slate-400">Tasks</p>
+                <p className="text-lg font-black text-slate-950">{relatedSummary?.tasks || 0}</p>
+              </div>
+            </div>
+            <div className="mt-3 space-y-1 rounded-lg border border-slate-100 bg-slate-50 p-2 text-[10px] font-bold text-slate-600">
+              <p>Last Quote: <span className="text-slate-950">{relatedSummary?.lastQuote || 'No quote linked'}</span></p>
+              <p>Payment: <span className="text-slate-950">{relatedSummary?.paymentStatus || 'No invoice linked'}</span></p>
+              <p>Shipment: <span className="text-slate-950">{relatedSummary?.shipmentStatus || 'No shipment linked'}</span></p>
             </div>
           </div>
 

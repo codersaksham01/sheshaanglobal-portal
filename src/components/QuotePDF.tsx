@@ -1,6 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { Quote, QuoteItem, BankDetails } from '../lib/types';
+import { Quote, QuoteItem, BankDetails, CostBreakdownNotes } from '../lib/types';
 
 const getItemPricingBasis = (item: QuoteItem) => item.pricing_basis || 'kg';
 const getItemPackageQuantity = (item: QuoteItem) => Number(item.package_quantity || 0);
@@ -610,6 +610,11 @@ const styles = StyleSheet.create({
     objectFit: 'contain',
     marginBottom: -4,
   },
+  stampImage: {
+    width: 118,
+    height: 42,
+    objectFit: 'contain',
+  },
   signatureCursive: {
     fontSize: 12,
     fontFamily: 'Times-Italic',
@@ -763,6 +768,10 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   const showCifBreakdown = quote.show_cif_breakdown !== false;
   const showDetailsPage = quote.show_details_page !== false;
   const showCifPortInTotal = quote.show_cif_port_in_total === true;
+  const showSignatureBlock = quote.show_signature_block !== false;
+  const showOriginCharges = quote.show_origin_charges !== false;
+  const showOceanFreight = quote.show_ocean_freight !== false;
+  const showInsuranceCharge = quote.show_insurance_charge !== false;
   
   // Calculate item sum base (FOB base value)
   const itemsSubtotal = lineItems.reduce(
@@ -861,6 +870,62 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
     'Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.',
     'Governing Law & Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration.'
   ];
+  const costNotes: CostBreakdownNotes = quote.cost_breakdown_notes || {};
+
+  const costBreakdownRows = [
+    {
+      visible: true,
+      title: 'Offered Goods Value',
+      detail: costNotes.offered_goods || 'Commercial offer value from Section 2, inclusive of quoted selling margin.',
+      basis: 'As per Section 2',
+      rate: 'Offered Rate',
+      amount: itemsSubtotal
+    },
+    {
+      visible: showOriginCharges,
+      title: 'Local Transport, Export & Handling Charges',
+      detail: costNotes.origin_charges || 'Export packing, inland haulage, THC, loading, and customs clearance as applicable.',
+      basis: 'Origin Services',
+      rate: 'Overall Order',
+      amount: originExportCharges
+    },
+    {
+      visible: showOceanFreight,
+      title: 'Main Ocean Freight',
+      detail: costNotes.ocean_freight || `Lump-sum ocean freight from ${(quote.loading_port || 'Mundra').split(',')[0].trim()} to ${(client.destination_port || 'Destination').split(',')[0].trim()}.`,
+      basis: `Lump Sum (${quote.shipment_mode})`,
+      rate: 'Overall Order',
+      amount: Number(quote.freight_cost)
+    },
+    {
+      visible: showInsuranceCharge,
+      title: 'Marine Cargo Transit Insurance',
+      detail: costNotes.insurance || 'Comprehensive marine transit cargo insurance policy up to destination port.',
+      basis: 'Lump Sum (Policy)',
+      rate: 'Overall Order',
+      amount: Number(quote.insurance_cost)
+    }
+  ].filter((row) => row.visible);
+
+  const renderSignaturesBlock = () => (
+    <View style={styles.signaturesGrid} wrap={false}>
+      <View style={styles.signatureBox}>
+        <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller Stamp)</Text>
+        <View style={styles.signatureSignLine}>
+          <Image src="/stamp.png" style={styles.stampImage} />
+        </View>
+        <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
+        <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
+      </View>
+
+      <View style={styles.signatureBox}>
+        <Text style={styles.signatureRoleLabel}>{documentType === 'packing_list' ? 'Received & Audited By Buyer' : 'Accepted & Confirmed By Buyer'}{"\n"}(Buyer Order Confirmation)</Text>
+        <View style={[styles.signatureSignLine, { borderStyle: 'dashed' }]} />
+        <Text style={styles.signatureTextName}>Authorized Buyer Signature & Stamp</Text>
+        <Text style={styles.signatureTextCompany}>{client.contact_name} / {client.company_name}</Text>
+      </View>
+    </View>
+  );
 
   return (
     <Document>
@@ -1100,55 +1165,18 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                 <Text style={[styles.tableHeaderCol, styles.colBdTotal]}>Total Amount ({quote.currency})</Text>
               </View>
 
-              {/* Row 1: Offered goods value */}
-              <View style={styles.tableRow} wrap={false}>
-                <Text style={[styles.tableCol, styles.colBdSr]}>1</Text>
-                <View style={[styles.tableCol, styles.colBdDesc]}>
-                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Offered Goods Value</Text>
-                  <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>
-                    Commercial offer value from Section 2, inclusive of quoted selling margin.
-                  </Text>
+              {costBreakdownRows.map((row, index) => (
+                <View key={row.title} style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlternate} wrap={false}>
+                  <Text style={[styles.tableCol, styles.colBdSr]}>{index + 1}</Text>
+                  <View style={[styles.tableCol, styles.colBdDesc]}>
+                    <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>{row.title}</Text>
+                    <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>{row.detail}</Text>
+                  </View>
+                  <Text style={[styles.tableCol, styles.colBdBasis]}>{row.basis}</Text>
+                  <Text style={[styles.tableCol, styles.colBdRate]}>{row.rate}</Text>
+                  <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(row.amount)}</Text>
                 </View>
-                <Text style={[styles.tableCol, styles.colBdBasis]}>As per Section 2</Text>
-                <Text style={[styles.tableCol, styles.colBdRate]}>Offered Rate</Text>
-                <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(itemsSubtotal)}</Text>
-              </View>
-
-              {/* Row 2: Origin export charges */}
-              <View style={styles.tableRowAlternate} wrap={false}>
-                <Text style={[styles.tableCol, styles.colBdSr]}>2</Text>
-                <View style={[styles.tableCol, styles.colBdDesc]}>
-                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Origin Export & Handling Charges</Text>
-                  <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>Export packing, inland haulage, THC, loading, and customs clearance as applicable.</Text>
-                </View>
-                <Text style={[styles.tableCol, styles.colBdBasis]}>Origin Services</Text>
-                <Text style={[styles.tableCol, styles.colBdRate]}>Overall Order</Text>
-                <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(originExportCharges)}</Text>
-              </View>
-
-              {/* Row 3: Main Ocean Freight */}
-              <View style={styles.tableRow} wrap={false}>
-                <Text style={[styles.tableCol, styles.colBdSr]}>3</Text>
-                <View style={[styles.tableCol, styles.colBdDesc]}>
-                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Main Ocean Freight</Text>
-                  <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>Lump-sum ocean freight from {(quote.loading_port || 'Mundra').split(',')[0].trim()} to {(client.destination_port || 'Destination').split(',')[0].trim()}.</Text>
-                </View>
-                <Text style={[styles.tableCol, styles.colBdBasis]}>Lump Sum ({quote.shipment_mode})</Text>
-                <Text style={[styles.tableCol, styles.colBdRate]}>Overall Order</Text>
-                <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(quote.freight_cost)}</Text>
-              </View>
-
-              {/* Row 4: Insurance */}
-              <View style={styles.tableRowAlternate} wrap={false}>
-                <Text style={[styles.tableCol, styles.colBdSr]}>4</Text>
-                <View style={[styles.tableCol, styles.colBdDesc]}>
-                  <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>Marine Cargo Transit Insurance</Text>
-                  <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>Comprehensive marine transit cargo insurance policy up to destination port.</Text>
-                </View>
-                <Text style={[styles.tableCol, styles.colBdBasis]}>Lump Sum (Policy)</Text>
-                <Text style={[styles.tableCol, styles.colBdRate]}>Overall Order</Text>
-                <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(quote.insurance_cost)}</Text>
-              </View>
+              ))}
 
               {/* Grand total breakdown */}
               <View style={styles.tableRowGrandTotal} wrap={false}>
@@ -1222,6 +1250,8 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
             </Text>
           </View>
         )}
+
+        {!showDetailsPage && showSignatureBlock && renderSignaturesBlock()}
 
         {/* Footer Page 1 */}
         <Text
@@ -1363,24 +1393,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         )}
 
         {/* SIGNATURES BLOCK */}
-        <View style={styles.signaturesGrid} wrap={false}>
-          
-          <View style={styles.signatureBox}>
-            <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller Authorization)</Text>
-            <View style={styles.signatureSignLine}>
-              <Image src="/sana-signature.png" style={styles.signatureImage} />
-            </View>
-            <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
-            <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
-          </View>
-          
-          <View style={styles.signatureBox}>
-            <Text style={styles.signatureRoleLabel}>{documentType === 'packing_list' ? 'Received & Audited By Buyer' : 'Accepted & Confirmed By Buyer'}{"\n"}(Buyer Order Confirmation)</Text>
-            <View style={[styles.signatureSignLine, { borderStyle: 'dashed' }]} />
-            <Text style={styles.signatureTextName}>Authorized Buyer Signature & Stamp</Text>
-            <Text style={styles.signatureTextCompany}>{client.contact_name} / {client.company_name}</Text>
-          </View>
-        </View>
+        {showSignatureBlock && renderSignaturesBlock()}
 
         {/* Footer Page 2 */}
         <Text

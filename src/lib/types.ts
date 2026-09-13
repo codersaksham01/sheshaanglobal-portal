@@ -218,6 +218,13 @@ export interface LogisticsSpecs {
   storage_condition?: string;
 }
 
+export interface CostBreakdownNotes {
+  offered_goods?: string;
+  origin_charges?: string;
+  ocean_freight?: string;
+  insurance?: string;
+}
+
 export interface Quote {
   id: string;
   quote_number: string;
@@ -245,9 +252,14 @@ export interface Quote {
   shipper_details?: ShipperDetails;
   bank_details?: BankDetails;
   commercial_note?: string; // Note on Commercial Structure
+  cost_breakdown_notes?: CostBreakdownNotes;
   show_cif_breakdown?: boolean;
   show_details_page?: boolean;
   show_cif_port_in_total?: boolean;
+  show_signature_block?: boolean;
+  show_origin_charges?: boolean;
+  show_ocean_freight?: boolean;
+  show_insurance_charge?: boolean;
   
   // Page 2 parameters
   included_responsibilities?: string[];

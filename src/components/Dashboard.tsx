@@ -126,7 +126,7 @@ const getQuoteItemQuantityLabel = (item: QuoteItem) => (
     : `${Number(item.quantity || 0).toLocaleString()} kg`
 );
 
-type TabKey = 'overview' | 'actionQueue' | 'crm' | 'dataSources' | 'dataCleanup' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
+type TabKey = 'overview' | 'actionQueue' | 'crm' | 'potentialBuyers' | 'dataSources' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
@@ -146,6 +146,14 @@ type CleanupRecord = {
   reason: string;
   clientId?: string;
   leadId?: string;
+};
+type ImportInspection = {
+  totalRows: number;
+  duplicates: string[];
+  missingEmails: string[];
+  missingPhones: string[];
+  invalidCountries: string[];
+  weakRecords: string[];
 };
 
 const blankClient: Partial<Client> = {
@@ -1248,6 +1256,10 @@ export const Dashboard: React.FC = () => {
   const [selectedCrmLead, setSelectedCrmLead] = useState<CrmLead | null>(null);
   const [crmViewMode, setCrmViewMode] = useState<'table' | 'kanban'>('table');
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
+  const [crmMenuOpen, setCrmMenuOpen] = useState(true);
+  const [potentialBuyerSearchQuery, setPotentialBuyerSearchQuery] = useState('');
+  const [potentialBuyerForm, setPotentialBuyerForm] = useState<Partial<Lead>>(blankLead);
+  const [editingPotentialBuyerId, setEditingPotentialBuyerId] = useState<string | null>(null);
   const [crmQueueFilter, setCrmQueueFilter] = useState<string | null>(null);
   const [crmCountryFilter, setCrmCountryFilter] = useState('All');
   const [crmSortKey, setCrmSortKey] = useState<
@@ -1264,6 +1276,10 @@ export const Dashboard: React.FC = () => {
   const [cleanupSearchQuery, setCleanupSearchQuery] = useState('');
   const [cleanupIssueFilter, setCleanupIssueFilter] = useState<CleanupIssueFilter>('All');
   const [selectedCleanupRecordIds, setSelectedCleanupRecordIds] = useState<string[]>([]);
+  const [phoneCleanupSearchQuery, setPhoneCleanupSearchQuery] = useState('');
+  const [phoneCleanupCountryFilter, setPhoneCleanupCountryFilter] = useState('All');
+  const [selectedPhoneCleanupRecordIds, setSelectedPhoneCleanupRecordIds] = useState<string[]>([]);
+  const [importInspection, setImportInspection] = useState<ImportInspection | null>(null);
   const [crmColumnVisibleCounts, setCrmColumnVisibleCounts] = useState<Record<string, number>>({});
   const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
   const [activityForm, setActivityForm] = useState<Partial<TimelineActivity>>(blankActivity);
@@ -1641,6 +1657,13 @@ export const Dashboard: React.FC = () => {
   ));
   const hasContactableEmail = (value?: string) => extractContactEmails(value).length > 0;
   const hasEmailQualityIssue = (value?: string) => !hasContactableEmail(value);
+  const hasContactablePhone = (value?: string) => normalizePhoneValue(value).length >= 7;
+  const hasPhoneQualityIssue = (value?: string) => !hasContactablePhone(value);
+  const hasValidCountryName = (value?: string) => {
+    const key = normalizeCountryKey(value || '');
+    if (!key || key === 'uncategorized') return false;
+    return commonCountryNames.includes(key) || Boolean(countryTimezoneOffsets[key]);
+  };
   const hasContactQualityIssue = (contact?: string, phone?: string) => !(contact || '').trim() && !(phone || '').trim();
   const isContactNameNoise = (value?: string) => {
     const text = (value || '').trim();
@@ -1660,6 +1683,7 @@ export const Dashboard: React.FC = () => {
     if (source.includes('custom') || source.includes('research')) return 'Custom Researched Data';
     return 'Uncategorized';
   };
+  const leadIsPotentialBuyer = (lead: Lead) => leadNoteValue(lead, 'Potential Buyer').toLowerCase() === 'yes';
   const leadHasOutreach = (lead: Lead) => {
     const status = leadEmailStatus(lead).toLowerCase();
     return ['sent', 'follow', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded', 'email'].some((term) => status.includes(term)) 
@@ -1742,6 +1766,10 @@ export const Dashboard: React.FC = () => {
   };
 
   const resetLeadForm = () => { setEditingLeadId(null); setLeadForm(blankLead); };
+  const resetPotentialBuyerForm = () => {
+    setEditingPotentialBuyerId(null);
+    setPotentialBuyerForm(blankLead);
+  };
   const resetActivityForm = () => { setEditingActivityId(null); setActivityForm(blankActivity); };
   const resetTaskForm = () => { setEditingTaskId(null); setTaskForm(blankTask); };
   const resetTemplateForm = () => { setEditingTemplateId(null); setTemplateForm(blankTemplate); };
@@ -3233,6 +3261,7 @@ export const Dashboard: React.FC = () => {
     if (!file) return;
     setImportingBuyers(true);
     setImportSummary(null);
+    setImportInspection(null);
     setImportProgress({ label: 'Reading file', processed: 0, total: 100 });
 
     try {
@@ -3258,7 +3287,15 @@ export const Dashboard: React.FC = () => {
       const taskPayloads: Partial<TaskRecord>[] = [];
       const seen = new Set<string>();
       const existingKeys = new Set<string>();
-      const importBatchId = Date.now().toString(36);
+      const inspection: ImportInspection = {
+        totalRows: rows.length,
+        duplicates: [],
+        missingEmails: [],
+        missingPhones: [],
+        invalidCountries: [],
+        weakRecords: []
+      };
+      const importBatchId = `${file.name.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 18) || 'crm-import'}-${rows.length.toString(36)}`;
       let skipped = 0;
       const skippedCompanies: string[] = [];
 
@@ -3284,6 +3321,8 @@ export const Dashboard: React.FC = () => {
         const company = String(row['Company Name'] || '').trim();
         const email = String(row.Email || '').trim();
         const phone = String(row.Phone || '').trim();
+        const country = String(row.Country || '').trim();
+        const contactPerson = cleanContactName(String(row['Contact Person'] || ''));
         const companyKey = normalizeDuplicateValue(company);
         const emailKey = normalizeDuplicateValue(email);
         const phoneKey = normalizePhoneValue(phone);
@@ -3295,11 +3334,18 @@ export const Dashboard: React.FC = () => {
 
         if (!company || rowKeys.some((key) => seen.has(key) || existingKeys.has(key))) {
           skipped += 1;
-          if (company) skippedCompanies.push(company);
+          if (company) {
+            skippedCompanies.push(company);
+            inspection.duplicates.push(company);
+          }
           return;
         }
 
         rowKeys.forEach((key) => seen.add(key));
+        if (!hasContactableEmail(email)) inspection.missingEmails.push(company);
+        if (!hasContactablePhone(phone)) inspection.missingPhones.push(company);
+        if (!hasValidCountryName(country)) inspection.invalidCountries.push(company);
+        if (!contactPerson && !hasContactableEmail(email) && !hasContactablePhone(phone)) inspection.weakRecords.push(company);
         const sourceId = String(row.ID || index + 1).replace(/[^a-zA-Z0-9_-]/g, '');
         const rowId = `${importBatchId}-${sourceId || index + 1}`;
         const clientId = `import-client-${rowId}`;
@@ -3316,13 +3362,13 @@ export const Dashboard: React.FC = () => {
         clientPayloads.push({
           id: clientId,
           company_name: company,
-          contact_name: cleanContactName(String(row['Contact Person'] || '')),
+          contact_name: contactPerson,
           contact_email: email,
-          destination_port: String(row.Country || '').trim() || 'Not specified',
+          destination_port: country || 'Not specified',
           address: [
             `Data Source: ${importDataSource}`,
             String(row.Website || '').trim() && `Website: ${String(row.Website).trim()}`,
-            String(row.Country || '').trim() && `Country: ${String(row.Country).trim()}`,
+            country && `Country: ${country}`,
             String(row['Market Category'] || '').trim() && `Market: ${String(row['Market Category']).trim()}`,
             String(row['Buyer Type'] || '').trim() && `Buyer Type: ${String(row['Buyer Type']).trim()}`,
             phone && `Phone: ${phone}`
@@ -3332,10 +3378,10 @@ export const Dashboard: React.FC = () => {
         leadPayloads.push({
           id: leadId,
           company_name: company,
-          contact_name: cleanContactName(String(row['Contact Person'] || '')),
+          contact_name: contactPerson,
           contact_email: email,
           phone,
-          country: String(row.Country || '').trim(),
+          country,
           product_interest: product && product !== 'Other' ? product : productCategory || 'General export product range',
           estimated_value: Number(row['Lead Score'] || 0),
           stage: (outreachDone && stage === 'New Lead') ? 'Contacted' : stage,
@@ -3396,6 +3442,7 @@ export const Dashboard: React.FC = () => {
       });
 
       setImportProgress({ label: 'Duplicate check complete', processed: rows.length, total: rows.length || 1 });
+      setImportInspection(inspection);
 
       const insertBatches = async (table: string, payloads: unknown[]) => {
         const chunkSize = 150;
@@ -3707,6 +3754,29 @@ export const Dashboard: React.FC = () => {
     return Array.from(new Set(leads.map((lead) => (lead.country || 'Uncategorized').trim() || 'Uncategorized'))).sort((a, b) => a.localeCompare(b));
   }, [leads]);
 
+  const potentialBuyerLeads = useMemo(() => {
+    const query = potentialBuyerSearchQuery.trim().toLowerCase();
+    return leads
+      .filter((lead) => leadIsPotentialBuyer(lead))
+      .filter((lead) => {
+        if (!query) return true;
+        return [
+          lead.company_name,
+          lead.contact_name,
+          lead.contact_email,
+          lead.phone,
+          lead.country,
+          lead.product_interest,
+          lead.notes
+        ].join(' ').toLowerCase().includes(query);
+      })
+      .sort((a, b) => {
+        const scoreDiff = (leadScoreValue[b.id] || 0) - (leadScoreValue[a.id] || 0);
+        if (scoreDiff !== 0) return scoreDiff;
+        return companyKey(a).localeCompare(companyKey(b));
+      });
+  }, [leads, potentialBuyerSearchQuery, leadScoreValue]);
+
   const searchedCrmLeads = useMemo(() => {
     const query = deferredCrmSearchQuery.trim().toLowerCase();
     const countryFiltered = crmCountryFilter === 'All'
@@ -3894,12 +3964,6 @@ export const Dashboard: React.FC = () => {
   const cleanupRecords = useMemo<CleanupRecord[]>(() => {
     const records: CleanupRecord[] = [];
     const coveredClientIds = new Set<string>();
-    const buildIssue = (emailIssue: boolean, contactIssue: boolean): CleanupIssueFilter => {
-      if (emailIssue && contactIssue) return 'Email + Contact';
-      if (emailIssue) return 'Email Issue';
-      if (contactIssue) return 'Contact Issue';
-      return 'All';
-    };
 
     leads.forEach((lead) => {
       const linkedClient = lead.client_id ? clients.find((client) => client.id === lead.client_id) : undefined;
@@ -3907,11 +3971,9 @@ export const Dashboard: React.FC = () => {
       const contact = lead.contact_name || linkedClient?.contact_name || '';
       const phone = lead.phone || linkedClient?.phone || '';
       const emailIssue = hasEmailQualityIssue(email);
-      const contactIssue = hasContactQualityIssue(contact, phone);
-      if (!emailIssue && !contactIssue) return;
+      if (!emailIssue) return;
 
       if (linkedClient?.id) coveredClientIds.add(linkedClient.id);
-      const issue = buildIssue(emailIssue, contactIssue);
       records.push({
         id: `lead-${lead.id}`,
         company: lead.company_name || linkedClient?.company_name || 'Unnamed lead',
@@ -3920,11 +3982,8 @@ export const Dashboard: React.FC = () => {
         email,
         contact,
         phone,
-        issue,
-        reason: [
-          emailIssue ? 'No contactable email found' : '',
-          contactIssue ? 'Contact name and phone are missing' : ''
-        ].filter(Boolean).join(' | '),
+        issue: 'Email Issue',
+        reason: 'No contactable email found',
         clientId: linkedClient?.id,
         leadId: lead.id
       });
@@ -3933,10 +3992,8 @@ export const Dashboard: React.FC = () => {
     clients.forEach((client) => {
       if (coveredClientIds.has(client.id)) return;
       const emailIssue = hasEmailQualityIssue(client.contact_email);
-      const contactIssue = hasContactQualityIssue(client.contact_name, client.phone);
-      if (!emailIssue && !contactIssue) return;
+      if (!emailIssue) return;
 
-      const issue = buildIssue(emailIssue, contactIssue);
       records.push({
         id: `client-${client.id}`,
         company: client.company_name || 'Unnamed buyer',
@@ -3945,11 +4002,8 @@ export const Dashboard: React.FC = () => {
         email: client.contact_email || '',
         contact: client.contact_name || '',
         phone: client.phone || '',
-        issue,
-        reason: [
-          emailIssue ? 'No contactable email found' : '',
-          contactIssue ? 'Contact name and phone are missing' : ''
-        ].filter(Boolean).join(' | '),
+        issue: 'Email Issue',
+        reason: 'No contactable email found',
         clientId: client.id
       });
     });
@@ -3968,10 +4022,65 @@ export const Dashboard: React.FC = () => {
 
   const cleanupStats = useMemo(() => ({
     total: cleanupRecords.length,
-    email: cleanupRecords.filter((record) => record.issue === 'Email Issue' || record.issue === 'Email + Contact').length,
-    contact: cleanupRecords.filter((record) => record.issue === 'Contact Issue' || record.issue === 'Email + Contact').length,
+    email: cleanupRecords.length,
+    contact: 0,
     linked: cleanupRecords.filter((record) => record.source === 'Buyer + Lead').length
   }), [cleanupRecords]);
+
+  const phoneCleanupRecords = useMemo<CleanupRecord[]>(() => {
+    const records: CleanupRecord[] = [];
+    const coveredClientIds = new Set<string>();
+
+    leads.forEach((lead) => {
+      const linkedClient = lead.client_id ? clients.find((client) => client.id === lead.client_id) : undefined;
+      const phone = lead.phone || linkedClient?.phone || '';
+      if (!hasPhoneQualityIssue(phone)) return;
+      if (linkedClient?.id) coveredClientIds.add(linkedClient.id);
+      records.push({
+        id: `lead-phone-${lead.id}`,
+        company: lead.company_name || linkedClient?.company_name || 'Unnamed lead',
+        source: linkedClient ? 'Buyer + Lead' : 'Lead',
+        country: lead.country || (linkedClient ? buyerCountry(linkedClient) : 'Uncategorized'),
+        email: lead.contact_email || linkedClient?.contact_email || '',
+        contact: lead.contact_name || linkedClient?.contact_name || '',
+        phone,
+        issue: 'Contact Issue',
+        reason: phone ? 'Phone number looks invalid for WhatsApp' : 'No phone number found',
+        clientId: linkedClient?.id,
+        leadId: lead.id
+      });
+    });
+
+    clients.forEach((client) => {
+      if (coveredClientIds.has(client.id)) return;
+      if (!hasPhoneQualityIssue(client.phone)) return;
+      records.push({
+        id: `client-phone-${client.id}`,
+        company: client.company_name || 'Unnamed buyer',
+        source: 'Buyer',
+        country: buyerCountry(client),
+        email: client.contact_email || '',
+        contact: client.contact_name || '',
+        phone: client.phone || '',
+        issue: 'Contact Issue',
+        reason: client.phone ? 'Phone number looks invalid for WhatsApp' : 'No phone number found',
+        clientId: client.id
+      });
+    });
+
+    return records.sort((a, b) => a.company.localeCompare(b.company));
+  }, [clients, leads]);
+
+  const phoneCleanupCountries = useMemo(() => Array.from(new Set(phoneCleanupRecords.map((record) => record.country || 'Uncategorized'))).sort((a, b) => a.localeCompare(b)), [phoneCleanupRecords]);
+
+  const filteredPhoneCleanupRecords = useMemo(() => {
+    const query = phoneCleanupSearchQuery.trim().toLowerCase();
+    return phoneCleanupRecords.filter((record) => {
+      const matchesCountry = phoneCleanupCountryFilter === 'All' || record.country === phoneCleanupCountryFilter;
+      const searchable = [record.company, record.country, record.email, record.contact, record.phone, record.reason, record.source].join(' ').toLowerCase();
+      return matchesCountry && (!query || searchable.includes(query));
+    });
+  }, [phoneCleanupCountryFilter, phoneCleanupRecords, phoneCleanupSearchQuery]);
 
   const crmBoardColumns = crmQueues.filter((queue) => ['Need Reach Out', 'Follow-up Due', 'Next Follow-up', 'Waiting Reply', 'Responded / Qualify', 'Needs Email Fix', 'Won / Approved', 'Lost / Declined'].includes(queue.label));
   const selectedLeads = leads.filter((lead) => selectedLeadIds.includes(lead.id));
@@ -3991,6 +4100,14 @@ export const Dashboard: React.FC = () => {
       return next.length === current.length ? current : next;
     });
   }, [cleanupRecords]);
+
+  useEffect(() => {
+    const availableIds = new Set(phoneCleanupRecords.map((record) => record.id));
+    setSelectedPhoneCleanupRecordIds((current) => {
+      const next = current.filter((id) => availableIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [phoneCleanupRecords]);
 
   const deleteRecordsByIds = async (table: string, ids: string[]) => {
     const chunkSize = 25;
@@ -4047,6 +4164,63 @@ export const Dashboard: React.FC = () => {
     } catch (err) {
       console.warn('Cleanup delete failed:', err);
       alert(err instanceof Error ? err.message : 'Could not delete selected cleanup records.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportCleanupRecords = (records: CleanupRecord[], filename: string) => {
+    downloadCsvFile(filename, [
+      ['Company', 'Source', 'Country', 'Email', 'Contact', 'Phone', 'Issue', 'Reason'],
+      ...records.map((record) => [record.company, record.source, record.country, record.email, record.contact, record.phone, record.issue, record.reason])
+    ]);
+  };
+
+  const handleBulkDeletePhoneCleanupRecords = async () => {
+    const selectedRecords = phoneCleanupRecords.filter((record) => selectedPhoneCleanupRecordIds.includes(record.id));
+    if (!selectedRecords.length) {
+      alert('Select at least one phone cleanup record first.');
+      return;
+    }
+
+    const leadIds = Array.from(new Set(selectedRecords.flatMap((record) => record.leadId ? [record.leadId] : [])));
+    const clientIds = Array.from(new Set(selectedRecords.flatMap((record) => record.clientId ? [record.clientId] : [])));
+    const leadIdSet = new Set(leadIds);
+    const clientIdSet = new Set(clientIds);
+    const linkedLeadIds = leads
+      .filter((lead) => lead.client_id && clientIdSet.has(lead.client_id))
+      .map((lead) => lead.id);
+    const finalLeadIds = Array.from(new Set([...leadIds, ...linkedLeadIds]));
+    const finalLeadIdSet = new Set(finalLeadIds);
+    const activityIds = activities
+      .filter((activity) => (activity.lead_id && finalLeadIdSet.has(activity.lead_id)) || (activity.client_id && clientIdSet.has(activity.client_id)))
+      .map((activity) => activity.id);
+    const taskIds = tasks
+      .filter((task) => (task.lead_id && finalLeadIdSet.has(task.lead_id)) || (task.client_id && clientIdSet.has(task.client_id)))
+      .map((task) => task.id);
+
+    const confirmed = confirm(
+      `Delete selected invalid phone records?\n\nThis will delete ${clientIds.length} buyer profile${clientIds.length === 1 ? '' : 's'}, ${finalLeadIds.length} lead${finalLeadIds.length === 1 ? '' : 's'}, ${activityIds.length} linked activit${activityIds.length === 1 ? 'y' : 'ies'}, and ${taskIds.length} linked task${taskIds.length === 1 ? '' : 's'}.\n\nQuotes, invoices, products, and shipments will remain safe.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      await deleteRecordsByIds('activities', activityIds);
+      await deleteRecordsByIds('tasks', taskIds);
+      await deleteRecordsByIds('leads', finalLeadIds);
+      await deleteRecordsByIds('clients', clientIds);
+
+      setSelectedPhoneCleanupRecordIds([]);
+      setActivities((current) => current.filter((activity) => !activityIds.includes(activity.id)));
+      setTasks((current) => current.filter((task) => !taskIds.includes(task.id)));
+      setLeads((current) => current.filter((lead) => !finalLeadIds.includes(lead.id)));
+      setClients((current) => current.filter((client) => !clientIds.includes(client.id)));
+      await fetchData();
+      showToast(`Deleted ${selectedRecords.length} phone cleanup record${selectedRecords.length === 1 ? '' : 's'}`, 'success');
+    } catch (err) {
+      console.warn('Phone cleanup delete failed:', err);
+      alert(err instanceof Error ? err.message : 'Could not delete selected phone cleanup records.');
     } finally {
       setLoading(false);
     }
@@ -4200,13 +4374,93 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const bulkPatchSelectedLeads = async (buildUpdates: (lead: Lead) => Partial<Lead>, successMessage: string) => {
+    if (!selectedLeads.length) {
+      alert('Select at least one lead first.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const results = await Promise.all(selectedLeads.map((lead) => supabase.from('leads').update(buildUpdates(lead)).eq('id', lead.id)));
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw new Error(failed.error.message || 'Bulk update failed.');
+      setSelectedLeadIds([]);
+      await fetchData();
+      showToast(successMessage, 'success');
+    } catch (err) {
+      console.warn('Bulk lead patch failed:', err);
+      alert(err instanceof Error ? err.message : 'Could not update selected leads.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const bulkAssignSelectedOwner = async () => {
+    const owner = window.prompt('Assign selected leads to which owner?', 'Sana Zeba')?.trim();
+    if (!owner) return;
+    await bulkPatchSelectedLeads(() => ({ owner }), `Assigned ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'} to ${owner}`);
+  };
+
+  const bulkChangeSelectedSource = async () => {
+    const source = window.prompt('Set selected leads source as Embassy Data or Custom Researched Data?', 'Custom Researched Data')?.trim();
+    if (!source) return;
+    const normalizedSource: ImportDataSource = source.toLowerCase().includes('embassy') ? 'Embassy Data' : 'Custom Researched Data';
+    await bulkPatchSelectedLeads((lead) => ({
+      notes: setLeadNoteValues(lead, { 'Data Source': normalizedSource })
+    }), `Updated source for ${selectedLeads.length} selected lead${selectedLeads.length === 1 ? '' : 's'}`);
+  };
+
+  const bulkEnrollSelectedSequence = async (sequence: string) => {
+    await bulkPatchSelectedLeads((lead) => ({
+      sequence_enrolled: sequence,
+      notes: setLeadNoteValues(lead, { 'Outreach Sequence': sequence, 'Next Action': sequence === 'Dormant Recovery' ? 'Reactivation outreach required' : leadNextAction(lead) })
+    }), `Enrolled ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'} in ${sequence}`);
+  };
+
+  const bulkCreateSelectedTasks = async () => {
+    if (!selectedLeads.length) {
+      alert('Select at least one lead first.');
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const taskPayloads = selectedLeads
+      .filter((lead) => !tasks.some((task) => task.lead_id === lead.id && task.status !== 'Done' && task.title.toLowerCase().includes('crm action')))
+      .map((lead) => ({
+        title: `CRM action: ${lead.company_name}`,
+        status: 'Open' as const,
+        priority: lead.priority || 'Medium',
+        due_date: lead.next_follow_up || today,
+        owner: lead.owner || 'Sana Zeba',
+        client_id: lead.client_id,
+        lead_id: lead.id,
+        notes: `Bulk-created from Smart CRM. Current action: ${getLeadActionCategory(lead)}`
+      }));
+
+    if (!taskPayloads.length) {
+      alert('Open tasks already exist for the selected leads.');
+      return;
+    }
+
+    const { error } = await supabase.from('tasks').insert(taskPayloads);
+    if (error) {
+      alert(error.message || 'Could not create tasks for selected leads.');
+      return;
+    }
+    setSelectedLeadIds([]);
+    await fetchData();
+    showToast(`Created ${taskPayloads.length} CRM task${taskPayloads.length === 1 ? '' : 's'}`, 'success');
+  };
+
   const navItems = useMemo(() => {
     const allNavItems: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
       { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
       { key: 'actionQueue', label: 'Action Queue', icon: <Target className="h-4 w-4" />, count: actionQueueItems.length },
       { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
+      { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, count: potentialBuyerLeads.length },
       { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, count: sourceFilteredLeads.length },
-      { key: 'dataCleanup', label: 'Data Cleanup', icon: <Trash2 className="h-4 w-4" />, count: cleanupRecords.length },
+      { key: 'dataCleanup', label: 'Need Email Fix', icon: <Mail className="h-4 w-4" />, count: cleanupRecords.length },
+      { key: 'phoneCleanup', label: 'Need Phone Fix', icon: <Phone className="h-4 w-4" />, count: phoneCleanupRecords.length },
       { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
       { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
@@ -4216,7 +4470,7 @@ export const Dashboard: React.FC = () => {
       { key: 'tasks', label: 'Tasks & Reminders', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter((task) => task.status !== 'Done').length },
       { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, count: invoices.length },
       { key: 'shipments', label: 'Shipment Operations', icon: <Ship className="h-4 w-4" />, count: shipments.length },
-      { key: 'documents', label: 'Documents', icon: <CheckSquare className="h-4 w-4" />, count: checklists.length },
+      { key: 'documents', label: 'Document Packet Generator', icon: <CheckSquare className="h-4 w-4" />, count: checklists.length },
       { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, count: products.length },
       { key: 'vendors', label: 'Suppliers / Vendors', icon: <Building2 className="h-4 w-4" />, count: vendors.length },
       { key: 'freight', label: 'Freight Presets', icon: <Anchor className="h-4 w-4" />, count: freightPresets.length },
@@ -4230,8 +4484,10 @@ export const Dashboard: React.FC = () => {
     currentRole,
     actionQueueItems,
     leads,
+    potentialBuyerLeads,
     sourceFilteredLeads,
     cleanupRecords,
+    phoneCleanupRecords,
     reachoutBuyers,
     quotes,
     activities,
@@ -4251,9 +4507,9 @@ export const Dashboard: React.FC = () => {
   const activeNavItem = navItems.find((item) => item.key === activeTab);
   const appBusy = loading || importingBuyers;
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
-  const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'dataCleanup', 'tasks'].includes(item.key)), [navItems]);
+  const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'dataCleanup', 'tasks'].includes(item.key)).slice(0, 5), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'manager'].includes(item.key)) }
   ], [navItems]);
@@ -4267,6 +4523,27 @@ export const Dashboard: React.FC = () => {
     setShowNotifications(false);
   };
   const selectedBuyer = clients.find((client) => client.id === selectedBuyerId);
+  const selectedCrmLeadRelatedSummary = useMemo(() => {
+    if (!selectedCrmLead) return undefined;
+    const leadCompanyKey = companyKey(selectedCrmLead);
+    const linkedClient = clients.find((client) => client.id === selectedCrmLead.client_id || (leadCompanyKey && companyKey(client) === leadCompanyKey));
+    const linkedQuotes = quotes.filter((quote) => quote.client_id === linkedClient?.id);
+    const linkedInvoices = invoices.filter((invoice) => invoice.client_id === linkedClient?.id || linkedQuotes.some((quote) => quote.id === invoice.quote_id));
+    const linkedShipments = shipments.filter((shipment) => shipment.client_id === linkedClient?.id || linkedQuotes.some((quote) => quote.id === shipment.quote_id));
+    const linkedTasks = tasks.filter((task) => task.lead_id === selectedCrmLead.id || task.client_id === linkedClient?.id);
+    const lastQuote = [...linkedQuotes].sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0];
+    const openInvoice = linkedInvoices.find((invoice) => invoice.payment_status !== 'Paid') || linkedInvoices[0];
+    const activeShipment = linkedShipments.find((shipment) => shipment.status !== 'Delivered') || linkedShipments[0];
+    return {
+      quotes: linkedQuotes.length,
+      invoices: linkedInvoices.length,
+      shipments: linkedShipments.length,
+      tasks: linkedTasks.filter((task) => task.status !== 'Done').length,
+      lastQuote: lastQuote ? `${lastQuote.quote_number} (${lastQuote.status})` : undefined,
+      paymentStatus: openInvoice ? `${openInvoice.invoice_number}: ${openInvoice.payment_status}` : undefined,
+      shipmentStatus: activeShipment ? `${activeShipment.booking_number || activeShipment.vessel_name || 'Shipment'}: ${activeShipment.status}` : undefined
+    };
+  }, [selectedCrmLead, clients, quotes, invoices, shipments, tasks]);
   const leadCategoryClass = useCallback((category: string) => {
     if (category === 'Need Reach Out') return 'bg-sky-50 text-sky-700 border-sky-100';
     if (category === 'Follow-up Due') return 'bg-amber-50 text-amber-700 border-amber-100';
@@ -4359,6 +4636,7 @@ export const Dashboard: React.FC = () => {
   const editLeadFromCard = (lead: Lead) => {
     setEditingLeadId(lead.id);
     setLeadForm(lead);
+    setSelectedCrmLead(lead as CrmLead);
   };
   const openBuyerAsCrmLead = (client: Client) => {
     const clientCompanyKey = companyKey(client);
@@ -4383,6 +4661,57 @@ export const Dashboard: React.FC = () => {
       priority: 'Medium'
     });
   };
+
+  const savePotentialBuyer = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!potentialBuyerForm.company_name?.trim()) {
+      alert('Please enter company name for the potential buyer.');
+      return;
+    }
+
+    const existingLead = editingPotentialBuyerId ? leads.find((lead) => lead.id === editingPotentialBuyerId) : null;
+    const draftLead: Lead = {
+      id: editingPotentialBuyerId || '',
+      company_name: potentialBuyerForm.company_name.trim(),
+      contact_name: potentialBuyerForm.contact_name || '',
+      contact_email: potentialBuyerForm.contact_email || '',
+      phone: potentialBuyerForm.phone || '',
+      country: potentialBuyerForm.country || '',
+      product_interest: potentialBuyerForm.product_interest || '',
+      estimated_value: Number(potentialBuyerForm.estimated_value || 0),
+      stage: potentialBuyerForm.stage || existingLead?.stage || 'New Lead',
+      priority: potentialBuyerForm.priority || existingLead?.priority || 'High',
+      owner: potentialBuyerForm.owner || existingLead?.owner || 'Sana Zeba',
+      next_follow_up: potentialBuyerForm.next_follow_up || existingLead?.next_follow_up || '',
+      notes: existingLead?.notes || potentialBuyerForm.notes || '',
+      client_id: existingLead?.client_id || potentialBuyerForm.client_id
+    };
+
+    const notes = setLeadNoteValues(draftLead, {
+      'Potential Buyer': 'Yes',
+      'Potential Requirement': potentialBuyerForm.product_interest || 'Not specified',
+      'Next Action': leadNextAction(draftLead) === 'Review lead' ? 'Qualify potential buyer and prepare outreach' : leadNextAction(draftLead),
+      'Email Status': leadEmailStatus(draftLead) === 'Not tracked' ? 'Not Contacted' : leadEmailStatus(draftLead),
+      'Response Received': leadResponseStatus(draftLead) === 'No' ? 'No' : leadResponseStatus(draftLead)
+    });
+
+    await saveRecord<Lead>('leads', editingPotentialBuyerId, {
+      ...draftLead,
+      notes
+    }, resetPotentialBuyerForm);
+  };
+
+  const editPotentialBuyer = (lead: Lead) => {
+    setEditingPotentialBuyerId(lead.id);
+    setPotentialBuyerForm(lead);
+  };
+
+  const openPotentialBuyerInCrm = (lead: Lead) => {
+    setSelectedCrmLead(lead as CrmLead);
+    setCrmSearchQuery(lead.company_name);
+    navigateToTab('crm');
+  };
+
   const renderLeadCard = (lead: Lead, compact = false) => {
     const actionCategory = leadActionCategory(lead);
     const emailMode = leadEmailMode(lead);
@@ -4605,26 +4934,26 @@ export const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="portal-os min-h-screen pb-28 lg:pb-0">
+    <div className="portal-os relative min-h-screen pb-28 lg:pb-0">
       {appBusy && (
         <div className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-slate-200/70">
           <div className="h-full w-1/2 animate-loading-bar bg-sky-500 shadow-[0_0_18px_rgba(14,165,233,0.65)]" />
         </div>
       )}
-      <div className="w-full">
+      <div className="portal-shell">
         <div className="flex flex-col lg:flex-row">
           <aside
             data-sidebar="true"
-            className="portal-sidebar hidden lg:flex flex-col w-[288px] h-screen fixed top-0 left-0 overflow-hidden z-40 animate-fade-up"
+            className="portal-sidebar hidden lg:flex flex-col w-[304px] h-screen fixed top-0 left-0 overflow-hidden z-40 animate-fade-up"
           >
             {/* Brand Header */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 shrink-0">
-              <div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-[0_16px_36px_rgba(14,165,233,0.22)] shrink-0 ring-1 ring-white/15">
-                <Image src="/logo.png" alt="Sheshaan Global" width={36} height={36} className="h-full w-full object-contain" />
+            <div className="portal-brand-block flex items-center gap-3 px-5 py-5 shrink-0">
+              <div className="h-11 w-11 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-[0_16px_36px_rgba(14,165,233,0.22)] shrink-0 ring-1 ring-white/15">
+                <Image src="/logo.png" alt="Sheshaan Global" width={40} height={40} className="h-full w-full object-contain" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-[13px] font-extrabold text-white tracking-tight leading-none truncate">Sheshaan Global</h1>
-                <p className="text-[10px] text-sky-200/70 font-semibold mt-0.5 uppercase tracking-wider">Smart Trade OS</p>
+                <h1 className="text-sm font-black text-white tracking-tight leading-none truncate">Sheshaan Global</h1>
+                <p className="text-[10px] text-sky-200/75 font-bold mt-1 uppercase tracking-wider">Export Operations Portal</p>
               </div>
             </div>
 
@@ -4632,7 +4961,7 @@ export const Dashboard: React.FC = () => {
             <div className="px-4 pt-4 pb-2 shrink-0">
               <button
                 onClick={() => { setEditingQuoteId(null); setShowMobileMenu(false); navigateToTab('quotes'); }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-white text-slate-950 hover:bg-sky-50 active:bg-sky-100 text-[11px] font-black rounded-xl shadow-[0_14px_34px_rgba(255,255,255,0.12)] transition-all duration-150"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-white text-slate-950 hover:bg-sky-50 active:bg-sky-100 text-[11px] font-black rounded-lg shadow-[0_14px_34px_rgba(255,255,255,0.12)] transition-all duration-150"
               >
                 <Plus className="h-3.5 w-3.5" />
                 New Quote
@@ -4640,20 +4969,73 @@ export const Dashboard: React.FC = () => {
             </div>
 
             {/* Nav Groups */}
-            <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1 space-y-5">
+            <nav className="flex-1 overflow-y-auto px-3.5 pb-4 pt-2 space-y-5">
               {navGroups.map((group) => (
                 <div key={group.label}>
-                  <p className="px-2 pb-1.5 pt-1 text-[9px] font-extrabold uppercase tracking-widest text-zinc-600">{group.label}</p>
-                  <div className="space-y-0.5">
+                  <p className="portal-nav-heading px-2 pb-1.5 pt-1">{group.label}</p>
+                  <div className="space-y-1">
                     {group.items.map((item) => {
-                      const isActive = activeTab === item.key;
+                      const isCrmParent = item.key === 'crm';
+                      const isActive = isCrmParent ? activeTab === 'crm' || activeTab === 'potentialBuyers' : activeTab === item.key;
+                      if (isCrmParent) {
+                        return (
+                          <div key={item.key} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => setCrmMenuOpen((open) => !open)}
+                              className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
+                                isActive
+                                  ? 'portal-nav-item-active text-white'
+                                  : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
+                              }`}
+                            >
+                              {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
+                              <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
+                              <span className="flex-1 truncate">Smart CRM</span>
+                              {typeof item.count === 'number' && item.count > 0 && (
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+                                  isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
+                                }`}>
+                                  {item.count}
+                                </span>
+                              )}
+                              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${crmMenuOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {crmMenuOpen && (
+                              <div className="ml-6 space-y-1 border-l border-white/10 pl-2">
+                                <button
+                                  type="button"
+                                  onClick={() => navigateToTab('crm')}
+                                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
+                                    activeTab === 'crm' ? 'bg-sky-500/15 text-sky-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
+                                  }`}
+                                >
+                                  Normal Smart CRM
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => navigateToTab('potentialBuyers')}
+                                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
+                                    activeTab === 'potentialBuyers' ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
+                                  }`}
+                                >
+                                  Potential Buyers
+                                  {potentialBuyerLeads.length > 0 && (
+                                    <span className="ml-2 rounded-full bg-zinc-700 px-1.5 py-0.5 text-[9px] text-zinc-300">{potentialBuyerLeads.length}</span>
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
                       return (
                         <button
                           key={item.key}
                           onClick={() => navigateToTab(item.key)}
-                          className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-[11.5px] font-semibold transition-all duration-150 relative group ${
+                          className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
                             isActive
-                              ? 'bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                              ? 'portal-nav-item-active text-white'
                               : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
                           }`}
                         >
@@ -4760,7 +5142,7 @@ export const Dashboard: React.FC = () => {
             </div>
           </aside>
 
-          <section className="flex-1 lg:ml-[288px] space-y-4 min-w-0 p-3 lg:p-5">
+          <section className="relative z-10 flex-1 lg:ml-[304px] space-y-4 min-w-0 p-3 lg:p-5 xl:p-6">
             <div className="lg:hidden sticky top-2 z-30 portal-glass overflow-hidden animate-fade-up">
               <div className="px-3 py-2 flex items-center justify-between gap-3">
                 <button
@@ -4860,24 +5242,24 @@ export const Dashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="hidden lg:block sticky top-3 z-20 portal-topbar overflow-visible animate-fade-up">
-              <div className="min-h-14 px-4 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-slate-200">
+            <div className="hidden lg:block sticky top-4 z-20 portal-topbar overflow-visible animate-fade-up">
+              <div className="min-h-16 px-4 py-3 grid gap-3 border-b border-slate-200 2xl:grid-cols-[minmax(240px,0.65fr)_minmax(320px,1fr)_auto] 2xl:items-center">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-10 w-10 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-[0_14px_30px_rgba(15,23,42,0.22)]">
+                  <div className="h-11 w-11 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-[0_14px_30px_rgba(15,23,42,0.22)]">
                     {activeNavItem?.icon || <LayoutDashboard className="h-4 w-4" />}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sheshaan Global Admin</div>
-                    <div className="text-sm font-extrabold text-slate-900 truncate">{activeNavItem?.label || 'Overview'}</div>
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sheshaan Global Admin</div>
+                    <div className="portal-section-title text-base truncate">{activeNavItem?.label || 'Overview'}</div>
                   </div>
                 </div>
-                <div className="relative w-full xl:max-w-md">
+                <div className="relative w-full min-w-0">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <SmoothInput
                     value={globalSearch}
                     onChange={setGlobalSearch}
                     placeholder="Search buyers, leads, quotes, invoices, shipments..."
-                    className="w-full h-9 rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    className="w-full h-10 rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                   {globalResults.length > 0 && (
                     <div className="absolute left-0 right-0 top-10 z-30 rounded-lg border border-slate-200 bg-white shadow-lg p-2">
@@ -4899,25 +5281,25 @@ export const Dashboard: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => setCommandOpen(true)} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-500 text-xs font-semibold flex items-center gap-2 hover:bg-slate-50 transition shadow-inner">
+                <div className="flex flex-wrap items-center justify-start gap-2 2xl:justify-end">
+                  <button type="button" onClick={() => setCommandOpen(true)} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-500 text-xs font-semibold flex items-center gap-2 hover:bg-slate-50 transition shadow-inner">
                     <Search className="h-4 w-4 text-slate-400" />
                     <span className="hidden md:inline">Search console...</span>
                     <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-black bg-slate-100 border border-slate-200 rounded text-slate-400">Ctrl+K</kbd>
                   </button>
-                  <button type="button" onClick={() => setCopilotOpen(true)} className="h-9 px-3 rounded-md border border-sky-200 bg-sky-50 text-sky-700 text-xs font-bold flex items-center gap-2 hover:bg-sky-100 transition shadow-sm">
+                  <button type="button" onClick={() => setCopilotOpen(true)} className="h-9 px-3 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 text-xs font-bold flex items-center gap-2 hover:bg-sky-100 transition shadow-sm">
                     <Sparkles className="h-4 w-4" />
                     <span>AI Copilot</span>
                   </button>
-                  <button type="button" onClick={toggleTheme} className="h-9 w-9 rounded-md border border-slate-200 bg-white text-slate-600 flex items-center justify-center hover:bg-slate-50 transition" title="Toggle Theme">
+                  <button type="button" onClick={toggleTheme} className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-600 flex items-center justify-center hover:bg-slate-50 transition" title="Toggle Theme">
                     {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-amber-500" />}
                   </button>
-                  <button type="button" onClick={runFollowUpAutomation} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
+                  <button type="button" onClick={runFollowUpAutomation} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
                     <Sparkles className="h-4 w-4" />
                     Automate
                   </button>
                   <div className="relative">
-                    <button type="button" onClick={() => setShowNotifications((value) => !value)} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
+                    <button type="button" onClick={() => setShowNotifications((value) => !value)} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
                       <Bell className="h-4 w-4" />
                       Alerts
                       {notifications.length > 0 && <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">{notifications.length}</span>}
@@ -4941,7 +5323,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                   {(isMock || isFirebase) && currentRole === 'Admin' && (
                     <div className="relative">
-                      <button type="button" onClick={() => setShowDevMenu((v) => !v)} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
+                      <button type="button" onClick={() => setShowDevMenu((v) => !v)} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
                         <Database className="h-4 w-4 text-sky-600 shrink-0" />
                         <span>Database</span>
                       </button>
@@ -4969,22 +5351,35 @@ export const Dashboard: React.FC = () => {
                       )}
                     </div>
                   )}
-                  <button type="button" onClick={() => navigateToTab('templates')} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
+                  <button type="button" onClick={() => navigateToTab('templates')} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
                     <Edit2 className="h-4 w-4" />
                     Templates
                   </button>
-                  <button type="button" onClick={() => navigateToTab('communications')} className="h-9 px-3 rounded-md border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
+                  <button type="button" onClick={() => navigateToTab('communications')} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
                     <Mail className="h-4 w-4" />
                     Composer
                   </button>
-                  <button type="button" onClick={() => setEditingQuoteId(null)} className="h-9 px-3 rounded-md bg-slate-900 text-white text-xs font-bold flex items-center gap-2 hover:bg-slate-800 transition shadow-sm">
+                  <button type="button" onClick={() => setEditingQuoteId(null)} className="portal-primary-button h-9 px-3 rounded-lg text-xs font-bold flex items-center gap-2 transition">
                     <Plus className="h-4 w-4" />
                     New Quote
                   </button>
                 </div>
               </div>
             </div>
-            <div key={activeTab} className="portal-workspace p-3 sm:p-5 min-w-0 animate-panel-in">
+            <div className="hidden lg:flex portal-command-strip items-center justify-between gap-3 px-4 py-3 animate-fade-up">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="portal-chip portal-chip-strong"><Database className="h-3.5 w-3.5" /> {dbType}</span>
+                <span className="portal-chip"><Users className="h-3.5 w-3.5 text-sky-600" /> {clients.length.toLocaleString()} buyers</span>
+                <span className="portal-chip"><Target className="h-3.5 w-3.5 text-emerald-600" /> {leads.length.toLocaleString()} leads</span>
+                <span className="portal-chip"><FileCheck2 className="h-3.5 w-3.5 text-amber-600" /> {quotes.length.toLocaleString()} quotes</span>
+                <span className="portal-chip"><Ship className="h-3.5 w-3.5 text-indigo-600" /> {shipments.length.toLocaleString()} shipments</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="portal-chip"><RefreshCw className={`h-3.5 w-3.5 ${appBusy ? 'animate-spin text-sky-600' : 'text-slate-400'}`} /> {lastSyncedLabel || 'Ready'}</span>
+                <span className="portal-chip portal-chip-strong">USD/INR {fxRate.toFixed(2)}</span>
+              </div>
+            </div>
+            <div key={activeTab} className="portal-workspace p-3 sm:p-5 lg:p-6 min-w-0 animate-panel-in">
               {!hasAccessToActiveTab ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center bg-slate-50 rounded-xl border border-slate-200/60 shadow-inner animate-fade-in my-6">
                   <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center border border-red-100 mb-4 animate-pulse">
@@ -5575,6 +5970,25 @@ export const Dashboard: React.FC = () => {
                     onClick={() => setCrmQueueFilter(crmQueueFilter === 'Waiting Reply' ? null : 'Waiting Reply')}
                   />
                 </div>
+                {importInspection && (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-white/10 p-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-cyan-200">Import Intelligence Center</p>
+                        <p className="mt-1 text-xs text-slate-200">
+                          Scanned {importInspection.totalRows} rows before saving. Duplicates were skipped and weak records are now routed to cleanup queues.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                        <CrmMetric label="Duplicates" value={importInspection.duplicates.length.toString()} helper="Skipped" />
+                        <CrmMetric label="No Email" value={importInspection.missingEmails.length.toString()} helper="Email fix" />
+                        <CrmMetric label="No Phone" value={importInspection.missingPhones.length.toString()} helper="Phone fix" />
+                        <CrmMetric label="Country Fix" value={importInspection.invalidCountries.length.toString()} helper="Review" />
+                        <CrmMetric label="Weak" value={importInspection.weakRecords.length.toString()} helper="Low quality" />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Filter Controls Row */}
@@ -5726,6 +6140,56 @@ export const Dashboard: React.FC = () => {
                     </button>
                     <button
                       type="button"
+                      onClick={() => exportCrmImportTemplateData(selectedLeads)}
+                      disabled={!selectedLeadIds.length}
+                      className="px-3 py-2 bg-white text-slate-700 ring-1 ring-slate-200 rounded-lg font-bold hover:bg-slate-50 disabled:opacity-40"
+                    >
+                      Export Selected
+                    </button>
+                    <button
+                      type="button"
+                      onClick={bulkCreateSelectedTasks}
+                      disabled={!selectedLeadIds.length}
+                      className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold hover:bg-indigo-100 disabled:opacity-40"
+                    >
+                      Create Tasks
+                    </button>
+                    <button
+                      type="button"
+                      onClick={bulkAssignSelectedOwner}
+                      disabled={!selectedLeadIds.length}
+                      className="px-3 py-2 bg-slate-100 text-slate-700 rounded-lg font-bold hover:bg-slate-200 disabled:opacity-40"
+                    >
+                      Assign Owner
+                    </button>
+                    <button
+                      type="button"
+                      onClick={bulkChangeSelectedSource}
+                      disabled={!selectedLeadIds.length}
+                      className="px-3 py-2 bg-cyan-50 text-cyan-700 rounded-lg font-bold hover:bg-cyan-100 disabled:opacity-40"
+                    >
+                      Change Source
+                    </button>
+                    <div className="relative">
+                      <select
+                        aria-label="Bulk enroll outreach sequence"
+                        disabled={!selectedLeadIds.length}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (!value) return;
+                          bulkEnrollSelectedSequence(value);
+                          event.currentTarget.value = '';
+                        }}
+                        className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 disabled:opacity-40"
+                      >
+                        <option value="">Enroll Sequence</option>
+                        <option value="Intro Sequence">Intro Sequence</option>
+                        <option value="Warm Follow-Up">Warm Follow-Up</option>
+                        <option value="Dormant Recovery">Dormant Recovery</option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
                       onClick={handleBulkDeleteLeads}
                       disabled={!selectedLeadIds.length}
                       className="px-3 py-2 bg-rose-600 hover:bg-rose-750 text-white rounded-lg font-bold disabled:opacity-40 transition-colors hover:bg-rose-700"
@@ -5749,6 +6213,14 @@ export const Dashboard: React.FC = () => {
               <div className="mt-4">
                 {crmViewMode === 'table' ? (
                   <>
+                    <div className="grid gap-3 md:hidden">
+                      {visibleCrmLeads.length === 0 ? (
+                        <EmptyState text="No active leads found matching current CRM filters." />
+                      ) : (
+                        visibleCrmLeads.map((lead) => renderLeadCard(lead, true))
+                      )}
+                    </div>
+                    <div className="hidden md:block">
                     <CrmTable
                       leads={visibleCrmLeads}
                       selectedLeadIds={selectedLeadIds}
@@ -5765,6 +6237,7 @@ export const Dashboard: React.FC = () => {
                       leadCategoryClass={leadCategoryClass}
                       leadActionCategory={getLeadActionCategory}
                     />
+                    </div>
                     {filteredCrmLeads.length > crmVisibleCount && (
                       <div className="mt-3 flex justify-center">
                         <button
@@ -5806,6 +6279,7 @@ export const Dashboard: React.FC = () => {
                 velocityScore={selectedCrmLead ? leadVelocityScore[selectedCrmLead.id] || 0 : 0}
                 actionCategory={selectedCrmLead ? getLeadActionCategory(selectedCrmLead) : 'Review'}
                 bestSendWindow={selectedCrmLead ? bestSendWindowIST(selectedCrmLead.country || '') : 'Best send: office hours'}
+                relatedSummary={selectedCrmLeadRelatedSummary}
                 onSendEmail={handleSendEmail}
                 onSendWhatsApp={handleLeadWhatsApp}
               />
@@ -5813,6 +6287,191 @@ export const Dashboard: React.FC = () => {
           
             )}
             </>
+          )}
+
+          {activeTab === 'potentialBuyers' && (
+            <TwoColumnManager
+              formTitle={editingPotentialBuyerId ? 'Edit Potential Buyer' : 'Add Potential Buyer'}
+              onSubmit={savePotentialBuyer}
+              onCancel={resetPotentialBuyerForm}
+              isEditing={Boolean(editingPotentialBuyerId)}
+              form={
+                <>
+                  <TextInput
+                    label="Company Name *"
+                    value={potentialBuyerForm.company_name || ''}
+                    onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, company_name: value })}
+                    required
+                    placeholder="Buyer company name"
+                  />
+                  <TextInput
+                    label="Contact Person"
+                    value={potentialBuyerForm.contact_name || ''}
+                    onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, contact_name: value })}
+                    placeholder="Procurement person"
+                  />
+                  <TextInput
+                    label="Email"
+                    type="email"
+                    value={potentialBuyerForm.contact_email || ''}
+                    onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, contact_email: value })}
+                    placeholder="buyer@example.com"
+                  />
+                  <TextInput
+                    label="Phone / WhatsApp"
+                    value={potentialBuyerForm.phone || ''}
+                    onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, phone: value })}
+                    placeholder="+971..."
+                  />
+                  <TextInput
+                    label="Country"
+                    value={potentialBuyerForm.country || ''}
+                    onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, country: value })}
+                    placeholder="UAE, Sweden, USA..."
+                  />
+                  <TextInput
+                    label="Product Requirement"
+                    value={potentialBuyerForm.product_interest || ''}
+                    onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, product_interest: value })}
+                    placeholder="Cumin seeds, spices, agro commodities..."
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <SelectInput
+                      label="Priority"
+                      value={potentialBuyerForm.priority || 'High'}
+                      onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, priority: value as Lead['priority'] })}
+                      options={['Low', 'Medium', 'High']}
+                    />
+                    <SelectInput
+                      label="Status"
+                      value={potentialBuyerForm.stage || 'New Lead'}
+                      onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, stage: value as Lead['stage'] })}
+                      options={['New Lead', 'Contacted', 'Quoted', 'Negotiation', 'Won', 'Lost']}
+                    />
+                  </div>
+                  <TextInput
+                    label="Next Follow-up"
+                    type="date"
+                    value={potentialBuyerForm.next_follow_up || ''}
+                    onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, next_follow_up: value })}
+                  />
+                  <TextArea
+                    label="Notes"
+                    value={potentialBuyerForm.notes || ''}
+                    onChange={(value) => setPotentialBuyerForm({ ...potentialBuyerForm, notes: value })}
+                  />
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-[10px] font-bold leading-relaxed text-emerald-800">
+                    These buyers are saved inside CRM as focused potential buyers, so email status, follow-ups, quotes, and activity history stay connected.
+                  </div>
+                </>
+              }
+            >
+              <div className="space-y-4">
+                <div className="rounded-xl border border-emerald-200 bg-slate-950 p-4 text-white shadow-sm">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">Focused Buyer Workspace</p>
+                      <h3 className="text-xl font-black">Potential Buyers</h3>
+                      <p className="mt-1 max-w-2xl text-xs text-slate-300">
+                        Keep your highest-potential companies separate from the full CRM list so you can focus on them without searching through thousands of imported buyers.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-slate-950 sm:grid-cols-4">
+                      <CrmMetric label="Focused" value={potentialBuyerLeads.length.toString()} helper="Potential buyers" />
+                      <CrmMetric label="Need Reachout" value={potentialBuyerLeads.filter((lead) => getLeadActionCategory(lead) === 'Need Reach Out').length.toString()} helper="First contact" />
+                      <CrmMetric label="Follow-up" value={potentialBuyerLeads.filter((lead) => getLeadActionCategory(lead) === 'Follow-up Due').length.toString()} helper="Due now" />
+                      <CrmMetric label="With Phone" value={potentialBuyerLeads.filter((lead) => hasContactablePhone(lead.phone)).length.toString()} helper="WhatsApp ready" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <SmoothInput
+                      type="text"
+                      placeholder="Search potential buyers by company, country, phone, product requirement..."
+                      value={potentialBuyerSearchQuery}
+                      onChange={setPotentialBuyerSearchQuery}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-10 text-sm font-semibold text-slate-800 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                    {potentialBuyerSearchQuery && (
+                      <button type="button" onClick={() => setPotentialBuyerSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {potentialBuyerLeads.length === 0 ? (
+                  <EmptyState text="No focused potential buyers yet. Add company name, phone, country, and product requirement from the form." />
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    {potentialBuyerLeads.map((lead) => {
+                      const category = getLeadActionCategory(lead);
+                      return (
+                        <div key={lead.id} className="rounded-xl border border-slate-200 bg-white p-4 text-xs shadow-sm hover:border-emerald-200 hover:shadow-md">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="truncate text-sm font-black text-slate-950">{lead.company_name}</h4>
+                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${leadCategoryClass(category)}`}>{category}</span>
+                              </div>
+                              <p className="mt-1 text-[11px] font-semibold text-slate-500">{lead.product_interest || 'Product requirement not specified'}</p>
+                            </div>
+                            <RowActions
+                              currentRole={currentRole}
+                              onEdit={() => editPotentialBuyer(lead)}
+                              onDelete={() => deleteRecord('leads', lead.id, 'potential buyer')}
+                            />
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                            <SmallMetric label="Country" value={lead.country || 'Not set'} />
+                            <SmallMetric label="Phone" value={lead.phone || 'Missing'} />
+                            <SmallMetric label="Email" value={lead.contact_email || 'Missing'} />
+                            <SmallMetric label="Next Follow-up" value={lead.next_follow_up || 'Not set'} />
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleLeadEmail(lead, leadEmailMode(lead))}
+                              disabled={!hasContactableEmail(lead.contact_email)}
+                              className="flex-1 rounded-lg bg-slate-950 px-3 py-2 font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Email
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleLeadWhatsApp(lead)}
+                              disabled={!hasContactablePhone(lead.phone)}
+                              className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 font-black text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              WhatsApp
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateLeadTracking(lead, leadFollowUpDue(lead) ? 'followup_1' : 'followup_due')}
+                              className="flex-1 rounded-lg bg-amber-50 px-3 py-2 font-black text-amber-700 hover:bg-amber-100"
+                            >
+                              {leadFollowUpDue(lead) ? 'Follow-up Done' : 'Set Follow-up'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openPotentialBuyerInCrm(lead)}
+                              className="flex-1 rounded-lg bg-sky-50 px-3 py-2 font-black text-sky-700 hover:bg-sky-100"
+                            >
+                              Open CRM
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </TwoColumnManager>
           )}
 
           {activeTab === 'dataSources' && (
@@ -5995,13 +6654,13 @@ export const Dashboard: React.FC = () => {
                     <p className="text-[10px] font-black uppercase tracking-wider text-rose-300">CRM Data Hygiene</p>
                     <h3 className="text-xl font-black">Need email/contact fix cleanup</h3>
                     <p className="mt-1 max-w-3xl text-xs text-slate-300">
-                      All buyers and leads with no contactable email or missing contact details appear here for fast bulk deletion.
+                      Only buyers and leads with no usable email appear here. Multiple emails are accepted as valid and will not be flagged.
                     </p>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-950">
                     <CrmMetric label="Total Issues" value={cleanupStats.total.toString()} helper="Bad records" />
                     <CrmMetric label="Email Fix" value={cleanupStats.email.toString()} helper="No email found" />
-                    <CrmMetric label="Contact Fix" value={cleanupStats.contact.toString()} helper="No person/phone" />
+                    <CrmMetric label="Phone Fix" value={phoneCleanupRecords.length.toString()} helper="Separate page" />
                     <CrmMetric label="Linked" value={cleanupStats.linked.toString()} helper="Buyer + lead" />
                   </div>
                 </div>
@@ -6031,10 +6690,8 @@ export const Dashboard: React.FC = () => {
                       onChange={(event) => setCleanupIssueFilter(event.target.value as CleanupIssueFilter)}
                       className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
                     >
-                      <option value="All">All Issues</option>
-                      <option value="Email Issue">Email Issue</option>
-                      <option value="Contact Issue">Contact Issue</option>
-                      <option value="Email + Contact">Email + Contact</option>
+                      <option value="All">All Email Issues</option>
+                      <option value="Email Issue">No Usable Email</option>
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
                   </div>
@@ -6045,6 +6702,23 @@ export const Dashboard: React.FC = () => {
                     className="h-10 rounded-lg bg-rose-600 px-4 text-xs font-black text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Delete Selected ({selectedCleanupRecordIds.length})
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => exportCleanupRecords(filteredCleanupRecords, `need-email-fix-${new Date().toISOString().slice(0, 10)}.csv`)}
+                    disabled={!filteredCleanupRecords.length}
+                    className="rounded-lg bg-slate-100 px-3 py-2 font-black text-slate-700 hover:bg-slate-200 disabled:opacity-40"
+                  >
+                    Export Email Fix List
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateToTab('phoneCleanup')}
+                    className="rounded-lg bg-emerald-50 px-3 py-2 font-black text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Open Need Phone Fix
                   </button>
                 </div>
               </div>
@@ -6147,6 +6821,181 @@ export const Dashboard: React.FC = () => {
                                 className="rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-black text-white hover:bg-slate-800"
                               >
                                 Review
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'phoneCleanup' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-200 bg-slate-950 p-4 text-white shadow-sm">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">CRM Data Hygiene</p>
+                    <h3 className="text-xl font-black">Need phone fix workspace</h3>
+                    <p className="mt-1 max-w-3xl text-xs text-slate-300">
+                      Buyers without a usable WhatsApp-ready phone number appear here. Filter by country, repair records, export, or bulk delete invalid data.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-950">
+                    <CrmMetric label="Phone Issues" value={phoneCleanupRecords.length.toString()} helper="Missing/invalid" />
+                    <CrmMetric label="Shown" value={filteredPhoneCleanupRecords.length.toString()} helper="Current filter" />
+                    <CrmMetric label="Countries" value={phoneCleanupCountries.length.toString()} helper="Markets" />
+                    <CrmMetric label="Selected" value={selectedPhoneCleanupRecordIds.length.toString()} helper="Bulk action" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_220px_auto_auto] gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <SmoothInput
+                      type="text"
+                      placeholder="Search phone issues by company, country, contact, phone, or reason..."
+                      value={phoneCleanupSearchQuery}
+                      onChange={setPhoneCleanupSearchQuery}
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-9 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                    {phoneCleanupSearchQuery && (
+                      <button type="button" onClick={() => setPhoneCleanupSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" title="Clear search">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <select
+                      aria-label="Phone cleanup country filter"
+                      value={phoneCleanupCountryFilter}
+                      onChange={(event) => setPhoneCleanupCountryFilter(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                    >
+                      {['All', ...phoneCleanupCountries].map((country) => (
+                        <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => exportCleanupRecords(filteredPhoneCleanupRecords, `need-phone-fix-${new Date().toISOString().slice(0, 10)}.csv`)}
+                    disabled={!filteredPhoneCleanupRecords.length}
+                    className="h-10 rounded-lg bg-slate-100 px-4 text-xs font-black text-slate-700 transition hover:bg-slate-200 disabled:opacity-40"
+                  >
+                    Export Shown
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBulkDeletePhoneCleanupRecords}
+                    disabled={!selectedPhoneCleanupRecordIds.length || loading}
+                    className="h-10 rounded-lg bg-rose-600 px-4 text-xs font-black text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Delete Selected ({selectedPhoneCleanupRecordIds.length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-xs font-semibold text-slate-500">
+                    Showing <strong className="text-slate-950">{filteredPhoneCleanupRecords.length}</strong> phone issue record{filteredPhoneCleanupRecords.length === 1 ? '' : 's'}
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPhoneCleanupRecordIds(filteredPhoneCleanupRecords.map((record) => record.id))}
+                      disabled={!filteredPhoneCleanupRecords.length}
+                      className="rounded-lg bg-slate-100 px-3 py-2 font-black text-slate-700 hover:bg-slate-200 disabled:opacity-40"
+                    >
+                      Select All Shown
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPhoneCleanupRecordIds([])}
+                      disabled={!selectedPhoneCleanupRecordIds.length}
+                      className="rounded-lg bg-white px-3 py-2 font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-40"
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+                </div>
+
+                {filteredPhoneCleanupRecords.length === 0 ? (
+                  <div className="p-6">
+                    <EmptyState text="No missing or invalid phone records found. Your WhatsApp cleanup queue is clear." />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[900px] text-left text-xs">
+                      <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="w-10 p-3">
+                            <input
+                              type="checkbox"
+                              aria-label="Select all phone cleanup records"
+                              checked={filteredPhoneCleanupRecords.length > 0 && filteredPhoneCleanupRecords.every((record) => selectedPhoneCleanupRecordIds.includes(record.id))}
+                              onChange={(event) => setSelectedPhoneCleanupRecordIds(event.target.checked ? filteredPhoneCleanupRecords.map((record) => record.id) : [])}
+                              className="rounded border-slate-300"
+                            />
+                          </th>
+                          <th className="p-3">Company</th>
+                          <th className="p-3">Phone Status</th>
+                          <th className="p-3">Email</th>
+                          <th className="p-3">Contact / Phone</th>
+                          <th className="p-3">Country</th>
+                          <th className="p-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredPhoneCleanupRecords.map((record) => (
+                          <tr key={record.id} className={selectedPhoneCleanupRecordIds.includes(record.id) ? 'bg-emerald-50/70' : 'hover:bg-slate-50'}>
+                            <td className="p-3">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${record.company}`}
+                                checked={selectedPhoneCleanupRecordIds.includes(record.id)}
+                                onChange={(event) => setSelectedPhoneCleanupRecordIds((current) => event.target.checked ? Array.from(new Set([...current, record.id])) : current.filter((id) => id !== record.id))}
+                                className="rounded border-slate-300"
+                              />
+                            </td>
+                            <td className="p-3">
+                              <div className="font-black text-slate-950">{record.company}</div>
+                              <div className="mt-1 text-[10px] font-bold text-slate-400">{record.source}</div>
+                            </td>
+                            <td className="p-3">
+                              <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-700">
+                                Need Phone Fix
+                              </span>
+                              <div className="mt-1 max-w-xs text-[10px] font-medium text-slate-500">{record.reason}</div>
+                            </td>
+                            <td className="p-3 font-mono text-[11px] text-slate-600">{record.email || 'Missing'}</td>
+                            <td className="p-3">
+                              <div className="font-semibold text-slate-700">{record.contact || 'No contact name'}</div>
+                              <div className="mt-1 font-mono text-[11px] text-slate-500">{record.phone || 'No phone'}</div>
+                            </td>
+                            <td className="p-3"><SmallBadge text={record.country || 'Uncategorized'} /></td>
+                            <td className="p-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (record.leadId) {
+                                    const lead = leads.find((item) => item.id === record.leadId);
+                                    if (lead) editLeadFromCard(lead);
+                                  } else {
+                                    setCrmSearchQuery(record.company);
+                                  }
+                                  navigateToTab('crm');
+                                }}
+                                className="rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-black text-white hover:bg-slate-800"
+                              >
+                                Repair
                               </button>
                             </td>
                           </tr>

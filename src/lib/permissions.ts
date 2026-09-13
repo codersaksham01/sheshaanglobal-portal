@@ -3,8 +3,8 @@ import type { AppUser } from './types';
 export type PortalRole = AppUser['role'];
 
 export const roleTabs: Record<PortalRole, readonly string[]> = {
-  Admin: ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'users', 'manager', 'letterhead'],
-  Sales: ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'products', 'analytics', 'letterhead'],
+  Admin: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'users', 'manager', 'letterhead'],
+  Sales: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'products', 'analytics', 'letterhead'],
   Accounts: ['overview', 'quotes', 'tasks', 'accounts', 'analytics', 'letterhead'],
   Operations: ['overview', 'tasks', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'letterhead']
 };

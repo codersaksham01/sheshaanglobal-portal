@@ -5,13 +5,15 @@ import {
   Bot,
   CheckCircle2,
   CircleDollarSign,
+  Clock3,
   Gauge,
   Radar,
   RefreshCw,
   Route,
   Ship,
   Sparkles,
-  Target
+  Target,
+  Zap
 } from 'lucide-react';
 
 export type SmartPortalTarget = 'actionQueue' | 'crm' | 'quotes' | 'accounts' | 'shipments' | 'documents' | 'tasks';
@@ -71,29 +73,70 @@ const healthTone = (score: number) => score >= 80 ? 'text-emerald-300' : score >
 
 export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavigate, onRunAutomation }: SmartCommandCenterProps) {
   const visibleInsights = insights.slice(0, 5);
+  const executionLanes = [
+    {
+      label: 'Now',
+      value: pulse.urgentActions,
+      detail: 'Priority records waiting',
+      target: 'actionQueue' as SmartPortalTarget,
+      tone: 'text-red-300'
+    },
+    {
+      label: 'Next',
+      value: pulse.pipelineMomentum,
+      detail: 'Qualified buyers to move',
+      target: 'crm' as SmartPortalTarget,
+      tone: 'text-sky-200'
+    },
+    {
+      label: 'Protect',
+      value: pulse.receivableRisk,
+      detail: 'Collection exposure',
+      target: 'accounts' as SmartPortalTarget,
+      tone: 'text-amber-200'
+    }
+  ];
 
   return (
     <div className="space-y-4">
       <section className="smart-hero overflow-hidden text-white">
+        <div className="portal-orbit" />
         <div className="grid gap-5 p-4 sm:p-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.6fr)] xl:items-center">
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase text-sky-200 ring-1 ring-sky-300/15">
-                <Bot className="h-3.5 w-3.5" /> Rule-Based Trade Intelligence
+                <span className="h-2 w-2 rounded-full bg-sky-300 portal-live-dot" /> Operations Dashboard
               </span>
-              <span className="text-[10px] font-semibold text-slate-400">Explainable signals from live operational data</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400"><Bot className="h-3 w-3" /> Explainable signals from live operational data</span>
             </div>
-            <h2 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-3xl">Your commercial command center</h2>
+            <h2 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-3xl">Today&apos;s export operating plan</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-              Buyers, quotations, collections, freight, documents, and shipment execution are ranked into one operating plan.
+              Buyers, quotations, collections, freight, documents, and shipment execution are prioritized into one daily workflow.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <button type="button" onClick={() => onNavigate('actionQueue')} className="inline-flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)]">
-                <Target className="h-4 w-4" /> Work priority queue
+                <Target className="h-4 w-4" /> Open priority queue
               </button>
               <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 text-xs font-extrabold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50">
-                <Sparkles className="h-4 w-4" /> {busy ? 'Automation running' : 'Run smart automation'}
+                <Sparkles className="h-4 w-4" /> {busy ? 'Automation running' : 'Run automation'}
               </button>
+            </div>
+            <div className="portal-stagger mt-5 grid gap-2 sm:grid-cols-3">
+              {executionLanes.map((lane) => (
+                <button
+                  key={lane.label}
+                  type="button"
+                  onClick={() => onNavigate(lane.target)}
+                  className="rounded-xl border border-white/10 bg-white/[0.055] p-3 text-left hover:bg-white/[0.085]"
+                >
+                  <span className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    {lane.label}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
+                  <span className={`mt-1 block truncate text-lg font-black ${lane.tone}`}>{lane.value}</span>
+                  <span className="mt-0.5 block truncate text-[10px] font-semibold text-slate-400">{lane.detail}</span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -110,13 +153,23 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
             </div>
             <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400">
               <span>Last synchronized</span>
-              <span className="inline-flex items-center gap-1 font-bold text-slate-300"><RefreshCw className="h-3 w-3" /> {lastSyncedAt || 'Connecting'}</span>
+              <span className="inline-flex items-center gap-1 font-bold text-slate-300"><RefreshCw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} /> {lastSyncedAt || 'Connecting'}</span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-white/10 bg-white/[0.045] p-3">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500"><Zap className="h-3.5 w-3.5 text-sky-300" /> Speed</div>
+                <p className="mt-1 text-sm font-black text-white">Instant workspace switching</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.045] p-3">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500"><Clock3 className="h-3.5 w-3.5 text-emerald-300" /> Focus</div>
+                <p className="mt-1 text-sm font-black text-white">Next action first</p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5" aria-label="Business pulse">
+      <section className="portal-stagger grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5" aria-label="Business pulse">
         <PulseMetric icon={<AlertTriangle className="h-4 w-4" />} label="Urgent actions" value={String(pulse.urgentActions)} detail="Require attention" />
         <PulseMetric icon={<Route className="h-4 w-4" />} label="Pipeline momentum" value={String(pulse.pipelineMomentum)} detail="Active qualified buyers" />
         <PulseMetric icon={<CircleDollarSign className="h-4 w-4" />} label="Collection risk" value={pulse.receivableRisk} detail="Outstanding balance" />
@@ -130,13 +183,13 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
             <p className="text-[10px] font-extrabold uppercase text-sky-700">Deterministic operating brief</p>
             <h3 className="text-sm font-extrabold text-slate-950">Recommended next moves</h3>
           </div>
-          <span className="text-[10px] font-semibold text-slate-500">Every recommendation includes its source signal</span>
+          <span className="text-[10px] font-semibold text-slate-500">Each recommendation includes the source signal</span>
         </div>
         <div className="divide-y divide-slate-100">
           {visibleInsights.map((insight) => {
             const style = toneStyles[insight.tone];
             return (
-              <div key={insight.id} className={`grid gap-3 border-l-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${style.accent}`}>
+              <div key={insight.id} className={`portal-action-card grid gap-3 border-l-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${style.accent}`}>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`inline-flex h-7 w-7 items-center justify-center rounded ${style.badge}`}>{style.icon}</span>
