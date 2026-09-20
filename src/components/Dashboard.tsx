@@ -2,7 +2,7 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import readXlsxFile from 'read-excel-file/browser';
-import { dbType, isFirebase, isMock, mockDB, supabase } from '../lib/supabaseClient';
+import { dbType, supabase } from '../lib/supabaseClient';
 import {
   AppUser,
   Client,
@@ -68,8 +68,6 @@ import {
   Target,
   LineChart,
   CheckCircle2,
-  Sun,
-  Moon,
   FileText,
   ArrowRight,
   TrendingUp,
@@ -100,6 +98,14 @@ const reachoutListPageSize = 60;
 const missingPhonePageSize = 40;
 const sourceListPageSize = 60;
 const crmColumnPageSize = 24;
+const freightModeOptions = [
+  'Sea Freight (1x20ft FCL)',
+  'Sea Freight (1x40ft FCL)',
+  'Sea Freight (LCL)',
+  'Air Freight (Airport-to-Airport)',
+  'Air Freight (Door-to-Airport)',
+  'Air Freight (Express Courier)'
+];
 
 const getQuoteItemPricingBasis = (item: QuoteItem) => item.pricing_basis || 'kg';
 const getQuoteItemSellTotal = (item: QuoteItem) => (
@@ -935,7 +941,6 @@ export const Dashboard: React.FC = () => {
   const [reachoutVisibleCount, setReachoutVisibleCount] = useState(reachoutListPageSize);
   const [missingPhoneVisibleCount, setMissingPhoneVisibleCount] = useState(missingPhonePageSize);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showDevMenu, setShowDevMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
   const [importingBuyers, setImportingBuyers] = useState(false);
@@ -945,7 +950,6 @@ export const Dashboard: React.FC = () => {
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
 
   // Next-Generation Enterprise Upgrade States
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');
   const [copilotOpen, setCopilotOpen] = useState(false);
@@ -960,6 +964,21 @@ export const Dashboard: React.FC = () => {
     if (!authEmail) return 'Admin';
     const matchedUser = users.find((u) => u.email.toLowerCase() === authEmail.toLowerCase());
     return matchedUser?.role || 'Admin';
+  }, [users, authEmail]);
+  const operatorName = useMemo(() => {
+    const matchedUser = authEmail
+      ? users.find((u) => u.email.toLowerCase() === authEmail.toLowerCase())
+      : undefined;
+    if (matchedUser?.name?.trim()) return matchedUser.name.trim();
+    const localPart = (authEmail || '').split('@')[0]?.trim();
+    if (localPart && !['admin', 'info', 'support'].includes(localPart.toLowerCase())) {
+      return localPart
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join(' ');
+    }
+    return 'Saksham';
   }, [users, authEmail]);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
@@ -984,28 +1003,6 @@ export const Dashboard: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [toast]);
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    setTheme(savedTheme as 'light' | 'dark');
-    if (savedTheme === 'dark') {
-      document.body.classList.add('dark');
-    } else {
-      document.body.classList.remove('dark');
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(nextTheme);
-    localStorage.setItem('theme', nextTheme);
-    if (nextTheme === 'dark') {
-      document.body.classList.add('dark');
-    } else {
-      document.body.classList.remove('dark');
-    }
-    showToast(`Theme switched to ${nextTheme} mode!`, 'info');
-  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -3038,36 +3035,6 @@ export const Dashboard: React.FC = () => {
     setPresetForm(blankPreset);
   };
 
-
-
-  const handleSeedMock = async () => {
-    const dbWithHelpers = mockDB || (supabase as any);
-    if ((!isMock && !isFirebase) || !dbWithHelpers?.seedMockData) return;
-    try {
-      setLoading(true);
-      await dbWithHelpers.seedMockData();
-      await fetchData();
-      alert('Demo database seeded with clients, products, quote, and freight preset.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClearMock = async () => {
-    const dbWithHelpers = mockDB || (supabase as any);
-    if ((!isMock && !isFirebase) || !dbWithHelpers?.clearAllData || !confirm('Are you sure you want to clear the entire local database?')) return;
-    try {
-      setLoading(true);
-      await dbWithHelpers.clearAllData();
-      await fetchData();
-      resetClientForm();
-      resetProductForm();
-      resetPresetForm();
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDeleteQuote = async (id: string) => {
     if (!confirm('Delete this quote and all line items?')) return;
     const { error } = await supabase.from('quotes').delete().eq('id', id);
@@ -4936,8 +4903,33 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="portal-os relative min-h-screen pb-28 lg:pb-0">
       {appBusy && (
-        <div className="fixed inset-x-0 top-0 z-[70] h-1 overflow-hidden bg-slate-200/70">
-          <div className="h-full w-1/2 animate-loading-bar bg-sky-500 shadow-[0_0_18px_rgba(14,165,233,0.65)]" />
+        <div className="portal-busy-overlay" role="status" aria-live="polite" aria-label="Loading Sheshaan Global portal">
+          <div className="portal-busy-card">
+            <div className="portal-busy-logo-wrap">
+              <Image src="/logo.png" alt="Sheshaan Global" width={72} height={72} className="h-full w-full object-contain" />
+            </div>
+            <div className="min-w-0 text-center">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-sky-700">Sheshaan Global</p>
+              <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">
+                {importingBuyers ? 'Importing your trade data' : 'Preparing your workspace'}
+              </h2>
+              <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                {importProgress
+                  ? `${importProgress.label} (${importProgress.processed.toLocaleString()} / ${importProgress.total.toLocaleString()})`
+                  : 'Syncing buyers, quotes, tasks, shipments, and documents.'}
+              </p>
+            </div>
+            <div className="portal-busy-status">
+              <span className="portal-busy-dot" />
+              <span>{importProgress ? `${importProgressPercent}% complete` : 'Secure operating system loading'}</span>
+            </div>
+            <div className="portal-busy-track" aria-hidden="true">
+              <span
+                className={importProgress ? 'portal-busy-track-fill-determinate' : undefined}
+                style={{ width: importProgress ? `${importProgressPercent}%` : undefined }}
+              />
+            </div>
+          </div>
         </div>
       )}
       <div className="portal-shell">
@@ -5243,7 +5235,7 @@ export const Dashboard: React.FC = () => {
             </div>
 
             <div className="hidden lg:block sticky top-4 z-20 portal-topbar overflow-visible animate-fade-up">
-              <div className="min-h-16 px-4 py-3 grid gap-3 border-b border-slate-200 2xl:grid-cols-[minmax(240px,0.65fr)_minmax(320px,1fr)_auto] 2xl:items-center">
+              <div className="min-h-16 px-4 py-3 grid gap-3 border-b border-slate-200 xl:grid-cols-[minmax(240px,0.42fr)_minmax(360px,1fr)] xl:items-center">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="h-11 w-11 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-[0_14px_30px_rgba(15,23,42,0.22)]">
                     {activeNavItem?.icon || <LayoutDashboard className="h-4 w-4" />}
@@ -5280,89 +5272,6 @@ export const Dashboard: React.FC = () => {
                       ))}
                     </div>
                   )}
-                </div>
-                <div className="flex flex-wrap items-center justify-start gap-2 2xl:justify-end">
-                  <button type="button" onClick={() => setCommandOpen(true)} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-500 text-xs font-semibold flex items-center gap-2 hover:bg-slate-50 transition shadow-inner">
-                    <Search className="h-4 w-4 text-slate-400" />
-                    <span className="hidden md:inline">Search console...</span>
-                    <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-black bg-slate-100 border border-slate-200 rounded text-slate-400">Ctrl+K</kbd>
-                  </button>
-                  <button type="button" onClick={() => setCopilotOpen(true)} className="h-9 px-3 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 text-xs font-bold flex items-center gap-2 hover:bg-sky-100 transition shadow-sm">
-                    <Sparkles className="h-4 w-4" />
-                    <span>AI Copilot</span>
-                  </button>
-                  <button type="button" onClick={toggleTheme} className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-600 flex items-center justify-center hover:bg-slate-50 transition" title="Toggle Theme">
-                    {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4 text-amber-500" />}
-                  </button>
-                  <button type="button" onClick={runFollowUpAutomation} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
-                    <Sparkles className="h-4 w-4" />
-                    Automate
-                  </button>
-                  <div className="relative">
-                    <button type="button" onClick={() => setShowNotifications((value) => !value)} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
-                      <Bell className="h-4 w-4" />
-                      Alerts
-                      {notifications.length > 0 && <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">{notifications.length}</span>}
-                    </button>
-                    {showNotifications && (
-                      <div className="absolute right-0 top-10 z-30 w-80 rounded-lg border border-slate-200 bg-white shadow-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-bold text-xs text-slate-900">Notification Center</span>
-                          <button type="button" onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
-                        </div>
-                        {notifications.length === 0 ? (
-                          <div className="text-xs text-slate-500 py-4 text-center">No active alerts.</div>
-                        ) : notifications.slice(0, 8).map((item) => (
-                          <button key={item.id} type="button" onClick={() => navigateToTab(item.tab)} className="w-full text-left p-2 rounded hover:bg-slate-50 border-b border-slate-100 last:border-b-0">
-                            <span className="block text-xs font-bold text-slate-900">{item.title}</span>
-                            <span className="block text-[10px] text-slate-500">{item.meta}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {(isMock || isFirebase) && currentRole === 'Admin' && (
-                    <div className="relative">
-                      <button type="button" onClick={() => setShowDevMenu((v) => !v)} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
-                        <Database className="h-4 w-4 text-sky-600 shrink-0" />
-                        <span>Database</span>
-                      </button>
-                      {showDevMenu && (
-                        <div className="absolute right-0 top-10 z-30 w-80 rounded-lg border border-slate-200 bg-white shadow-xl p-4 text-xs space-y-3">
-                          <div className="border-b pb-2 flex justify-between items-center">
-                            <span className="font-bold text-slate-800">Database Tools</span>
-                            <span className="text-[10px] bg-sky-50 text-sky-700 font-extrabold px-1.5 py-0.5 rounded">{dbType.split(' ')[0]}</span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 leading-relaxed">
-                            {isFirebase ? 'Connected to Firebase Firestore. Seed will push mock data, Clear will wipe remote Firestore collections.' : 'Using local db.json file storage. Seed will inject standard mock data, Clear will empty database.'}
-                          </p>
-                          <div className="flex gap-2">
-                            <button onClick={() => { fetchData(); setShowDevMenu(false); }} className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-[11px] flex items-center justify-center gap-1 border border-slate-200">
-                              <RefreshCw className="h-3 w-3" /> Refresh
-                            </button>
-                            <button onClick={() => { handleSeedMock(); setShowDevMenu(false); }} className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[11px] flex items-center justify-center gap-1 shadow">
-                              <Sparkles className="h-3 w-3" /> Seed
-                            </button>
-                            <button onClick={() => { handleClearMock(); setShowDevMenu(false); }} className="flex-1 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded text-[11px] flex items-center justify-center gap-1">
-                              <Trash2 className="h-3 w-3" /> Clear
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <button type="button" onClick={() => navigateToTab('templates')} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
-                    <Edit2 className="h-4 w-4" />
-                    Templates
-                  </button>
-                  <button type="button" onClick={() => navigateToTab('communications')} className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition">
-                    <Mail className="h-4 w-4" />
-                    Composer
-                  </button>
-                  <button type="button" onClick={() => setEditingQuoteId(null)} className="portal-primary-button h-9 px-3 rounded-lg text-xs font-bold flex items-center gap-2 transition">
-                    <Plus className="h-4 w-4" />
-                    New Quote
-                  </button>
                 </div>
               </div>
             </div>
@@ -5703,6 +5612,7 @@ export const Dashboard: React.FC = () => {
                 insights={smartPortalInsights}
                 busy={appBusy}
                 lastSyncedAt={lastSyncedLabel}
+                operatorName={operatorName}
                 onNavigate={navigateToTab}
                 onRunAutomation={runFollowUpAutomation}
               />
@@ -7687,8 +7597,8 @@ export const Dashboard: React.FC = () => {
                   <TextInput label="Preset Name *" value={presetForm.name || ''} onChange={(value) => setPresetForm({ ...presetForm, name: value })} required />
                   <TextInput label="Loading Port *" value={presetForm.loading_port || ''} onChange={(value) => setPresetForm({ ...presetForm, loading_port: value })} required />
                   <TextInput label="Destination Port *" value={presetForm.destination_port || ''} onChange={(value) => setPresetForm({ ...presetForm, destination_port: value })} required />
-                  <TextInput label="Shipment Mode" value={presetForm.shipment_mode || ''} onChange={(value) => setPresetForm({ ...presetForm, shipment_mode: value })} />
-                  <NumberInput label="Freight Cost" value={Number(presetForm.freight_cost) || 0} onChange={(value) => setPresetForm({ ...presetForm, freight_cost: value })} />
+                  <SelectInput label="Shipment Mode" value={presetForm.shipment_mode || 'Sea Freight (1x20ft FCL)'} onChange={(value) => setPresetForm({ ...presetForm, shipment_mode: value })} options={freightModeOptions} />
+                  <NumberInput label="Ocean / Air Freight Cost" value={Number(presetForm.freight_cost) || 0} onChange={(value) => setPresetForm({ ...presetForm, freight_cost: value })} />
                   <NumberInput label="Insurance Cost" value={Number(presetForm.insurance_cost) || 0} onChange={(value) => setPresetForm({ ...presetForm, insurance_cost: value })} />
                   <TextInput label="Shipment Window" value={presetForm.shipment_window || ''} onChange={(value) => setPresetForm({ ...presetForm, shipment_window: value })} />
                   <TextInput label="Transit Time" value={presetForm.transit_time || ''} onChange={(value) => setPresetForm({ ...presetForm, transit_time: value })} />
@@ -7708,7 +7618,7 @@ export const Dashboard: React.FC = () => {
                       </div>
                       <p className="font-mono text-slate-600">{p.loading_port} {'->'} {p.destination_port}</p>
                       <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500">
-                        <span>Freight: {formatQuoteCurrency(Number(p.freight_cost || 0), 'INR')}</span>
+                        <span>{(p.shipment_mode || '').toLowerCase().includes('air') ? 'Air Freight' : 'Ocean Freight'}: {formatQuoteCurrency(Number(p.freight_cost || 0), 'INR')}</span>
                         <span>Insurance: {formatQuoteCurrency(Number(p.insurance_cost || 0), 'INR')}</span>
                         <span>Mode: {p.shipment_mode}</span>
                         <span>Transit: {p.transit_time || 'N/A'}</span>
@@ -7738,9 +7648,9 @@ export const Dashboard: React.FC = () => {
                 <>
                   <TextInput label="Loading Port *" value={rateForm.loading_port || ''} onChange={(value) => setRateForm({ ...rateForm, loading_port: value })} required />
                   <TextInput label="Destination Port *" value={rateForm.destination_port || ''} onChange={(value) => setRateForm({ ...rateForm, destination_port: value })} required />
-                  <TextInput label="Shipment Mode" value={rateForm.shipment_mode || ''} onChange={(value) => setRateForm({ ...rateForm, shipment_mode: value })} />
+                  <SelectInput label="Shipment Mode" value={rateForm.shipment_mode || 'Sea Freight (1x20ft FCL)'} onChange={(value) => setRateForm({ ...rateForm, shipment_mode: value })} options={freightModeOptions} />
                   <TextInput label="Forwarder" value={rateForm.forwarder || ''} onChange={(value) => setRateForm({ ...rateForm, forwarder: value })} />
-                  <NumberInput label="Freight Cost" value={Number(rateForm.freight_cost) || 0} onChange={(value) => setRateForm({ ...rateForm, freight_cost: value })} />
+                  <NumberInput label="Ocean / Air Freight Cost" value={Number(rateForm.freight_cost) || 0} onChange={(value) => setRateForm({ ...rateForm, freight_cost: value })} />
                   <NumberInput label="Insurance Cost" value={Number(rateForm.insurance_cost) || 0} onChange={(value) => setRateForm({ ...rateForm, insurance_cost: value })} />
                   <SelectInput label="Currency" value={rateForm.currency || 'INR'} onChange={(value) => setRateForm({ ...rateForm, currency: value as FreightRateHistory['currency'] })} options={['INR', 'USD']} />
                   <TextInput label="Effective Date" type="date" value={rateForm.effective_date || ''} onChange={(value) => setRateForm({ ...rateForm, effective_date: value })} />

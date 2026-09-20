@@ -42,6 +42,7 @@ interface SmartCommandCenterProps {
   insights: SmartPortalInsight[];
   busy: boolean;
   lastSyncedAt: string;
+  operatorName: string;
   onNavigate: (target: SmartPortalTarget) => void;
   onRunAutomation: () => void;
 }
@@ -71,8 +72,9 @@ const toneStyles: Record<SmartPortalInsight['tone'], { icon: React.ReactNode; ac
 
 const healthTone = (score: number) => score >= 80 ? 'text-emerald-300' : score >= 60 ? 'text-amber-300' : 'text-red-300';
 
-export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavigate, onRunAutomation }: SmartCommandCenterProps) {
+export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operatorName, onNavigate, onRunAutomation }: SmartCommandCenterProps) {
   const visibleInsights = insights.slice(0, 5);
+  const firstName = (operatorName || 'Saksham').split(' ')[0] || 'Saksham';
   const executionLanes = [
     {
       label: 'Now',
@@ -101,23 +103,23 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
     <div className="space-y-4">
       <section className="smart-hero overflow-hidden text-white">
         <div className="portal-orbit" />
-        <div className="grid gap-5 p-4 sm:p-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.6fr)] xl:items-center">
+        <div className="grid gap-5 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] xl:items-center">
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase text-sky-200 ring-1 ring-sky-300/15">
-                <span className="h-2 w-2 rounded-full bg-sky-300 portal-live-dot" /> Operations Dashboard
+                <span className="h-2 w-2 rounded-full bg-sky-300 portal-live-dot" /> Personalized Workspace
               </span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400"><Bot className="h-3 w-3" /> Explainable signals from live operational data</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400"><Bot className="h-3 w-3" /> Live operating signals prepared for you</span>
             </div>
-            <h2 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-3xl">Today&apos;s export operating plan</h2>
+            <h2 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-3xl">Welcome back, {firstName}!</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-              Buyers, quotations, collections, freight, documents, and shipment execution are prioritized into one daily workflow.
+              Your export operating plan is ready: buyers, quotations, collections, freight, documents, and shipments are prioritized for today.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" onClick={() => onNavigate('actionQueue')} className="inline-flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)]">
+              <button type="button" onClick={() => onNavigate('actionQueue')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-center text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)]">
                 <Target className="h-4 w-4" /> Open priority queue
               </button>
-              <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 text-xs font-extrabold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-center text-xs font-extrabold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50">
                 <Sparkles className="h-4 w-4" /> {busy ? 'Automation running' : 'Run automation'}
               </button>
             </div>
@@ -140,7 +142,7 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
             </div>
           </div>
 
-          <div className="border-t border-slate-800 pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
+          <div className="min-w-0 border-t border-slate-800 pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
             <div className="flex items-end justify-between gap-4">
               <div>
                 <p className="text-[10px] font-extrabold uppercase text-slate-500">Operating health</p>
@@ -153,16 +155,16 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, onNavi
             </div>
             <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400">
               <span>Last synchronized</span>
-              <span className="inline-flex items-center gap-1 font-bold text-slate-300"><RefreshCw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} /> {lastSyncedAt || 'Connecting'}</span>
+              <span className="inline-flex min-w-0 items-center gap-1 text-right font-bold text-slate-300"><RefreshCw className={`h-3 w-3 shrink-0 ${busy ? 'animate-spin' : ''}`} /> <span className="truncate">{lastSyncedAt || 'Connecting'}</span></span>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-white/10 bg-white/[0.045] p-3">
                 <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500"><Zap className="h-3.5 w-3.5 text-sky-300" /> Speed</div>
-                <p className="mt-1 text-sm font-black text-white">Instant workspace switching</p>
+                <p className="mt-1 text-sm font-black leading-5 text-white">Instant workspace switching</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.045] p-3">
                 <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500"><Clock3 className="h-3.5 w-3.5 text-emerald-300" /> Focus</div>
-                <p className="mt-1 text-sm font-black text-white">Next action first</p>
+                <p className="mt-1 text-sm font-black leading-5 text-white">Next action first</p>
               </div>
             </div>
           </div>

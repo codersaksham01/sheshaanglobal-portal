@@ -36,8 +36,16 @@ const blankManualBuyer: Partial<Client> = {
   destination_port: ''
 };
 
-const defaultCommercialNoteText = 'Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.';
-const commercialNotePlaceholder = 'Example: Base FOB price includes product cost, export packing, handling, ocean freight, insurance, and agreed export margin. Final charges remain subject to confirmed freight, insurance, and exchange rate at booking.';
+const defaultCommercialNoteText = 'Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main freight, and cargo insurance are transparently itemized above.';
+const commercialNotePlaceholder = 'Example: Base FOB price includes product cost, export packing, handling, ocean or air freight, insurance, and agreed export margin. Final charges remain subject to confirmed freight, insurance, and exchange rate at booking.';
+const freightModeOptions = [
+  'Sea Freight (1x20ft FCL)',
+  'Sea Freight (1x40ft FCL)',
+  'Sea Freight (LCL)',
+  'Air Freight (Airport-to-Airport)',
+  'Air Freight (Door-to-Airport)',
+  'Air Freight (Express Courier)'
+];
 const itemPricingBasisLabel = {
   kg: 'Per kg',
   package: 'Per package'
@@ -45,8 +53,27 @@ const itemPricingBasisLabel = {
 const defaultCostBreakdownNotes: Required<CostBreakdownNotes> = {
   offered_goods: 'Commercial offer value from Section 2, inclusive of quoted selling margin.',
   origin_charges: 'Export packing, inland haulage, THC, loading, and customs clearance as applicable.',
-  ocean_freight: 'Lump-sum ocean freight from loading port to destination port.',
+  ocean_freight: 'Lump-sum freight from loading port to destination port or airport.',
   insurance: 'Comprehensive marine transit cargo insurance policy up to destination port.'
+};
+
+const isAirFreightMode = (mode?: string) => (mode || '').toLowerCase().includes('air');
+const getFreightModeLabels = (mode?: string) => {
+  const isAir = isAirFreightMode(mode);
+  return {
+    isAir,
+    transportType: isAir ? 'Air Freight' : 'Ocean Freight',
+    freightRowTitle: isAir ? 'Main Air Freight' : 'Main Ocean Freight',
+    freightCostLabel: isAir ? 'Air Freight Cost (C) (2)' : 'Ocean Freight Cost (C) (2)',
+    freightNoteLabel: isAir ? 'Main Air Freight Note' : 'Main Ocean Freight Note',
+    freightSummaryLabel: isAir ? 'Air Freight (C) + Cargo Insurance (I):' : 'Ocean Freight (C) + Marine Insurance (I):',
+    insuranceLabel: isAir ? 'Cargo Transit Insurance' : 'Marine Cargo Transit Insurance',
+    insuranceNoteLabel: isAir ? 'Cargo Insurance Note' : 'Marine Insurance Note',
+    visibilityLabel: isAir ? 'Show air freight row' : 'Show ocean freight row',
+    visibilityCopy: isAir
+      ? 'The final CIF/CIP total still includes goods, local/export charges, air freight, and cargo insurance. These checkboxes only control what is printed as separate rows in the buyer-facing PDF.'
+      : 'The final CIF total still includes goods, local/export charges, ocean freight, and insurance. These checkboxes only control what is printed as separate rows in the buyer-facing PDF.'
+  };
 };
 
 const getItemPricingBasis = (item: QuoteItem) => item.pricing_basis || 'kg';
@@ -274,6 +301,15 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     'Marine transit cargo insurance policy (lump sum coverage)'
   ];
 
+  const defaultAirIncluded = [
+    'Complete raw product cost & export packing in export-safe bags / cartons',
+    'Inland haulage and transportation from factory to dispatch airport or consolidation point',
+    'Air cargo handling, airport terminal handling, and export documentation at origin',
+    'Export customs clearance, shipping bill, COO, and Phytosanitary Certificate',
+    'Main air freight from origin airport to destination airport (lump sum)',
+    'Cargo transit insurance policy (lump sum coverage)'
+  ];
+
   const defaultExcluded = [
     'Import duties, tariffs, and local destination taxes / VAT in destination country',
     'Destination port terminal handling charges (THC at destination port)',
@@ -283,11 +319,29 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     'Buyer-requested third-party pre-shipment or destination inspection/testing fees (e.g. SGS / Intertek) unless explicitly agreed in writing.'
   ];
 
+  const defaultAirExcluded = [
+    'Import duties, tariffs, and local destination taxes / VAT in destination country',
+    'Destination airport terminal handling, airline storage, and local handling charges',
+    'Import customs clearance and local destination documentation',
+    'Inland transport/delivery from destination airport to buyer warehouse',
+    'Airline warehousing, storage, or demurrage-like destination fees',
+    'Buyer-requested third-party pre-shipment or destination inspection/testing fees (e.g. SGS / Intertek) unless explicitly agreed in writing.'
+  ];
+
   const defaultDocs = [
     'Commercial Invoice (Issued)',
     'Packing List (Issued)',
     'Bill of Lading (Clean On-Board B/L)',
     'Marine Insurance Certificate',
+    'Certificate of Origin (Issued)',
+    'Phytosanitary Certificate (Issued)'
+  ];
+
+  const defaultAirDocs = [
+    'Commercial Invoice (Issued)',
+    'Packing List (Issued)',
+    'Air Waybill / Airline Booking Copy',
+    'Cargo Insurance Certificate',
     'Certificate of Origin (Issued)',
     'Phytosanitary Certificate (Issued)'
   ];
@@ -307,6 +361,16 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     'Quality Assurance & Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, container stuffing/loading photographs, and seal numbers will be provided prior to vessel departure.',
     'Claims & Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination port, supported by an official independent surveyor report and photographs.',
     'Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.',
+    'Governing Law & Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration.'
+  ];
+
+  const defaultAirCommercialTerms = [
+    'Quotation Validity & Air Freight Adjustments: Quoted rates are valid for 15 days from issuance. Air freight rates, insurance premiums, and exchange rates remain indicative until final airline booking confirmation.',
+    'Payment Terms: 50% advance payment upon proforma invoice acceptance; balance 50% payable against soft copy of Shipping Bill / Air Waybill booking confirmation.',
+    'Currency Exchange Protections & Settlement: All prices are quoted in Indian Rupees (INR) based on a baseline exchange rate. Final proforma invoicing and settlement may be converted to USD or AED at prevailing RBI reference rates upon agreement.',
+    'Quality Assurance & Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, packing photographs, and airway booking references will be provided prior to dispatch.',
+    'Claims & Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination airport, supported by an official independent surveyor report and photographs.',
+    'Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from flight delays, airport congestion, acts of God, strikes, or unexpected customs policy changes.',
     'Governing Law & Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration.'
   ];
 
@@ -353,6 +417,44 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [docList, setDocList] = useState<string[]>(defaultDocs);
   const [specMap, setSpecMap] = useState<LogisticsSpecs>(defaultLogisticsSpecs);
   const [commercialTerms, setCommercialTerms] = useState<string[]>(defaultCommercialTerms);
+
+  const listsMatch = (left: string[], right: string[]) => left.length === right.length && left.every((item, index) => item === right[index]);
+  const syncFreightModeDefaults = (mode: string) => {
+    const useAir = isAirFreightMode(mode);
+    setIncludedScope((current) => (
+      listsMatch(current, defaultIncluded) || listsMatch(current, defaultAirIncluded)
+        ? (useAir ? defaultAirIncluded : defaultIncluded)
+        : current
+    ));
+    setExcludedScope((current) => (
+      listsMatch(current, defaultExcluded) || listsMatch(current, defaultAirExcluded)
+        ? (useAir ? defaultAirExcluded : defaultExcluded)
+        : current
+    ));
+    setDocList((current) => (
+      listsMatch(current, defaultDocs) || listsMatch(current, defaultAirDocs)
+        ? (useAir ? defaultAirDocs : defaultDocs)
+        : current
+    ));
+    setCommercialTerms((current) => (
+      listsMatch(current, defaultCommercialTerms) || listsMatch(current, defaultAirCommercialTerms)
+        ? (useAir ? defaultAirCommercialTerms : defaultCommercialTerms)
+        : current
+    ));
+    setSpecMap((current) => (
+      useAir
+        ? {
+            ...current,
+            transit_time: current.transit_time === defaultLogisticsSpecs.transit_time ? '3-7 days (approx., subject to airline schedule)' : current.transit_time,
+            container_type: current.container_type === defaultLogisticsSpecs.container_type ? 'Air cargo cartons / export-safe packing' : current.container_type
+          }
+        : current
+    ));
+  };
+  const setShipmentModeWithDefaults = (mode: string) => {
+    setShipmentMode(mode);
+    syncFreightModeDefaults(mode);
+  };
 
   // Preview options
   const [showPreview, setShowPreview] = useState(false);
@@ -520,7 +622,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setShipper(defaultShipper);
       setBankDetails(readDefaultBankDetails());
       setLineItems([]);
-      setCommercialNote('Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.');
+      setCommercialNote(defaultCommercialNoteText);
       setCostBreakdownNotes(defaultCostBreakdownNotes);
       setShowCifBreakdown(true);
       setShowDetailsPage(true);
@@ -851,7 +953,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
     setLoadingPort(preset.loading_port);
     setDestinationPort(preset.destination_port || '');
-    setShipmentMode(preset.shipment_mode);
+    setShipmentModeWithDefaults(preset.shipment_mode);
     setFreightCost(Number(preset.freight_cost) || 0);
     setInsuranceCost(Number(preset.insurance_cost) || 0);
     setSpecMap({
@@ -1263,6 +1365,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       currency: currency
     }).format(amount);
   };
+  const freightLabels = getFreightModeLabels(shipmentMode);
 
   const documentLabelMap = {
     quotation: 'CIF Quotation',
@@ -1577,8 +1680,28 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   type="text"
                   value={shipmentMode}
                   onChange={setShipmentMode}
+                  list="shipment-mode-options"
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
+                <datalist id="shipment-mode-options">
+                  {freightModeOptions.map((option) => <option key={option} value={option} />)}
+                </datalist>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShipmentModeWithDefaults('Sea Freight (1x20ft FCL)')}
+                    className={`rounded-md border px-3 py-1.5 text-[11px] font-black transition ${!freightLabels.isAir ? 'border-sky-300 bg-sky-100 text-sky-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+                  >
+                    Ocean Freight
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShipmentModeWithDefaults('Air Freight (Airport-to-Airport)')}
+                    className={`rounded-md border px-3 py-1.5 text-[11px] font-black transition ${freightLabels.isAir ? 'border-sky-300 bg-sky-100 text-sky-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+                  >
+                    Air Freight
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-slate-500 mb-1">Payment Terms</label>
@@ -1847,11 +1970,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               <CheckboxInput label="Show seller stamp/signature block" checked={showSignatureBlock} onChange={setShowSignatureBlock} />
               <CheckboxInput label="Grand total label includes CIF port" checked={showCifPortInTotal} onChange={setShowCifPortInTotal} />
               <CheckboxInput label="Show local transport/export charges row" checked={showOriginCharges} onChange={setShowOriginCharges} />
-              <CheckboxInput label="Show ocean freight row" checked={showOceanFreight} onChange={setShowOceanFreight} />
-              <CheckboxInput label="Show marine insurance row" checked={showInsuranceCharge} onChange={setShowInsuranceCharge} />
+              <CheckboxInput label={freightLabels.visibilityLabel} checked={showOceanFreight} onChange={setShowOceanFreight} />
+              <CheckboxInput label={`Show ${freightLabels.insuranceLabel.toLowerCase()} row`} checked={showInsuranceCharge} onChange={setShowInsuranceCharge} />
             </div>
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold leading-5 text-amber-800">
-              The final CIF total still includes goods, local/export charges, ocean freight, and insurance. These checkboxes only control what is printed as separate rows in the buyer-facing PDF.
+              {freightLabels.visibilityCopy}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
@@ -1888,7 +2011,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               </div>
 
               <div>
-                <label className="block text-slate-500 mb-1">Ocean Freight Cost (C) (2)</label>
+                <label className="block text-slate-500 mb-1">{freightLabels.freightCostLabel}</label>
                 <FastInput
                   type="number"
                   step="0.01"
@@ -1943,7 +2066,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Main Ocean Freight Note</span>
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">{freightLabels.freightNoteLabel}</span>
                   <FastTextarea
                     value={costBreakdownNotes.ocean_freight || ''}
                     onChange={(value) => setCostBreakdownNotes((current) => ({ ...current, ocean_freight: value }))}
@@ -1951,7 +2074,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Marine Insurance Note</span>
+                  <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">{freightLabels.insuranceNoteLabel}</span>
                   <FastTextarea
                     value={costBreakdownNotes.insurance || ''}
                     onChange={(value) => setCostBreakdownNotes((current) => ({ ...current, insurance: value }))}
@@ -2343,7 +2466,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               <span className="font-mono">{formatCurrency(totalFOB)}</span>
             </div>
             <div className="flex justify-between text-slate-400">
-              <span>Ocean Freight (C) + Marine Insurance (I):</span>
+              <span>{freightLabels.freightSummaryLabel}</span>
               <span className="font-mono">{formatCurrency(freightCost + insuranceCost)}</span>
             </div>
             <div className="flex justify-between font-bold text-sky-400 border-t border-slate-800 pt-2 text-sm">

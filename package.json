@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ios:add": "cap add ios",
+    "ios:sync": "cap sync ios",
+    "ios:open": "cap open ios"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.6.0",
@@ -23,6 +26,9 @@
     "read-excel-file": "^9.3.10"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@types/node": "^20.14.2",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^18.3.3",

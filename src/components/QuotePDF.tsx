@@ -20,6 +20,25 @@ const getItemNetWeight = (item: QuoteItem) => {
   return Number(item.quantity || 0);
 };
 
+const isAirFreightMode = (mode?: string) => (mode || '').toLowerCase().includes('air');
+const getFreightPdfLabels = (mode?: string) => {
+  const isAir = isAirFreightMode(mode);
+  return {
+    isAir,
+    freightTitle: isAir ? 'Main Air Freight' : 'Main Ocean Freight',
+    freightDetail: isAir ? 'air freight' : 'ocean freight',
+    freightBasis: isAir ? 'Air Freight' : 'Ocean Freight',
+    freightAdjustmentTerm: isAir ? 'Air Freight Adjustments' : 'Ocean Freight Adjustments',
+    freightRateTerm: isAir ? 'Air freight rates' : 'Ocean freight rates',
+    bookingTerm: isAir ? 'airline booking confirmation' : 'vessel booking confirmation',
+    insuranceTitle: isAir ? 'Cargo Transit Insurance' : 'Marine Cargo Transit Insurance',
+    insuranceDetail: isAir
+      ? 'Comprehensive cargo transit insurance policy up to destination airport or delivery point.'
+      : 'Comprehensive marine transit cargo insurance policy up to destination port.',
+    includedFreightPrefix: isAir ? 'Main air freight' : 'Main ocean freight'
+  };
+};
+
 // PDF Styling layout
 const styles = StyleSheet.create({
   page: {
@@ -821,6 +840,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   const destinationPortLabel = (client.destination_port || 'Destination').trim();
   const incotermLabel = (quote.incoterm || 'CIF (Cost, Insurance & Freight)').trim();
   const incotermCode = incotermLabel.split(/[ (]/)[0].trim().toUpperCase() || 'CIF';
+  const freightLabels = getFreightPdfLabels(quote.shipment_mode);
   const grandTotalLabel = showCifPortInTotal ? `GRAND TOTAL ${incotermCode} ${destinationPortLabel.toUpperCase()}` : 'GRAND TOTAL';
   const offeredTotalLabel = showCifPortInTotal ? `TOTAL OFFERED ${incotermCode} VALUE (${destinationPortLabel.split(',')[0].toUpperCase()})` : 'TOTAL OFFERED VALUE';
   const commercialBreakdownTitle = `3. Transparent ${incotermCode} Cost Structure Breakdown`;
@@ -831,24 +851,26 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
     'Inland haulage and transportation from factory to Mundra Port',
     'Terminal Handling Charges (THC) & container stuffing at origin port',
     'Export customs clearance, shipping bill, COO, and Phytosanitary Certificate',
-    `Main ocean freight from Mundra to ${client.destination_port} (${formatValue(quote.freight_cost)} lump sum)`,
-    `Marine transit cargo insurance policy (${formatValue(quote.insurance_cost)} lump sum)`
+    `${freightLabels.includedFreightPrefix} from ${(quote.loading_port || 'Mundra').split(',')[0].trim()} to ${client.destination_port} (${formatValue(quote.freight_cost)} lump sum)`,
+    `${freightLabels.insuranceTitle} policy (${formatValue(quote.insurance_cost)} lump sum)`
   ];
 
   const excludedScope = quote.excluded_responsibilities || [
     'Import duties, tariffs, and local destination taxes / VAT in destination country',
-    `Destination port terminal handling charges (THC at ${client.destination_port})`,
+    freightLabels.isAir
+      ? `Destination airport handling charges and local terminal fees at ${client.destination_port}`
+      : `Destination port terminal handling charges (THC at ${client.destination_port})`,
     'Import customs clearance and local destination documentation',
-    'Inland transport/delivery from discharge port to buyer warehouse',
-    'Container demurrage, detention, or storage fees at destination port',
+    freightLabels.isAir ? 'Inland transport/delivery from destination airport to buyer warehouse' : 'Inland transport/delivery from discharge port to buyer warehouse',
+    freightLabels.isAir ? 'Airline storage, handling, or warehousing fees at destination airport' : 'Container demurrage, detention, or storage fees at destination port',
     'Buyer-requested third-party pre-shipment or destination inspection/testing fees (e.g. SGS / Intertek) unless explicitly agreed in writing.'
   ];
 
   const docList = quote.included_docs || [
     'Commercial Invoice (Issued)',
     'Packing List (Issued)',
-    'Bill of Lading (Clean On-Board B/L)',
-    'Marine Insurance Certificate',
+    freightLabels.isAir ? 'Air Waybill / Airline Booking Copy' : 'Bill of Lading (Clean On-Board B/L)',
+    freightLabels.isAir ? 'Cargo Insurance Certificate' : 'Marine Insurance Certificate',
     'Certificate of Origin (Issued)',
     'Phytosanitary Certificate (Issued)'
   ];
@@ -862,12 +884,18 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   };
 
   const commercialTerms = quote.commercial_terms || [
-    `Quotation Validity & Ocean Freight Adjustments: Quoted rates are valid for ${quote.validity_days || 15} days from issuance. Ocean freight rates, insurance premiums, and exchange rates remain indicative until final vessel booking confirmation.`,
+    `Quotation Validity & ${freightLabels.freightAdjustmentTerm}: Quoted rates are valid for ${quote.validity_days || 15} days from issuance. ${freightLabels.freightRateTerm}, insurance premiums, and exchange rates remain indicative until final ${freightLabels.bookingTerm}.`,
     'Payment Terms: ' + quote.payment_terms,
     `Currency Exchange Protections & Settlement: All prices are quoted in ${quote.currency} based on a baseline exchange rate. Final proforma invoicing and settlement may be converted to USD or AED at prevailing RBI reference rates upon agreement.`,
-    'Quality Assurance & Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, container stuffing/loading photographs, and seal numbers will be provided prior to vessel departure.',
-    'Claims & Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination port, supported by an official independent surveyor report and photographs.',
-    'Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.',
+    freightLabels.isAir
+      ? 'Quality Assurance & Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, packing photographs, and airway booking references will be provided prior to dispatch.'
+      : 'Quality Assurance & Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, container stuffing/loading photographs, and seal numbers will be provided prior to vessel departure.',
+    freightLabels.isAir
+      ? 'Claims & Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination airport, supported by an official independent surveyor report and photographs.'
+      : 'Claims & Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination port, supported by an official independent surveyor report and photographs.',
+    freightLabels.isAir
+      ? 'Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from flight delays, airport congestion, acts of God, strikes, or unexpected customs policy changes.'
+      : 'Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.',
     'Governing Law & Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration.'
   ];
   const costNotes: CostBreakdownNotes = quote.cost_breakdown_notes || {};
@@ -891,16 +919,16 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
     },
     {
       visible: showOceanFreight,
-      title: 'Main Ocean Freight',
-      detail: costNotes.ocean_freight || `Lump-sum ocean freight from ${(quote.loading_port || 'Mundra').split(',')[0].trim()} to ${(client.destination_port || 'Destination').split(',')[0].trim()}.`,
+      title: freightLabels.freightTitle,
+      detail: costNotes.ocean_freight || `Lump-sum ${freightLabels.freightDetail} from ${(quote.loading_port || 'Mundra').split(',')[0].trim()} to ${(client.destination_port || 'Destination').split(',')[0].trim()}.`,
       basis: `Lump Sum (${quote.shipment_mode})`,
       rate: 'Overall Order',
       amount: Number(quote.freight_cost)
     },
     {
       visible: showInsuranceCharge,
-      title: 'Marine Cargo Transit Insurance',
-      detail: costNotes.insurance || 'Comprehensive marine transit cargo insurance policy up to destination port.',
+      title: freightLabels.insuranceTitle,
+      detail: costNotes.insurance || freightLabels.insuranceDetail,
       basis: 'Lump Sum (Policy)',
       rate: 'Overall Order',
       amount: Number(quote.insurance_cost)
@@ -1382,11 +1410,12 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           </>
         ) : (
           <>
-            <Text style={styles.sectionTitle}>6. Port Delivery & Receipt Conditions</Text>
+            <Text style={styles.sectionTitle}>6. {freightLabels.isAir ? 'Air Cargo Delivery & Receipt Conditions' : 'Port Delivery & Receipt Conditions'}</Text>
             <View style={{ borderLeftWidth: 2, borderLeftColor: '#0ea5e9', paddingLeft: 6, marginBottom: 15 }} wrap={false}>
               <Text style={{ fontSize: 6.5, color: '#64748b', lineHeight: 1.4 }}>
-                1. Recipient must perform validation of seal integrity and container numbers against the Clean Bill of Lading immediately upon port clearance.{"\n"}
-                2. Weight tolerances: A standard moisture weight variation of +/- 0.5% during sea transport is commercially acceptable.
+                {freightLabels.isAir
+                  ? '1. Recipient must validate carton count, airway bill reference, and package condition immediately upon airport cargo release.\n2. Weight tolerances: A standard moisture weight variation of +/- 0.5% during air transport is commercially acceptable.'
+                  : '1. Recipient must perform validation of seal integrity and container numbers against the Clean Bill of Lading immediately upon port clearance.\n2. Weight tolerances: A standard moisture weight variation of +/- 0.5% during sea transport is commercially acceptable.'}
               </Text>
             </View>
           </>
