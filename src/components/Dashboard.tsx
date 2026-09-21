@@ -6764,7 +6764,7 @@ export const Dashboard: React.FC = () => {
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_220px_auto_auto] gap-2">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_220px_150px_190px]">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <SmoothInput
@@ -6797,7 +6797,7 @@ export const Dashboard: React.FC = () => {
                     type="button"
                     onClick={() => exportCleanupRecords(filteredPhoneCleanupRecords, `need-phone-fix-${new Date().toISOString().slice(0, 10)}.csv`)}
                     disabled={!filteredPhoneCleanupRecords.length}
-                    className="h-10 rounded-lg bg-slate-100 px-4 text-xs font-black text-slate-700 transition hover:bg-slate-200 disabled:opacity-40"
+                    className="h-10 w-full rounded-lg bg-slate-100 px-4 text-xs font-black text-slate-700 transition hover:bg-slate-200 disabled:opacity-40"
                   >
                     Export Shown
                   </button>
@@ -6805,7 +6805,7 @@ export const Dashboard: React.FC = () => {
                     type="button"
                     onClick={handleBulkDeletePhoneCleanupRecords}
                     disabled={!selectedPhoneCleanupRecordIds.length || loading}
-                    className="h-10 rounded-lg bg-rose-600 px-4 text-xs font-black text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="h-10 w-full rounded-lg bg-rose-600 px-4 text-xs font-black text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Delete Selected ({selectedPhoneCleanupRecordIds.length})
                   </button>
@@ -6842,8 +6842,70 @@ export const Dashboard: React.FC = () => {
                     <EmptyState text="No missing or invalid phone records found. Your WhatsApp cleanup queue is clear." />
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[900px] text-left text-xs">
+                  <>
+                  <div className="grid gap-3 p-3 lg:hidden">
+                    {filteredPhoneCleanupRecords.map((record) => {
+                      const isSelected = selectedPhoneCleanupRecordIds.includes(record.id);
+                      return (
+                        <div key={record.id} className={`rounded-xl border p-3 shadow-sm transition ${isSelected ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${record.company}`}
+                              checked={isSelected}
+                              onChange={(event) => setSelectedPhoneCleanupRecordIds((current) => event.target.checked ? Array.from(new Set([...current, record.id])) : current.filter((id) => id !== record.id))}
+                              className="mt-1 rounded border-slate-300"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="break-words text-sm font-black text-slate-950">{record.company}</h4>
+                                <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-700">Need Phone Fix</span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold text-slate-400">
+                                <span>{record.source}</span>
+                                <SmallBadge text={record.country || 'Uncategorized'} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                            <div className="rounded-lg bg-slate-50 p-2">
+                              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Contact</div>
+                              <div className="mt-1 font-semibold text-slate-700">{record.contact || 'No contact name'}</div>
+                              <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{record.phone || 'No phone'}</div>
+                            </div>
+                            <div className="rounded-lg bg-slate-50 p-2">
+                              <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Email</div>
+                              <div className="mt-1 break-all font-mono text-[11px] text-slate-600">{record.email || 'Missing'}</div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-2 text-[11px] font-semibold leading-5 text-amber-800">
+                            {record.reason}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (record.leadId) {
+                                const lead = leads.find((item) => item.id === record.leadId);
+                                if (lead) editLeadFromCard(lead);
+                              } else {
+                                setCrmSearchQuery(record.company);
+                              }
+                              navigateToTab('crm');
+                            }}
+                            className="mt-3 flex h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800"
+                          >
+                            Repair Phone Record
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="hidden overflow-x-auto lg:block">
+                    <table className="w-full min-w-[760px] text-left text-xs">
                       <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                         <tr>
                           <th className="w-10 p-3">
@@ -6855,12 +6917,12 @@ export const Dashboard: React.FC = () => {
                               className="rounded border-slate-300"
                             />
                           </th>
-                          <th className="p-3">Company</th>
-                          <th className="p-3">Phone Status</th>
-                          <th className="p-3">Email</th>
-                          <th className="p-3">Contact / Phone</th>
-                          <th className="p-3">Country</th>
-                          <th className="p-3 text-right">Action</th>
+                          <th className="w-[22%] p-3">Company</th>
+                          <th className="w-[25%] p-3">Phone Status</th>
+                          <th className="w-[18%] p-3">Contact / Phone</th>
+                          <th className="w-[18%] p-3">Email</th>
+                          <th className="w-[10%] p-3">Country</th>
+                          <th className="w-[7%] p-3 text-right">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -6885,11 +6947,11 @@ export const Dashboard: React.FC = () => {
                               </span>
                               <div className="mt-1 max-w-xs text-[10px] font-medium text-slate-500">{record.reason}</div>
                             </td>
-                            <td className="p-3 font-mono text-[11px] text-slate-600">{record.email || 'Missing'}</td>
                             <td className="p-3">
                               <div className="font-semibold text-slate-700">{record.contact || 'No contact name'}</div>
-                              <div className="mt-1 font-mono text-[11px] text-slate-500">{record.phone || 'No phone'}</div>
+                              <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{record.phone || 'No phone'}</div>
                             </td>
+                            <td className="p-3 break-all font-mono text-[11px] text-slate-600">{record.email || 'Missing'}</td>
                             <td className="p-3"><SmallBadge text={record.country || 'Uncategorized'} /></td>
                             <td className="p-3 text-right">
                               <button
@@ -6913,6 +6975,7 @@ export const Dashboard: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+                  </>
                 )}
               </div>
             </div>
