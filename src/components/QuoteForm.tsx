@@ -1,7 +1,7 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Client, Product, Quote, QuoteItem, ShipperDetails, LogisticsSpecs, FreightPreset, BankDetails, CostBreakdownNotes } from '../lib/types';
-import { Plus, Trash2, Save, Eye, ArrowLeft, Loader2, Download } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Plus, Trash2, Save, Eye, ArrowLeft, Loader2, Download, ShieldCheck } from 'lucide-react';
 import { QuotePDF } from './QuotePDF';
 import dynamic from 'next/dynamic';
 
@@ -377,6 +377,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   // Core Form States
   const [quoteNumber, setQuoteNumber] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
   const [buyerEntryMode, setBuyerEntryMode] = useState<'existing' | 'manual'>('existing');
   const [manualBuyer, setManualBuyer] = useState<Partial<Client>>(blankManualBuyer);
   const [currency, setCurrency] = useState<'USD' | 'INR'>('INR');
@@ -401,6 +402,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [shipper, setShipper] = useState<ShipperDetails>(defaultShipper);
   const [bankDetails, setBankDetails] = useState<BankDetails>(defaultBankDetails);
   const [lineItems, setLineItems] = useState<QuoteItem[]>([]);
+  const [productSearchQuery, setProductSearchQuery] = useState('');
   const [commercialNote, setCommercialNote] = useState(defaultCommercialNoteText);
   const [costBreakdownNotes, setCostBreakdownNotes] = useState<CostBreakdownNotes>(defaultCostBreakdownNotes);
   const [showCifBreakdown, setShowCifBreakdown] = useState(true);
@@ -462,6 +464,37 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [selectedFreightPresetId, setSelectedFreightPresetId] = useState('');
 
   const draftKey = `crixy-quote-draft-${quoteId || 'new'}`;
+
+  const selectExistingBuyer = (clientId: string) => {
+    setSelectedClientId(clientId);
+    const nextClient = clients.find((client) => client.id === clientId);
+    setDestinationPort(nextClient?.destination_port || '');
+    setBuyerSearchQuery(nextClient ? `${nextClient.company_name}${nextClient.contact_name ? ` - ${nextClient.contact_name}` : ''}` : '');
+  };
+
+  const filteredBuyerOptions = useMemo(() => {
+    const search = buyerSearchQuery.trim().toLowerCase();
+    const list = search
+      ? clients.filter((client) => (
+          `${client.company_name} ${client.contact_name || ''} ${client.contact_email || ''} ${client.phone || ''} ${client.destination_port || ''}`
+            .toLowerCase()
+            .includes(search)
+        ))
+      : clients;
+    return list.slice(0, 8);
+  }, [buyerSearchQuery, clients]);
+
+  const filteredProductOptions = useMemo(() => {
+    const search = productSearchQuery.trim().toLowerCase();
+    const list = search
+      ? products.filter((product) => (
+          `${product.sku} ${product.description || ''} ${product.dimensions || ''}`
+            .toLowerCase()
+            .includes(search)
+        ))
+      : products;
+    return list.slice(0, 10);
+  }, [productSearchQuery, products]);
 
   const getDraftPayload = () => ({
     quoteNumber,
@@ -1367,6 +1400,70 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   };
   const freightLabels = getFreightModeLabels(shipmentMode);
 
+  const quoteApproval = useMemo(() => {
+    const blockers: string[] = [];
+    const warnings: string[] = [];
+    const passed: string[] = [];
+
+    if (!quoteNumber.trim()) blockers.push('Quote reference code is missing.');
+    else passed.push('Quote reference is ready.');
+
+    if (!currentClient?.company_name) blockers.push('Buyer/consignee is not selected or entered.');
+    else passed.push('Buyer details are linked.');
+
+    if (!(destinationPort || currentClient?.destination_port || '').trim()) blockers.push('Destination port is missing.');
+    else passed.push('Destination port is available.');
+
+    if (!lineItems.length) blockers.push('No product line item has been added.');
+    else passed.push(`${lineItems.length} product line item${lineItems.length === 1 ? '' : 's'} added.`);
+
+    const zeroPriceItems = lineItems.filter((item) => Number(item.unit_price || item.package_unit_price || 0) <= 0);
+    if (zeroPriceItems.length) blockers.push(`${zeroPriceItems.length} product line item${zeroPriceItems.length === 1 ? ' has' : 's have'} zero selling price.`);
+    else if (lineItems.length) passed.push('Product selling prices are filled.');
+
+    if (freightLabels.isAir ? !showOceanFreight : !showOceanFreight) {
+      warnings.push(`${freightLabels.transportType} is included in total but hidden as a separate buyer-facing row.`);
+    } else if (Number(freightCost || 0) > 0) {
+      passed.push(`${freightLabels.transportType} row is visible.`);
+    }
+
+    if (Number(freightCost || 0) <= 0) warnings.push(`${freightLabels.transportType} cost is zero. Confirm this is intentional.`);
+    if (Number(insuranceCost || 0) <= 0 && showInsuranceCharge) warnings.push('Insurance row is visible but insurance cost is zero.');
+    if ((Number(packagingCost || 0) + Number(inlandHaulageCost || 0) + Number(customsClearanceCost || 0)) <= 0 && showOriginCharges) warnings.push('Origin/local charges are visible but currently zero.');
+    if (!paymentTerms.trim()) warnings.push('Payment terms are blank.');
+    if (!commercialNote.trim()) warnings.push('Commercial note is blank.');
+    if (!showSignatureBlock) warnings.push('Signature/stamp block is hidden from buyer-facing PDF.');
+    else passed.push('Signature/stamp block is enabled.');
+
+    const lowMarginItems = lineItems.filter((item) => Number(item.unit_price || 0) > 0 && Number(item.cost_price || 0) > 0 && Number(item.unit_price || 0) - Number(item.cost_price || 0) < marginPerKg);
+    if (lowMarginItems.length) warnings.push(`${lowMarginItems.length} item${lowMarginItems.length === 1 ? '' : 's'} may be below target margin.`);
+
+    const totalChecks = blockers.length + warnings.length + passed.length || 1;
+    const score = Math.max(0, Math.min(100, Math.round(((passed.length + warnings.length * 0.45) / totalChecks) * 100)));
+    const statusLabel = blockers.length ? 'Needs Fix' : warnings.length ? 'Review Needed' : 'Ready to Send';
+    const tone = blockers.length ? 'red' : warnings.length ? 'amber' : 'emerald';
+
+    return { blockers, warnings, passed, score, statusLabel, tone };
+  }, [
+    commercialNote,
+    currentClient,
+    customsClearanceCost,
+    destinationPort,
+    freightCost,
+    freightLabels.isAir,
+    freightLabels.transportType,
+    inlandHaulageCost,
+    insuranceCost,
+    lineItems,
+    marginPerKg,
+    packagingCost,
+    paymentTerms,
+    quoteNumber,
+    showInsuranceCharge,
+    showOceanFreight,
+    showOriginCharges,
+    showSignatureBlock
+  ]);
   const documentLabelMap = {
     quotation: 'CIF Quotation',
     invoice: 'Commercial Invoice',
@@ -1394,6 +1491,13 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <span className="break-words">{quoteId ? `Edit Deal Details: ${quoteNumber}` : 'New Export Deal & PDF Maker'}</span>
             <span className={`text-xs px-2 py-0.5 rounded font-mono ${currency === 'INR' ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400'}`}>
               {currency} Mode
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded font-black ${
+              quoteApproval.tone === 'emerald' ? 'bg-emerald-500/20 text-emerald-300' :
+              quoteApproval.tone === 'amber' ? 'bg-amber-500/20 text-amber-300' :
+              'bg-red-500/20 text-red-300'
+            }`}>
+              {quoteApproval.score}% {quoteApproval.statusLabel}
             </span>
           </h2>
         </div>
@@ -1491,6 +1595,67 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             </div>
           </div>
 
+          <div className={`rounded-xl border p-4 ${
+            quoteApproval.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50' :
+            quoteApproval.tone === 'amber' ? 'border-amber-200 bg-amber-50' :
+            'border-red-200 bg-red-50'
+          }`}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3">
+                <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+                  quoteApproval.tone === 'emerald' ? 'bg-emerald-600 text-white' :
+                  quoteApproval.tone === 'amber' ? 'bg-amber-500 text-white' :
+                  'bg-red-600 text-white'
+                }`}>
+                  {quoteApproval.tone === 'emerald' ? <ShieldCheck className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Quotation Approval Flow</p>
+                  <h3 className="text-sm font-black text-slate-950">{quoteApproval.statusLabel}</h3>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
+                    Readiness score checks buyer, product, pricing, freight, notes, and PDF visibility before sending.
+                  </p>
+                </div>
+              </div>
+              <div className="min-w-[140px]">
+                <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-500">
+                  <span>Approval</span>
+                  <span>{quoteApproval.score}%</span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-white/80">
+                  <div
+                    className={`h-full rounded-full transition-[width] ${
+                      quoteApproval.tone === 'emerald' ? 'bg-emerald-600' :
+                      quoteApproval.tone === 'amber' ? 'bg-amber-500' :
+                      'bg-red-600'
+                    }`}
+                    style={{ width: `${quoteApproval.score}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <div className="rounded-lg border border-white/70 bg-white/80 p-3">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-red-600">Must Fix</p>
+                {quoteApproval.blockers.length ? quoteApproval.blockers.map((item) => (
+                  <p key={item} className="mb-1 flex gap-2 text-[11px] font-semibold text-slate-700"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />{item}</p>
+                )) : <p className="flex gap-2 text-[11px] font-semibold text-slate-600"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />No blocking issues.</p>}
+              </div>
+              <div className="rounded-lg border border-white/70 bg-white/80 p-3">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-amber-600">Review</p>
+                {quoteApproval.warnings.length ? quoteApproval.warnings.slice(0, 4).map((item) => (
+                  <p key={item} className="mb-1 flex gap-2 text-[11px] font-semibold text-slate-700"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />{item}</p>
+                )) : <p className="flex gap-2 text-[11px] font-semibold text-slate-600"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />No warnings.</p>}
+              </div>
+              <div className="rounded-lg border border-white/70 bg-white/80 p-3">
+                <p className="mb-2 text-[10px] font-black uppercase tracking-wider text-emerald-600">Passed</p>
+                {quoteApproval.passed.slice(0, 4).map((item) => (
+                  <p key={item} className="mb-1 flex gap-2 text-[11px] font-semibold text-slate-700"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />{item}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Section 1: Exporter / Buyer Selection */}
           <div className="space-y-4">
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b pb-1">1. Exporter & Buyer Parties</h3>
@@ -1526,22 +1691,38 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               {buyerEntryMode === 'existing' ? (
                 <div>
                   <label className="block text-[10px] text-slate-500 mb-1">Buyer Consignee *</label>
-                  <select
-                    value={selectedClientId}
-                    onChange={(e) => {
-                      const nextClientId = e.target.value;
-                      setSelectedClientId(nextClientId);
-                      const nextClient = clients.find((client) => client.id === nextClientId);
-                      setDestinationPort(nextClient?.destination_port || '');
-                    }}
+                  <FastInput
+                    type="text"
+                    value={buyerSearchQuery}
+                    onChange={setBuyerSearchQuery}
+                    placeholder="Search buyer by company, contact, email, phone, or port..."
                     className="w-full px-3 py-2 border border-slate-300 bg-white rounded text-xs focus:ring-1 focus:ring-sky-500 focus:outline-none"
-                    required={buyerEntryMode === 'existing'}
-                  >
-                    <option value="">-- Choose Buyer --</option>
-                    {clients.map(c => (
-                      <option key={c.id} value={c.id}>{c.company_name}</option>
+                    required={buyerEntryMode === 'existing' && !selectedClientId}
+                  />
+                  <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+                    {filteredBuyerOptions.length === 0 ? (
+                      <div className="px-3 py-3 text-[11px] font-semibold text-slate-400">No saved buyer found. Try another search or use Manual Buyer.</div>
+                    ) : filteredBuyerOptions.map((client) => (
+                      <button
+                        key={client.id}
+                        type="button"
+                        onClick={() => selectExistingBuyer(client.id)}
+                        className={`w-full border-b border-slate-100 px-3 py-2 text-left text-xs transition last:border-b-0 ${
+                          selectedClientId === client.id ? 'bg-sky-50 text-sky-800' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="block font-black text-slate-900">{client.company_name}</span>
+                        <span className="mt-0.5 block text-[10px] font-semibold text-slate-500">
+                          {[client.contact_name, client.contact_email, client.phone, client.destination_port].filter(Boolean).join(' | ') || 'Saved buyer'}
+                        </span>
+                      </button>
                     ))}
-                  </select>
+                  </div>
+                  {selectedClientId && (
+                    <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-black text-emerald-800">
+                      Selected: {clients.find((client) => client.id === selectedClientId)?.company_name || 'Saved buyer'}
+                    </div>
+                  )}
                   <p className="mt-2 text-[11px] font-medium text-slate-500">
                     Select a CRM buyer when this quote should link to an existing account.
                   </p>
@@ -1737,23 +1918,50 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
           {/* Section 3: Commercial Offer Specification List */}
           <div className="space-y-4">
-            <div className="flex justify-between items-center border-b pb-1">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">3. Commercial Offer Goods</h3>
-              <select
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleAddLineItem(e.target.value);
-                    e.target.value = '';
-                  }
-                }}
-                className="px-2 py-1 border border-slate-300 rounded text-[11px] focus:outline-none"
-              >
-                <option value="">+ Add Product SKU</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>{p.sku} - {p.description.split('\n')[0]}</option>
-                ))}
-                <option value="custom">Add Cumin Seed Sample...</option>
-              </select>
+            <div className="border-b pb-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">3. Commercial Offer Goods</h3>
+                <button
+                  type="button"
+                  onClick={() => handleAddLineItem('custom')}
+                  className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[11px] font-black text-slate-700 transition hover:bg-slate-50"
+                >
+                  + Add Cumin Seed Sample
+                </button>
+              </div>
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <label className="block text-[10px] font-black uppercase tracking-wide text-slate-500">Search Product Name / SKU</label>
+                <FastInput
+                  type="text"
+                  value={productSearchQuery}
+                  onChange={setProductSearchQuery}
+                  placeholder="Type product name, SKU, description, or dimensions..."
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <div className="mt-2 grid max-h-64 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
+                  {filteredProductOptions.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-[11px] font-semibold text-slate-400 sm:col-span-2 xl:col-span-3">
+                      No product found. Add it in Products first or use the sample item.
+                    </div>
+                  ) : filteredProductOptions.map((product) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => {
+                        handleAddLineItem(product.id);
+                        setProductSearchQuery('');
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white p-3 text-left text-xs shadow-sm transition hover:border-sky-300 hover:bg-sky-50"
+                    >
+                      <span className="block font-black text-slate-950">{product.sku}</span>
+                      <span className="mt-1 line-clamp-2 block text-[11px] font-semibold leading-4 text-slate-500">{product.description?.split('\n')[0] || 'No description'}</span>
+                      <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-600">
+                        + Add Product
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {lineItems.length === 0 ? (

@@ -430,6 +430,18 @@ body {
   overflow: hidden;
 }
 
+.portal-card,
+.portal-workspace,
+.portal-command-strip,
+.portal-topbar {
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.portal-card:hover {
+  border-color: rgba(148, 163, 184, 0.86);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.09);
+}
+
 .portal-card > :first-child:is(.border-b) {
   background: linear-gradient(180deg, rgba(248,250,252,0.92), rgba(255,255,255,0.96));
 }
@@ -437,6 +449,23 @@ body {
 .portal-workspace table thead tr,
 .portal-card table thead tr {
   background: #f8fafc !important;
+}
+
+.portal-workspace input,
+.portal-workspace select,
+.portal-workspace textarea {
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.portal-workspace button {
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.data-grid th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
 }
 
 .portal-workspace table th,

@@ -24,13 +24,14 @@ import type { BlogPost } from '../lib/types';
 import { blankBlogPost, generateBlogSlug, sanitizeBlogHtml, stripHtml } from '../lib/blogs';
 import { InvoicePDF } from './InvoicePDF';
 import { QuoteForm } from './QuoteForm';
+import type { BuyerExportRecord } from './BuyerExportPDF';
 import { CrmTable } from './crm/CrmTable';
 import { CrmKanban } from './crm/CrmKanban';
 import { LeadInspectorDrawer } from './crm/LeadInspectorDrawer';
 import { LetterheadGenerator } from './LetterheadGenerator';
 import { CrmLead, CrmStage } from '../lib/types/crm';
 import { useCallback } from 'react';
-import { SmartCommandCenter, SmartPortalInsight, SmartPortalPulse } from './SmartCommandCenter';
+import { SmartCommandCenter, SmartCommandMetric, SmartPortalInsight, SmartPortalPulse } from './SmartCommandCenter';
 import { usePortalIdentity } from './AuthGate';
 import { canAccessTab, canManageTable } from '../lib/permissions';
 import {
@@ -77,6 +78,11 @@ import {
 
 const PDFDownloadLink = dynamic(
   () => import('@react-pdf/renderer').then((mod) => mod.PDFDownloadLink),
+  { ssr: false }
+);
+
+const BuyerExportPDF = dynamic(
+  () => import('./BuyerExportPDF').then((mod) => mod.BuyerExportPDF),
   { ssr: false }
 );
 
@@ -132,7 +138,7 @@ const getQuoteItemQuantityLabel = (item: QuoteItem) => (
     : `${Number(item.quantity || 0).toLocaleString()} kg`
 );
 
-type TabKey = 'overview' | 'actionQueue' | 'crm' | 'potentialBuyers' | 'dataSources' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
+type TabKey = 'overview' | 'actionQueue' | 'crm' | 'potentialBuyers' | 'dataSources' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'generateResponses' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
@@ -140,6 +146,16 @@ type ImportDataSource = 'Embassy Data' | 'Custom Researched Data';
 type LeadTrackingAction = 'email_sent' | 'followup_1' | 'followup_2' | 'followup_3' | 'responded' | 'followup_due';
 type BuyerSortKey = 'name' | 'phone_asc' | 'phone_desc' | 'followup_first' | 'reachout_first' | 'waiting_first' | 'responded_first';
 type CleanupIssueFilter = 'All' | 'Email Issue' | 'Contact Issue' | 'Email + Contact';
+type ResponseMessageType = 'Reachout' | 'Quotation' | 'Follow-up';
+type ResponseGeneratorForm = {
+  buyerName: string;
+  companyName: string;
+  productName: string;
+  destinationPort: string;
+  quoteNumber: string;
+  totalValue: string;
+  extraContext: string;
+};
 type CleanupRecord = {
   id: string;
   company: string;
@@ -249,6 +265,12 @@ const blankTemplate: Partial<MessageTemplate> = {
   subject: '',
   body: '',
   active: true
+};
+
+const defaultResponseTemplates: Record<ResponseMessageType, string> = {
+  Reachout: 'Hello {{buyer_name}},\n\nThis is Sheshaan Global from India. We support international buyers with {{product_name}} and export-ready sourcing for {{destination_port}}.\n\nPlease let us know your current requirement, quantity, packing preference, and destination port. We will be happy to share product details and quotation accordingly.\n\nRegards,\nSheshaan Global',
+  Quotation: 'Hello {{buyer_name}},\n\nPlease find the above quotation for {{product_name}} shared for {{company_name}}.\n\nQuotation Ref: {{quote_number}}\nTotal Offered Value: {{total_value}}\nDestination: {{destination_port}}\n\nKindly review the quotation and let us know if you need any changes in quantity, packing, freight terms, or product specifications.\n\nRegards,\nSheshaan Global',
+  'Follow-up': 'Hello {{buyer_name}},\n\nJust following up regarding {{product_name}} for {{company_name}}.\n\nPlease let us know if you had a chance to review the details. If required, we can revise the quotation, share more specifications, or adjust the offer as per your requirement for {{destination_port}}.\n\nRegards,\nSheshaan Global'
 };
 
 const blankRate: Partial<FreightRateHistory> = {
@@ -1254,6 +1276,8 @@ export const Dashboard: React.FC = () => {
   const [crmViewMode, setCrmViewMode] = useState<'table' | 'kanban'>('table');
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
   const [crmMenuOpen, setCrmMenuOpen] = useState(true);
+  const [templateMenuOpen, setTemplateMenuOpen] = useState(true);
+  const [buyerPdfExportReady, setBuyerPdfExportReady] = useState(false);
   const [potentialBuyerSearchQuery, setPotentialBuyerSearchQuery] = useState('');
   const [potentialBuyerForm, setPotentialBuyerForm] = useState<Partial<Lead>>(blankLead);
   const [editingPotentialBuyerId, setEditingPotentialBuyerId] = useState<string | null>(null);
@@ -1292,6 +1316,20 @@ export const Dashboard: React.FC = () => {
   const [selectedCommunicationClientId, setSelectedCommunicationClientId] = useState('');
   const [selectedTemplateClientId, setSelectedTemplateClientId] = useState('');
   const [selectedTemplateProductId, setSelectedTemplateProductId] = useState('');
+  const [responseClientId, setResponseClientId] = useState('');
+  const [responseQuoteId, setResponseQuoteId] = useState('');
+  const [responseMessageType, setResponseMessageType] = useState<ResponseMessageType>('Reachout');
+  const [responseTemplates, setResponseTemplates] = useState<Record<ResponseMessageType, string>>(defaultResponseTemplates);
+  const [responseForm, setResponseForm] = useState<ResponseGeneratorForm>({
+    buyerName: '',
+    companyName: '',
+    productName: '',
+    destinationPort: '',
+    quoteNumber: '',
+    totalValue: '',
+    extraContext: ''
+  });
+  const [generatedResponseMessage, setGeneratedResponseMessage] = useState('');
   const [buyerCountryFilter, setBuyerCountryFilter] = useState('All');
   const [buyerActionFilter, setBuyerActionFilter] = useState('All');
   const [buyerSortKey, setBuyerSortKey] = useState<BuyerSortKey>('name');
@@ -1937,6 +1975,14 @@ export const Dashboard: React.FC = () => {
       quote.created_at &&
       new Date(quote.created_at).getTime() < today.getTime() - 7 * 86400000
     ));
+    const quoteApprovalQueue = quotes.filter((quote) => (
+      quote.status === 'Draft' ||
+      !quote.client_id ||
+      !quote.client?.destination_port ||
+      !quote.items?.length ||
+      Number(quote.freight_cost || 0) <= 0 ||
+      Number(quote.margin_per_kg || 0) < 8
+    ));
     const followUpDueLeads = leads.filter((lead) => leadActionCategory(lead) === 'Follow-up Due');
     const reachOutLeads = leads.filter((lead) => leadActionCategory(lead) === 'Need Reach Out');
     const activeShipments = shipments.filter((shipment) => !['Delivered', 'Arrived'].includes(shipment.status));
@@ -1990,6 +2036,7 @@ export const Dashboard: React.FC = () => {
       marginRiskQuotes,
       operatingHealth,
       overdueReceivables,
+      quoteApprovalQueue,
       reachOutLeads,
       readinessScore,
       receivableBalance,
@@ -2032,6 +2079,44 @@ export const Dashboard: React.FC = () => {
     automationCoverage: tradeOperatingMetrics.automationCoverage,
     activeShipments: shipments.filter((shipment) => !['Delivered', 'Arrived'].includes(shipment.status)).length
   }), [leads, shipments, tradeOperatingMetrics]);
+
+  const businessCommandMetrics: SmartCommandMetric[] = useMemo(() => ([
+    {
+      label: 'Approval Queue',
+      value: tradeOperatingMetrics.quoteApprovalQueue.length.toString(),
+      detail: 'Quotes needing readiness review',
+      target: 'quotes',
+      tone: tradeOperatingMetrics.quoteApprovalQueue.length ? 'amber' : 'emerald'
+    },
+    {
+      label: 'Receivable Risk',
+      value: tradeOperatingMetrics.overdueReceivables.length.toString(),
+      detail: formatQuoteCurrency(tradeOperatingMetrics.receivableBalance, 'INR'),
+      target: 'accounts',
+      tone: tradeOperatingMetrics.overdueReceivables.length ? 'red' : 'emerald'
+    },
+    {
+      label: 'Doc Blockers',
+      value: tradeOperatingMetrics.documentRiskItems.length.toString(),
+      detail: 'Packets missing export docs',
+      target: 'documents',
+      tone: tradeOperatingMetrics.documentRiskItems.length ? 'red' : 'emerald'
+    },
+    {
+      label: 'Shipment Watch',
+      value: tradeOperatingMetrics.shipmentExecutionRisks.length.toString(),
+      detail: `${smartPortalPulse.activeShipments} active shipment${smartPortalPulse.activeShipments === 1 ? '' : 's'}`,
+      target: 'shipments',
+      tone: tradeOperatingMetrics.shipmentExecutionRisks.length ? 'amber' : 'sky'
+    },
+    {
+      label: 'Buyer Work',
+      value: (tradeOperatingMetrics.followUpDueLeads.length + tradeOperatingMetrics.reachOutLeads.length).toString(),
+      detail: 'Reach-outs and follow-ups due',
+      target: 'crm',
+      tone: tradeOperatingMetrics.followUpDueLeads.length ? 'amber' : 'slate'
+    }
+  ]), [smartPortalPulse.activeShipments, tradeOperatingMetrics]);
 
   const smartPortalInsights: SmartPortalInsight[] = useMemo(() => {
     const insights: SmartPortalInsight[] = [];
@@ -2602,6 +2687,8 @@ export const Dashboard: React.FC = () => {
   const communicationShipment = shipments.find((shipment) => shipment.client_id === communicationClient?.id || shipment.quote_id === communicationQuote?.id);
   const templatePreviewClient = clients.find((client) => client.id === selectedTemplateClientId) || communicationClient;
   const templatePreviewProduct = products.find((product) => product.id === selectedTemplateProductId);
+  const responseClient = clients.find((client) => client.id === responseClientId);
+  const responseQuote = quotes.find((quote) => quote.id === responseQuoteId) || quotes.find((quote) => quote.client_id === responseClient?.id);
   const productCatalogue = products.map((product) => product.sku).filter(Boolean).slice(0, 6).join(', ') || 'spices, agro commodities, and export-ready food products';
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || templates[0];
   const selectedCrmTemplate = templates.find((template) => template.id === selectedCrmTemplateId);
@@ -2636,6 +2723,81 @@ export const Dashboard: React.FC = () => {
       .replaceAll('{{shipment_status}}', communicationShipment?.status || 'Planning')
       .replaceAll('{{etd}}', communicationShipment?.etd || 'TBA')
       .replaceAll('{{eta}}', communicationShipment?.eta || 'TBA');
+  };
+
+  const responseFieldValue = (field: keyof ResponseGeneratorForm) => responseForm[field].trim();
+
+  const buildResponseMessage = () => {
+    const quoteProductName = responseQuote?.items?.[0]?.sku || '';
+    const buyerName = responseFieldValue('buyerName') || buyerGreetingName(responseClient?.contact_name, responseClient?.company_name);
+    const companyName = responseFieldValue('companyName') || responseClient?.company_name || 'your company';
+    const productName = responseFieldValue('productName') || quoteProductName || 'our export products';
+    const destinationPort = responseFieldValue('destinationPort') || responseClient?.destination_port || responseQuote?.client?.destination_port || 'your destination port';
+    const quoteNumber = responseFieldValue('quoteNumber') || responseQuote?.quote_number || 'the shared quotation';
+    const totalValue = responseFieldValue('totalValue') || (responseQuote ? formatQuoteCurrency(quoteValue(responseQuote), responseQuote.currency || 'INR') : 'the offered value');
+    const extraContext = responseFieldValue('extraContext');
+
+    const filledMessage = responseTemplates[responseMessageType]
+      .replaceAll('{{buyer_name}}', buyerName)
+      .replaceAll('{{company_name}}', companyName)
+      .replaceAll('{{product_name}}', productName)
+      .replaceAll('{{destination_port}}', destinationPort)
+      .replaceAll('{{quote_number}}', quoteNumber)
+      .replaceAll('{{total_value}}', totalValue)
+      .replaceAll('{{extra_context}}', extraContext);
+
+    return extraContext && !filledMessage.includes(extraContext)
+      ? `${filledMessage}\n\nNote: ${extraContext}`
+      : filledMessage;
+  };
+
+  const generateResponseMessage = () => {
+    const message = buildResponseMessage();
+    setGeneratedResponseMessage(message);
+    showToast(`${responseMessageType} message generated`, 'success');
+  };
+
+  const copyGeneratedResponseMessage = async () => {
+    const message = generatedResponseMessage || buildResponseMessage();
+    setGeneratedResponseMessage(message);
+    await navigator.clipboard?.writeText(message);
+    showToast('WhatsApp message copied', 'success');
+  };
+
+  const loadResponseClient = (clientId: string) => {
+    const client = clients.find((item) => item.id === clientId);
+    setResponseClientId(clientId);
+    if (!client) return;
+    const latestQuote = quotes.find((quote) => quote.client_id === client.id);
+    setResponseQuoteId(latestQuote?.id || '');
+    setResponseForm((current) => ({
+      ...current,
+      buyerName: buyerGreetingName(client.contact_name, client.company_name),
+      companyName: client.company_name,
+      destinationPort: client.destination_port || current.destinationPort,
+      productName: latestQuote?.items?.[0]?.sku || current.productName,
+      quoteNumber: latestQuote?.quote_number || current.quoteNumber,
+      totalValue: latestQuote ? formatQuoteCurrency(quoteValue(latestQuote), latestQuote.currency || 'INR') : current.totalValue
+    }));
+    setGeneratedResponseMessage('');
+  };
+
+  const loadResponseQuote = (quoteId: string) => {
+    const quote = quotes.find((item) => item.id === quoteId);
+    setResponseQuoteId(quoteId);
+    if (!quote) return;
+    const client = clients.find((item) => item.id === quote.client_id) || quote.client;
+    if (client?.id) setResponseClientId(client.id);
+    setResponseForm((current) => ({
+      ...current,
+      buyerName: buyerGreetingName(client?.contact_name, client?.company_name),
+      companyName: client?.company_name || current.companyName,
+      destinationPort: client?.destination_port || quote.client?.destination_port || current.destinationPort,
+      productName: quote.items?.[0]?.sku || current.productName,
+      quoteNumber: quote.quote_number || current.quoteNumber,
+      totalValue: formatQuoteCurrency(quoteValue(quote), quote.currency || 'INR')
+    }));
+    setGeneratedResponseMessage('');
   };
 
   const replaceLeadTemplateVars = (text = '', lead: Lead) => {
@@ -3494,6 +3656,58 @@ export const Dashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const downloadExcelHtmlFile = (filename: string, sheetTitle: string, headers: string[], rows: unknown[][]) => {
+    const escapeHtml = (value: unknown) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const generatedAt = new Date().toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: Arial, sans-serif; color: #0f172a; }
+            .title { background: #07111f; color: #fff; font-size: 22px; font-weight: 800; padding: 18px; }
+            .subtitle { background: #e0f2fe; color: #075985; font-weight: 700; padding: 10px 18px; }
+            table { border-collapse: collapse; width: 100%; }
+            th { background: #0f172a; color: #ffffff; padding: 10px; border: 1px solid #334155; text-align: left; font-size: 12px; }
+            td { padding: 9px; border: 1px solid #cbd5e1; font-size: 12px; vertical-align: top; }
+            tr:nth-child(even) td { background: #f8fafc; }
+            .stamp { margin-top: 28px; border: 1px solid #cbd5e1; padding: 16px; font-weight: 700; color: #0f172a; }
+            .sign { color: #075985; font-size: 16px; font-weight: 800; }
+          </style>
+        </head>
+        <body>
+          <div class="title">Sheshaan Global - ${escapeHtml(sheetTitle)}</div>
+          <div class="subtitle">Generated ${escapeHtml(generatedAt)} | Professional buyer CRM export | Total records: ${rows.length}</div>
+          <table>
+            <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+            <tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>
+          <div class="stamp">
+            Certified by Sheshaan Global<br />
+            <span class="sign">Sana Zeba Bakshi</span><br />
+            Authorized Signatory / Founder
+          </div>
+        </body>
+      </html>`;
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const clientAddressValue = (client: Client | undefined, label: string) => {
     const line = (client?.address || '').split('\n').find((item) => item.toLowerCase().startsWith(`${label.toLowerCase()}:`));
     return line ? line.slice(line.indexOf(':') + 1).trim() : '';
@@ -3850,6 +4064,86 @@ export const Dashboard: React.FC = () => {
       return companyKey(a).localeCompare(companyKey(b));
     });
   }, [searchedCrmLeads, crmSortKey, crmQueueFilter, getLeadActionCategory, leadVelocityScore]);
+
+  const buyerExportRecords = useMemo<BuyerExportRecord[]>(() => (
+    filteredCrmLeads.map((lead) => {
+      const leadCompanyKey = companyKey(lead);
+      const linkedClient = clients.find((client) => client.id === lead.client_id || (leadCompanyKey && companyKey(client) === leadCompanyKey));
+      return {
+        company: lead.company_name || linkedClient?.company_name || 'Unnamed Buyer',
+        contact: lead.contact_name || linkedClient?.contact_name || 'Procurement Team',
+        email: lead.contact_email || linkedClient?.contact_email || '',
+        phone: lead.phone || linkedClient?.phone || '',
+        country: lead.country || clientAddressValue(linkedClient, 'Country') || linkedClient?.destination_port || 'Uncategorized',
+        product: lead.product_interest || linkedClient?.products_dealing?.join(', ') || 'General Sheshaan Global product range',
+        source: leadDataSource(lead),
+        stage: lead.stage || 'New Lead',
+        priority: lead.priority || 'Medium',
+        action: getLeadActionCategory(lead),
+        nextFollowUp: lead.next_follow_up || '',
+        bestSendTime: bestSendWindowIST(lead.country).replace('Best send: ', ''),
+        score: leadScoreValue[lead.id] || lead.lead_score || '',
+        notes: (lead.notes || '').replace(/\r?\n/g, ' | ')
+      };
+    })
+  ), [clients, filteredCrmLeads, getLeadActionCategory, leadScoreValue]);
+
+  const buyerExportFilterSummary = useMemo(() => {
+    const parts = [
+      crmCountryFilter !== 'All' ? `Country: ${crmCountryFilter}` : 'All countries',
+      crmQueueFilter ? `Queue: ${crmQueueFilter}` : 'All CRM queues',
+      crmSearchQuery.trim() ? `Search: ${crmSearchQuery.trim()}` : '',
+      `Sort: ${crmSortKey}`
+    ].filter(Boolean);
+    return parts.join(' | ');
+  }, [crmCountryFilter, crmQueueFilter, crmSearchQuery, crmSortKey]);
+
+  useEffect(() => {
+    setBuyerPdfExportReady(false);
+  }, [buyerExportFilterSummary, buyerExportRecords.length]);
+
+  const buyerExportHeaders = [
+    'Company',
+    'Contact Person',
+    'Email',
+    'Phone',
+    'Country',
+    'Product Interest',
+    'Source',
+    'Stage',
+    'Priority',
+    'Next Action',
+    'Next Follow-up',
+    'Best Send Time IST',
+    'Lead Score',
+    'Notes'
+  ];
+
+  const buyerExportRows = useMemo(() => buyerExportRecords.map((record) => [
+    record.company,
+    record.contact,
+    record.email,
+    record.phone,
+    record.country,
+    record.product,
+    record.source,
+    record.stage,
+    record.priority,
+    record.action,
+    record.nextFollowUp,
+    record.bestSendTime,
+    record.score,
+    record.notes
+  ]), [buyerExportRecords]);
+
+  const downloadBuyerExcelExport = () => {
+    downloadExcelHtmlFile(
+      `sheshaan-global-buyer-export-${new Date().toISOString().slice(0, 10)}.xls`,
+      'Buyer Data Export',
+      buyerExportHeaders,
+      buyerExportRows
+    );
+  };
 
   const crmQueues = useMemo(() => [
     { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Need Reach Out') },
@@ -4432,6 +4726,7 @@ export const Dashboard: React.FC = () => {
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
       { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
       { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
+      { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" /> },
       { key: 'blogs', label: 'Blog Management', icon: <FileText className="h-4 w-4" />, count: blogs.length },
       { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" /> },
       { key: 'tasks', label: 'Tasks & Reminders', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter((task) => task.status !== 'Done').length },
@@ -4476,7 +4771,7 @@ export const Dashboard: React.FC = () => {
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
   const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'dataCleanup', 'tasks'].includes(item.key)).slice(0, 5), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'generateResponses', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'manager'].includes(item.key)) }
   ], [navItems]);
@@ -4968,6 +5263,8 @@ export const Dashboard: React.FC = () => {
                   <div className="space-y-1">
                     {group.items.map((item) => {
                       const isCrmParent = item.key === 'crm';
+                      const isTemplateParent = item.key === 'templates';
+                      if (item.key === 'generateResponses') return null;
                       const isActive = isCrmParent ? activeTab === 'crm' || activeTab === 'potentialBuyers' : activeTab === item.key;
                       if (isCrmParent) {
                         return (
@@ -5015,6 +5312,56 @@ export const Dashboard: React.FC = () => {
                                   {potentialBuyerLeads.length > 0 && (
                                     <span className="ml-2 rounded-full bg-zinc-700 px-1.5 py-0.5 text-[9px] text-zinc-300">{potentialBuyerLeads.length}</span>
                                   )}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      if (isTemplateParent) {
+                        const templatesActive = activeTab === 'templates' || activeTab === 'generateResponses';
+                        return (
+                          <div key={item.key} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => setTemplateMenuOpen((open) => !open)}
+                              className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
+                                templatesActive
+                                  ? 'portal-nav-item-active text-white'
+                                  : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
+                              }`}
+                            >
+                              {templatesActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
+                              <span className={`shrink-0 ${templatesActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
+                              <span className="flex-1 truncate">Mail & Messages</span>
+                              {typeof item.count === 'number' && item.count > 0 && (
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+                                  templatesActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
+                                }`}>
+                                  {item.count}
+                                </span>
+                              )}
+                              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${templateMenuOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {templateMenuOpen && (
+                              <div className="ml-6 space-y-1 border-l border-white/10 pl-2">
+                                <button
+                                  type="button"
+                                  onClick={() => navigateToTab('templates')}
+                                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
+                                    activeTab === 'templates' ? 'bg-sky-500/15 text-sky-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
+                                  }`}
+                                >
+                                  Template Library
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => navigateToTab('generateResponses')}
+                                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
+                                    activeTab === 'generateResponses' ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
+                                  }`}
+                                >
+                                  Generate Responses
                                 </button>
                               </div>
                             )}
@@ -5613,6 +5960,7 @@ export const Dashboard: React.FC = () => {
                 busy={appBusy}
                 lastSyncedAt={lastSyncedLabel}
                 operatorName={operatorName}
+                commandMetrics={businessCommandMetrics}
                 onNavigate={navigateToTab}
                 onRunAutomation={runFollowUpAutomation}
               />
@@ -5678,6 +6026,29 @@ export const Dashboard: React.FC = () => {
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
                 </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-amber-700">Approval Queue</p>
+                  <p className="mt-1 text-2xl font-black text-slate-950">{tradeOperatingMetrics.quoteApprovalQueue.length}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-600">Drafts, missing data, zero freight, or low margin.</p>
+                </div>
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-sky-700">Sent / Negotiation</p>
+                  <p className="mt-1 text-2xl font-black text-slate-950">{quotes.filter((quote) => ['Sent', 'Negotiation'].includes(quote.status)).length}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-600">Buyer-facing quotations needing follow-up.</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Approved</p>
+                  <p className="mt-1 text-2xl font-black text-slate-950">{quotes.filter((quote) => ['Approved', 'Invoice Raised', 'Shipped', 'Closed'].includes(quote.status)).length}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-600">Ready for invoice, shipment, or closure.</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Pipeline Value</p>
+                  <p className="mt-1 text-xl font-black text-slate-950">{formatQuoteCurrency(quotes.reduce((sum, quote) => sum + quoteValue(quote), 0), 'INR')}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-600">Total quoted value across currencies converted by display mode.</p>
+                </div>
               </div>
 
               {loading && quotes.length === 0 ? (
@@ -5797,6 +6168,47 @@ export const Dashboard: React.FC = () => {
                     >
                       <Download className="h-4 w-4" />
                       Template
+                    </button>
+                    {!buyerPdfExportReady ? (
+                      <button
+                        type="button"
+                        onClick={() => setBuyerPdfExportReady(true)}
+                        disabled={!buyerExportRecords.length}
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Prepare PDF
+                      </button>
+                    ) : (
+                      <PDFDownloadLink
+                        document={
+                          <BuyerExportPDF
+                            records={buyerExportRecords}
+                            title="Buyer Data Export"
+                            subtitle="Current CRM buyer list with contact details, source, action status, follow-up timing, and lead score."
+                            filterSummary={buyerExportFilterSummary}
+                            generatedBy={operatorName}
+                          />
+                        }
+                        fileName={`sheshaan-global-buyer-export-${new Date().toISOString().slice(0, 10)}.pdf`}
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs"
+                      >
+                        {({ loading: pdfLoading }) => (
+                          <>
+                            {pdfLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            {pdfLoading ? 'Preparing...' : 'Download PDF'}
+                          </>
+                        )}
+                      </PDFDownloadLink>
+                    )}
+                    <button
+                      type="button"
+                      onClick={downloadBuyerExcelExport}
+                      disabled={!buyerExportRecords.length}
+                      className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-emerald-500 text-white rounded-lg font-bold hover:bg-emerald-400 transition text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Download className="h-4 w-4" />
+                      Export Excel
                     </button>
                     <div className="relative text-white">
                       <select
@@ -7030,6 +7442,159 @@ export const Dashboard: React.FC = () => {
                 ))}
               </div>
             </TwoColumnManager>
+          )}
+
+          {activeTab === 'generateResponses' && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">WhatsApp Response Generator</p>
+                    <h2 className="text-xl font-black text-slate-950">Generate buyer messages</h2>
+                    <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-slate-500">
+                      Enter buyer details, select the message purpose, edit the wording, then copy the final text for WhatsApp.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(['Reachout', 'Quotation', 'Follow-up'] as ResponseMessageType[]).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setResponseMessageType(type);
+                          setGeneratedResponseMessage('');
+                        }}
+                        className={`rounded-lg px-3 py-2 text-xs font-black transition ${
+                          responseMessageType === type ? 'bg-slate-950 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.7fr)]">
+                <div className="space-y-4">
+                  <div className="portal-card p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Buyer Details</p>
+                        <h3 className="text-sm font-black text-slate-950">Fill from CRM or enter manually</h3>
+                      </div>
+                      <Send className="h-5 w-5 text-emerald-600" />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <SelectInput
+                        label="Existing Buyer"
+                        value={responseClientId}
+                        onChange={loadResponseClient}
+                        options={['', ...clients.map((client) => client.id)]}
+                        labels={{ '': 'Manual / No linked buyer', ...Object.fromEntries(clients.map((client) => [client.id, `${client.contact_name || client.company_name} - ${client.company_name}`])) }}
+                      />
+                      <SelectInput
+                        label="Linked Quotation"
+                        value={responseQuoteId}
+                        onChange={loadResponseQuote}
+                        options={['', ...quotes.map((quote) => quote.id)]}
+                        labels={{ '': 'No quote selected', ...Object.fromEntries(quotes.map((quote) => [quote.id, `${quote.quote_number} - ${quoteClient(quote)?.company_name || 'Unassigned'}`])) }}
+                      />
+                      <TextInput label="Buyer Name" value={responseForm.buyerName} onChange={(value) => setResponseForm({ ...responseForm, buyerName: value })} />
+                      <TextInput label="Company Name" value={responseForm.companyName} onChange={(value) => setResponseForm({ ...responseForm, companyName: value })} />
+                      <TextInput label="Product / Requirement" value={responseForm.productName} onChange={(value) => setResponseForm({ ...responseForm, productName: value })} />
+                      <TextInput label="Destination Port / Country" value={responseForm.destinationPort} onChange={(value) => setResponseForm({ ...responseForm, destinationPort: value })} />
+                      <TextInput label="Quotation Number" value={responseForm.quoteNumber} onChange={(value) => setResponseForm({ ...responseForm, quoteNumber: value })} />
+                      <TextInput label="Total Value" value={responseForm.totalValue} onChange={(value) => setResponseForm({ ...responseForm, totalValue: value })} />
+                    </div>
+                    <div className="mt-3">
+                      <TextArea label="Extra Context / Custom Note" value={responseForm.extraContext} onChange={(value) => setResponseForm({ ...responseForm, extraContext: value })} />
+                    </div>
+                  </div>
+
+                  <div className="portal-card p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Editable Template</p>
+                        <h3 className="text-sm font-black text-slate-950">{responseMessageType} message wording</h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setResponseTemplates((current) => ({ ...current, [responseMessageType]: defaultResponseTemplates[responseMessageType] }))}
+                        className="rounded-lg bg-slate-100 px-3 py-2 text-[10px] font-black text-slate-600 hover:bg-slate-200"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <TextArea
+                      label="Template Text"
+                      value={responseTemplates[responseMessageType]}
+                      onChange={(value) => {
+                        setResponseTemplates((current) => ({ ...current, [responseMessageType]: value }));
+                        setGeneratedResponseMessage('');
+                      }}
+                    />
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[10px] font-semibold leading-5 text-slate-500">
+                      Variables: {'{{buyer_name}}'}, {'{{company_name}}'}, {'{{product_name}}'}, {'{{destination_port}}'}, {'{{quote_number}}'}, {'{{total_value}}'}, {'{{extra_context}}'}.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="portal-card h-fit p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Generated WhatsApp Text</p>
+                      <h3 className="text-sm font-black text-slate-950">Ready to copy and paste</h3>
+                    </div>
+                    <Copy className="h-5 w-5 text-slate-400" />
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <textarea
+                      value={generatedResponseMessage || buildResponseMessage()}
+                      onChange={(event) => setGeneratedResponseMessage(event.target.value)}
+                      className="min-h-[320px] w-full resize-y rounded-lg border border-slate-200 bg-white p-3 text-sm font-semibold leading-6 text-slate-700 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                      aria-label="Generated WhatsApp message"
+                    />
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={generateResponseMessage}
+                      className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black text-white hover:bg-emerald-700"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Generate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copyGeneratedResponseMessage}
+                      className="flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800"
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy for WhatsApp
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTemplateForm({
+                        ...blankTemplate,
+                        name: `WhatsApp ${responseMessageType} Template`,
+                        channel: 'WhatsApp',
+                        category: responseMessageType === 'Reachout' ? 'Introduction' : 'Quote Follow-up',
+                        body: responseTemplates[responseMessageType],
+                        active: true
+                      });
+                      setEditingTemplateId(null);
+                      navigateToTab('templates');
+                    }}
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"
+                  >
+                    Edit / Save This Template in Library
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {activeTab === 'templates' && (
@@ -8432,18 +8997,56 @@ export const Dashboard: React.FC = () => {
                 <div key={group.label} className="mb-4 last:mb-0">
                   <p className="px-3 pb-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">{group.label}</p>
                   <div className="space-y-1">
-                    {group.items.map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => navigateToTab(item.key)}
-                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-md text-left text-sm font-semibold transition ${activeTab === item.key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-                      >
-                        {item.icon}
-                        <span className="flex-1">{item.label}</span>
-                        {typeof item.count === 'number' && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === item.key ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'}`}>{item.count}</span>}
-                      </button>
-                    ))}
+                    {group.items.map((item) => {
+                      if (item.key === 'generateResponses') return null;
+                      if (item.key === 'templates') {
+                        const templatesActive = activeTab === 'templates' || activeTab === 'generateResponses';
+                        return (
+                          <div key={item.key} className="space-y-1">
+                            <button
+                              type="button"
+                              onClick={() => setTemplateMenuOpen((open) => !open)}
+                              className={`w-full flex items-center gap-3 px-3 py-3 rounded-md text-left text-sm font-semibold transition ${templatesActive ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+                            >
+                              {item.icon}
+                              <span className="flex-1">Mail & Messages</span>
+                              {typeof item.count === 'number' && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${templatesActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'}`}>{item.count}</span>}
+                              <ChevronDown className={`h-4 w-4 transition-transform ${templateMenuOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {templateMenuOpen && (
+                              <div className="ml-8 space-y-1 border-l border-slate-200 pl-2">
+                                <button
+                                  type="button"
+                                  onClick={() => navigateToTab('templates')}
+                                  className={`w-full rounded-md px-3 py-2 text-left text-xs font-black ${activeTab === 'templates' ? 'bg-sky-50 text-sky-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                                >
+                                  Template Library
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => navigateToTab('generateResponses')}
+                                  className={`w-full rounded-md px-3 py-2 text-left text-xs font-black ${activeTab === 'generateResponses' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                                >
+                                  Generate Responses
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => navigateToTab(item.key)}
+                          className={`w-full flex items-center gap-3 px-3 py-3 rounded-md text-left text-sm font-semibold transition ${activeTab === item.key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                          {item.icon}
+                          <span className="flex-1">{item.label}</span>
+                          {typeof item.count === 'number' && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeTab === item.key ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'}`}>{item.count}</span>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))}

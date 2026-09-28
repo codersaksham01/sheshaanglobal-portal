@@ -37,12 +37,21 @@ export interface SmartPortalPulse {
   activeShipments: number;
 }
 
+export interface SmartCommandMetric {
+  label: string;
+  value: string;
+  detail: string;
+  target: SmartPortalTarget;
+  tone: 'sky' | 'emerald' | 'amber' | 'red' | 'slate';
+}
+
 interface SmartCommandCenterProps {
   pulse: SmartPortalPulse;
   insights: SmartPortalInsight[];
   busy: boolean;
   lastSyncedAt: string;
   operatorName: string;
+  commandMetrics: SmartCommandMetric[];
   onNavigate: (target: SmartPortalTarget) => void;
   onRunAutomation: () => void;
 }
@@ -71,8 +80,15 @@ const toneStyles: Record<SmartPortalInsight['tone'], { icon: React.ReactNode; ac
 };
 
 const healthTone = (score: number) => score >= 80 ? 'text-emerald-300' : score >= 60 ? 'text-amber-300' : 'text-red-300';
+const commandMetricTone: Record<SmartCommandMetric['tone'], string> = {
+  sky: 'border-sky-200 bg-sky-50 text-sky-800',
+  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  amber: 'border-amber-200 bg-amber-50 text-amber-800',
+  red: 'border-red-200 bg-red-50 text-red-800',
+  slate: 'border-slate-200 bg-slate-50 text-slate-800'
+};
 
-export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operatorName, onNavigate, onRunAutomation }: SmartCommandCenterProps) {
+export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operatorName, commandMetrics, onNavigate, onRunAutomation }: SmartCommandCenterProps) {
   const visibleInsights = insights.slice(0, 5);
   const firstName = (operatorName || 'Saksham').split(' ')[0] || 'Saksham';
   const executionLanes = [
@@ -169,6 +185,24 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operat
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="grid gap-3 lg:grid-cols-5" aria-label="Business command center">
+        {commandMetrics.map((metric) => (
+          <button
+            key={metric.label}
+            type="button"
+            onClick={() => onNavigate(metric.target)}
+            className={`min-w-0 rounded-xl border p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${commandMetricTone[metric.tone]}`}
+          >
+            <span className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide opacity-80">
+              {metric.label}
+              <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+            </span>
+            <span className="mt-2 block truncate text-2xl font-black">{metric.value}</span>
+            <span className="mt-1 block text-[11px] font-semibold leading-4 opacity-75">{metric.detail}</span>
+          </button>
+        ))}
       </section>
 
       <section className="portal-stagger grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5" aria-label="Business pulse">
