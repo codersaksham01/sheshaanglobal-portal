@@ -1,6 +1,8 @@
 .env
 .env*.local
 .next
+.next-corrupt-*
 node_modules
 *.log
+desktop.ini
 tsconfig.tsbuildinfo

@@ -1317,6 +1317,7 @@ export const Dashboard: React.FC = () => {
   const [selectedTemplateClientId, setSelectedTemplateClientId] = useState('');
   const [selectedTemplateProductId, setSelectedTemplateProductId] = useState('');
   const [responseClientId, setResponseClientId] = useState('');
+  const [responseBuyerSearchQuery, setResponseBuyerSearchQuery] = useState('');
   const [responseQuoteId, setResponseQuoteId] = useState('');
   const [responseMessageType, setResponseMessageType] = useState<ResponseMessageType>('Reachout');
   const [responseTemplates, setResponseTemplates] = useState<Record<ResponseMessageType, string>>(defaultResponseTemplates);
@@ -2689,6 +2690,22 @@ export const Dashboard: React.FC = () => {
   const templatePreviewProduct = products.find((product) => product.id === selectedTemplateProductId);
   const responseClient = clients.find((client) => client.id === responseClientId);
   const responseQuote = quotes.find((quote) => quote.id === responseQuoteId) || quotes.find((quote) => quote.client_id === responseClient?.id);
+  const responseBuyerMatches = useMemo(() => {
+    const query = responseBuyerSearchQuery.trim().toLowerCase();
+    const rankedClients = [...clients].sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''));
+    if (!query) {
+      return rankedClients.slice(0, 8);
+    }
+    return rankedClients.filter((client) => [
+      client.company_name,
+      client.contact_name,
+      client.contact_email,
+      client.phone,
+      client.destination_port,
+      client.address,
+      client.products_dealing?.join(' ')
+    ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query))).slice(0, 10);
+  }, [clients, responseBuyerSearchQuery]);
   const productCatalogue = products.map((product) => product.sku).filter(Boolean).slice(0, 6).join(', ') || 'spices, agro commodities, and export-ready food products';
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || templates[0];
   const selectedCrmTemplate = templates.find((template) => template.id === selectedCrmTemplateId);
@@ -2767,9 +2784,13 @@ export const Dashboard: React.FC = () => {
   const loadResponseClient = (clientId: string) => {
     const client = clients.find((item) => item.id === clientId);
     setResponseClientId(clientId);
-    if (!client) return;
+    if (!client) {
+      setResponseBuyerSearchQuery('');
+      return;
+    }
     const latestQuote = quotes.find((quote) => quote.client_id === client.id);
     setResponseQuoteId(latestQuote?.id || '');
+    setResponseBuyerSearchQuery(`${client.contact_name || client.company_name} - ${client.company_name}`);
     setResponseForm((current) => ({
       ...current,
       buyerName: buyerGreetingName(client.contact_name, client.company_name),
@@ -2788,6 +2809,7 @@ export const Dashboard: React.FC = () => {
     if (!quote) return;
     const client = clients.find((item) => item.id === quote.client_id) || quote.client;
     if (client?.id) setResponseClientId(client.id);
+    if (client) setResponseBuyerSearchQuery(`${client.contact_name || client.company_name} - ${client.company_name}`);
     setResponseForm((current) => ({
       ...current,
       buyerName: buyerGreetingName(client?.contact_name, client?.company_name),
@@ -7486,13 +7508,49 @@ export const Dashboard: React.FC = () => {
                       <Send className="h-5 w-5 text-emerald-600" />
                     </div>
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <SelectInput
-                        label="Existing Buyer"
-                        value={responseClientId}
-                        onChange={loadResponseClient}
-                        options={['', ...clients.map((client) => client.id)]}
-                        labels={{ '': 'Manual / No linked buyer', ...Object.fromEntries(clients.map((client) => [client.id, `${client.contact_name || client.company_name} - ${client.company_name}`])) }}
-                      />
+                      <div className="md:col-span-2">
+                        <label className="mb-1 block text-[10px] font-black uppercase tracking-wider text-slate-500">Search Existing Buyer</label>
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                          <input
+                            value={responseBuyerSearchQuery}
+                            onChange={(event) => {
+                              setResponseBuyerSearchQuery(event.target.value);
+                              setResponseClientId('');
+                              setGeneratedResponseMessage('');
+                            }}
+                            placeholder="Search by company, buyer name, email, phone, country, or port..."
+                            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                          />
+                        </div>
+                        <div className="mt-2 grid max-h-56 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2 lg:grid-cols-2">
+                          {responseBuyerMatches.length ? responseBuyerMatches.map((client) => {
+                            const selected = responseClientId === client.id;
+                            return (
+                              <button
+                                key={client.id}
+                                type="button"
+                                onClick={() => loadResponseClient(client.id)}
+                                className={`rounded-lg border p-3 text-left transition ${
+                                  selected ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/60'
+                                }`}
+                              >
+                                <span className="block text-xs font-black text-slate-950">{client.company_name || 'Unnamed Buyer'}</span>
+                                <span className="mt-1 block text-[11px] font-semibold text-slate-500">
+                                  {client.contact_name || 'Buyer contact'}{client.destination_port ? ` | ${client.destination_port}` : ''}
+                                </span>
+                                <span className="mt-1 block truncate text-[10px] font-bold text-slate-400">
+                                  {client.contact_email || client.phone || 'No contact saved'}
+                                </span>
+                              </button>
+                            );
+                          }) : (
+                            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-xs font-bold text-slate-500">
+                              No buyer found. You can still enter details manually below.
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       <SelectInput
                         label="Linked Quotation"
                         value={responseQuoteId}
