@@ -10,10 +10,6 @@ const PDFViewer = dynamic(
   { ssr: false }
 );
 
-const PDFDownloadLink = dynamic(
-  () => import('@react-pdf/renderer').then((mod) => mod.PDFDownloadLink),
-  { ssr: false }
-);
 
 const quoteStatuses: Quote['status'][] = [
   'Draft',
@@ -409,6 +405,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [showDetailsPage, setShowDetailsPage] = useState(true);
   const [showCifPortInTotal, setShowCifPortInTotal] = useState(false);
   const [showSignatureBlock, setShowSignatureBlock] = useState(true);
+  const [showCeoSignature, setShowCeoSignature] = useState(true);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [showOriginCharges, setShowOriginCharges] = useState(true);
   const [showOceanFreight, setShowOceanFreight] = useState(true);
   const [showInsuranceCharge, setShowInsuranceCharge] = useState(true);
@@ -526,6 +524,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     showDetailsPage,
     showCifPortInTotal,
     showSignatureBlock,
+    showCeoSignature,
     showOriginCharges,
     showOceanFreight,
     showInsuranceCharge,
@@ -580,6 +579,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setShowDetailsPage(draft.showDetailsPage ?? true);
     setShowCifPortInTotal(draft.showCifPortInTotal ?? false);
     setShowSignatureBlock(draft.showSignatureBlock ?? true);
+    setShowCeoSignature(draft.showCeoSignature ?? true);
     setShowOriginCharges(draft.showOriginCharges ?? true);
     setShowOceanFreight(draft.showOceanFreight ?? true);
     setShowInsuranceCharge(draft.showInsuranceCharge ?? true);
@@ -661,6 +661,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setShowDetailsPage(true);
       setShowCifPortInTotal(false);
       setShowSignatureBlock(true);
+      setShowCeoSignature(true);
       setShowOriginCharges(true);
       setShowOceanFreight(true);
       setShowInsuranceCharge(true);
@@ -813,6 +814,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         setShowDetailsPage(q.show_details_page ?? true);
         setShowCifPortInTotal(q.show_cif_port_in_total ?? false);
         setShowSignatureBlock(q.show_signature_block ?? true);
+        setShowCeoSignature(q.show_ceo_signature !== false);
         setShowOriginCharges(q.show_origin_charges ?? true);
         setShowOceanFreight(q.show_ocean_freight ?? true);
         setShowInsuranceCharge(q.show_insurance_charge ?? true);
@@ -1149,6 +1151,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         show_details_page: showDetailsPage,
         show_cif_port_in_total: showCifPortInTotal,
         show_signature_block: showSignatureBlock,
+        show_ceo_signature: showCeoSignature,
         show_origin_charges: showOriginCharges,
         show_ocean_freight: showOceanFreight,
         show_insurance_charge: showInsuranceCharge,
@@ -1163,7 +1166,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       };
 
       let quoteResultId = quoteId;
-      const legacyQuotePayload: Omit<typeof quotePayload, 'incoterm' | 'cost_breakdown_notes' | 'show_details_page' | 'show_cif_port_in_total' | 'show_signature_block' | 'show_origin_charges' | 'show_ocean_freight' | 'show_insurance_charge'> = {
+      const legacyQuotePayload: Omit<typeof quotePayload, 'incoterm' | 'cost_breakdown_notes' | 'show_details_page' | 'show_cif_port_in_total' | 'show_signature_block' | 'show_ceo_signature' | 'show_origin_charges' | 'show_ocean_freight' | 'show_insurance_charge'> = {
         quote_number: quotePayload.quote_number,
         client_id: quotePayload.client_id,
         currency: quotePayload.currency,
@@ -1341,6 +1344,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     show_details_page: showDetailsPage,
     show_cif_port_in_total: showCifPortInTotal,
     show_signature_block: showSignatureBlock,
+    show_ceo_signature: showCeoSignature,
     show_origin_charges: showOriginCharges,
     show_ocean_freight: showOceanFreight,
     show_insurance_charge: showInsuranceCharge,
@@ -1382,6 +1386,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     showDetailsPage,
     showCifPortInTotal,
     showSignatureBlock,
+    showCeoSignature,
     showOriginCharges,
     showOceanFreight,
     showInsuranceCharge,
@@ -1472,6 +1477,30 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const pdfFileName = `${quoteNumber || 'export-document'}-${previewDocType}.pdf`.replace(/[^a-z0-9_.-]/gi, '-');
   const downloadButtonClass = 'inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded shadow transition min-h-9';
 
+  const handleDownloadPDF = async () => {
+    if (downloadingPdf) return;
+    setDownloadingPdf(true);
+    try {
+      const { pdf } = await import('@react-pdf/renderer');
+      const blob = await pdf(
+        <QuotePDF quote={tempQuoteForPDF} documentType={previewDocType} />
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = pdfFileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: unknown) {
+      console.error('Error downloading PDF:', err);
+      alert('Unable to generate PDF. Please ensure all product quantities and prices are valid numbers.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   return (
     <div className="bg-white sm:rounded-xl shadow-lg border border-slate-200 overflow-hidden">
       {/* Upper Navigation Bar */}
@@ -1517,20 +1546,15 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <span className="hidden sm:inline">{showPreview ? 'Hide Live PDF Preview' : 'Show Live PDF Preview'}</span>
           </button>
           {isMounted && (
-            <PdfPreviewBoundary>
-              <PDFDownloadLink
-                document={<QuotePDF quote={deferredTempQuoteForPDF} documentType={previewDocType} />}
-                fileName={pdfFileName}
-                className={downloadButtonClass}
-              >
-                {({ loading: pdfLoading }) => (
-                  <>
-                    {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    Download PDF
-                  </>
-                )}
-              </PDFDownloadLink>
-            </PdfPreviewBoundary>
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              disabled={downloadingPdf}
+              className={downloadButtonClass}
+            >
+              {downloadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}
+            </button>
           )}
           <button
             type="button"
@@ -2176,6 +2200,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               <CheckboxInput label="Show full cost breakdown table" checked={showCifBreakdown} onChange={setShowCifBreakdown} />
               <CheckboxInput label="Show detailed terms page" checked={showDetailsPage} onChange={setShowDetailsPage} />
               <CheckboxInput label="Show seller stamp/signature block" checked={showSignatureBlock} onChange={setShowSignatureBlock} />
+              <CheckboxInput label="Include CEO signature above name" checked={showCeoSignature} onChange={setShowCeoSignature} />
               <CheckboxInput label="Grand total label includes CIF port" checked={showCifPortInTotal} onChange={setShowCifPortInTotal} />
               <CheckboxInput label="Show local transport/export charges row" checked={showOriginCharges} onChange={setShowOriginCharges} />
               <CheckboxInput label={freightLabels.visibilityLabel} checked={showOceanFreight} onChange={setShowOceanFreight} />

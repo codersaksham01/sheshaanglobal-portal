@@ -77,10 +77,118 @@ export interface Lead {
   lead_score?: number;
 }
 
+export type InquiryLeadSource = 'Titan Email' | 'WhatsApp' | 'Embassy' | 'Website' | 'Referral' | 'Other';
+export type InquiryPriority = 'Hot' | 'Warm' | 'Cold';
+export type InquiryStage = 'New Inquiry' | 'Qualified' | 'Reachout' | 'Quotation Sent' | 'Follow-up' | 'Negotiation' | 'Won' | 'Lost' | 'On Hold';
+export type FollowUpStatus = 'Upcoming' | 'Due Today' | 'Overdue' | 'Completed' | 'Cancelled';
+export type QuotationCrmStatus = 'Draft' | 'Sent' | 'Under Review' | 'Negotiation' | 'Accepted' | 'Rejected' | 'Expired';
+
+export interface InquiryRecord {
+  id: string;
+  inquiry_number: string;
+  inquiry_date: string;
+  lead_source: InquiryLeadSource;
+  client_id?: string;
+  lead_id?: string;
+  buyer_company: string;
+  contact_person?: string;
+  contact_email?: string;
+  whatsapp_number?: string;
+  country: string;
+  salesperson: string;
+  priority: InquiryPriority;
+  stage: InquiryStage;
+  product_name: string;
+  product_category?: string;
+  quantity: number;
+  quantity_unit: 'MT' | 'KG' | 'Tons' | 'Containers' | 'Bags' | 'Pieces' | 'Other';
+  target_price?: number;
+  currency: 'USD' | 'INR' | 'AED' | 'EUR' | 'Other';
+  destination_country?: string;
+  destination_port: string;
+  required_delivery_date?: string;
+  incoterm?: string;
+  packaging_requirement?: string;
+  quality_specification?: string;
+  payment_terms?: string;
+  additional_requirements?: string;
+  original_message?: string;
+  last_contact_date?: string;
+  next_follow_up_date?: string;
+  next_action?: string;
+  follow_up_status?: FollowUpStatus;
+  estimated_value?: number;
+  order_value?: number;
+  final_quantity?: number;
+  final_price?: number;
+  order_date?: string;
+  shipment_information?: string;
+  lost_reason?: string;
+  notes?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InquiryQuotationRecord {
+  id: string;
+  quotation_number: string;
+  inquiry_id: string;
+  quote_id?: string;
+  client_id?: string;
+  buyer_company: string;
+  quotation_date: string;
+  product_name: string;
+  quantity: number;
+  quantity_unit: string;
+  unit_price: number;
+  currency: 'USD' | 'INR' | 'AED' | 'EUR' | 'Other';
+  incoterm?: string;
+  destination_port?: string;
+  payment_terms?: string;
+  validity_date?: string;
+  packaging?: string;
+  quality?: string;
+  freight?: number;
+  total_amount: number;
+  status: QuotationCrmStatus;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InquiryFollowUpRecord {
+  id: string;
+  inquiry_id: string;
+  client_id?: string;
+  lead_id?: string;
+  follow_up_date: string;
+  last_contact_date?: string;
+  action: string;
+  status: FollowUpStatus;
+  owner: string;
+  result?: string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface InquiryAttachmentRecord {
+  id: string;
+  inquiry_id: string;
+  file_name: string;
+  file_type?: string;
+  file_url: string;
+  notes?: string;
+  uploaded_by?: string;
+  created_at?: string;
+}
+
 export interface TimelineActivity {
   id: string;
   client_id?: string;
   lead_id?: string;
+  inquiry_id?: string;
   quote_id?: string;
   type: 'Call' | 'Email' | 'Meeting' | 'Quote' | 'Invoice' | 'Shipment' | 'Note' | 'Status';
   title: string;
@@ -202,10 +310,43 @@ export interface DocumentChecklist {
 
 export interface AppUser {
   id: string;
+  auth_user_id?: string;
   name: string;
   email: string;
   role: 'Admin' | 'Sales' | 'Accounts' | 'Operations';
   active: boolean;
+  status?: 'Pending' | 'Approved' | 'Rejected';
+  requested_role?: 'Admin' | 'Sales' | 'Accounts' | 'Operations';
+  phone?: string;
+  title?: string;
+  approved_by?: string;
+  approved_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  actor_email: string;
+  actor_name?: string;
+  action: 'Created' | 'Updated' | 'Deleted' | 'Approved' | 'Rejected' | 'Login Request';
+  table_name: string;
+  record_id?: string;
+  record_label?: string;
+  details?: string;
+  created_at?: string;
+}
+
+export interface TeamMessage {
+  id: string;
+  sender_email: string;
+  sender_name: string;
+  body: string;
+  link_url?: string;
+  link_label?: string;
+  tag_type?: 'Quote' | 'Task' | 'Buyer' | 'Lead' | 'Invoice' | 'Shipment';
+  tag_id?: string;
+  tag_label?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -257,6 +398,7 @@ export interface Quote {
   show_details_page?: boolean;
   show_cif_port_in_total?: boolean;
   show_signature_block?: boolean;
+  show_ceo_signature?: boolean;
   show_origin_charges?: boolean;
   show_ocean_freight?: boolean;
   show_insurance_charge?: boolean;

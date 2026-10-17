@@ -688,9 +688,12 @@ function convertLessThanThousand(num: number): string {
 }
 
 function numberToWords(num: number, currency: 'USD' | 'INR'): string {
-  if (num === 0) return 'Zero';
+  const safeNum = Number(num);
+  if (!safeNum || isNaN(safeNum) || safeNum <= 0) {
+    return currency === 'INR' ? 'Indian Rupees Zero Only.' : 'U.S. Dollars Zero Only.';
+  }
   
-  const integerPart = Math.floor(num);
+  const integerPart = Math.floor(safeNum);
   let result = '';
   
   if (currency === 'INR') {
@@ -763,12 +766,13 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   };
 
   const formatValue = (amount: number) => {
+    const validAmount = Number(amount) || 0;
     const symbol = quote.currency === 'INR' ? 'INR' : 'USD';
     const formatter = new Intl.NumberFormat(quote.currency === 'INR' ? 'en-IN' : 'en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-    return `${symbol} ${formatter.format(amount)}`;
+    return `${symbol} ${formatter.format(validAmount)}`;
   };
 
   const formatDate = (dateStr?: string) => {
@@ -788,6 +792,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   const showDetailsPage = quote.show_details_page !== false;
   const showCifPortInTotal = quote.show_cif_port_in_total === true;
   const showSignatureBlock = quote.show_signature_block !== false;
+  const showCeoSignature = quote.show_ceo_signature !== false;
   const showOriginCharges = quote.show_origin_charges !== false;
   const showOceanFreight = quote.show_ocean_freight !== false;
   const showInsuranceCharge = quote.show_insurance_charge !== false;
@@ -841,7 +846,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   const incotermLabel = (quote.incoterm || 'CIF (Cost, Insurance & Freight)').trim();
   const incotermCode = incotermLabel.split(/[ (]/)[0].trim().toUpperCase() || 'CIF';
   const freightLabels = getFreightPdfLabels(quote.shipment_mode);
-  const grandTotalLabel = showCifPortInTotal ? `GRAND TOTAL ${incotermCode} ${destinationPortLabel.toUpperCase()}` : 'GRAND TOTAL';
+  const grandTotalLabel = 'GRAND TOTAL';
   const offeredTotalLabel = showCifPortInTotal ? `TOTAL OFFERED ${incotermCode} VALUE (${destinationPortLabel.split(',')[0].toUpperCase()})` : 'TOTAL OFFERED VALUE';
   const commercialBreakdownTitle = `3. Transparent ${incotermCode} Cost Structure Breakdown`;
 
@@ -938,12 +943,17 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   const renderSignaturesBlock = () => (
     <View style={styles.signaturesGrid} wrap={false}>
       <View style={styles.signatureBox}>
-        <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller Stamp)</Text>
+        <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller)</Text>
         <View style={styles.signatureSignLine}>
-          <Image src="/stamp.png" style={styles.stampImage} />
+          {showCeoSignature && (
+            <Image src="/signature.png" style={styles.signatureImage} />
+          )}
         </View>
         <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
         <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
+        <View style={{ marginTop: 4, alignItems: 'center' }}>
+          <Image src="/stamp.png" style={styles.stampImage} />
+        </View>
       </View>
 
       <View style={styles.signatureBox}>
@@ -1011,11 +1021,11 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           
           <View style={styles.partyCard}>
             <View style={styles.partyHeaderBar}>
-              <Text style={styles.partyHeaderText}>Buyer / Consignee</Text>
+              <Text style={styles.partyHeaderText}>To: Buyer / Consignee</Text>
             </View>
             <View style={styles.partyBody}>
               <Text style={styles.partyName}>{client.company_name}</Text>
-              <Text style={styles.partyText}>{client.address}</Text>
+              <Text style={styles.partyText}>{client.address && client.address !== 'N/A' ? client.address : 'To: [Buyer Business Address, City, Country]'}</Text>
               <View style={styles.partyInfoRow}>
                 <Text style={styles.partyInfoLabel}>Contact</Text>
                 <Text style={styles.partyInfoValue}>{client.contact_name || 'N/A'} | {buyerPhone}</Text>
@@ -1165,7 +1175,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           {documentType !== 'packing_list' && (
             <View style={styles.grandTotalRow} wrap={false}>
               <Text style={styles.grandTotalLabel}>{grandTotalLabel}</Text>
-              <Text style={styles.grandTotalVal}>{formatValue(totalCIF)}</Text>
+              <Text style={styles.grandTotalVal}>{formatValue(itemsSubtotal)}</Text>
             </View>
           )}
         </View>
@@ -1174,7 +1184,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
         {documentType !== 'packing_list' && (
           <View style={styles.amountWordsBlock} wrap={false}>
             <Text style={styles.amountWordsText}>
-              Amount in Words: {numberToWords(totalCIF, quote.currency)}
+              Amount in Words: {numberToWords(itemsSubtotal, quote.currency)}
             </Text>
           </View>
         )}
@@ -1211,6 +1221,12 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                 <Text style={styles.bdGrandLabel}>{offeredTotalLabel}</Text>
                 <Text style={styles.bdGrandVal}>{formatValue(totalCIF)}</Text>
               </View>
+            </View>
+
+            <View style={[styles.amountWordsBlock, { marginTop: 4 }]} wrap={false}>
+              <Text style={styles.amountWordsText}>
+                Total Offered {incotermCode} Value in Words: {numberToWords(totalCIF, quote.currency)}
+              </Text>
             </View>
           </>
         )}
