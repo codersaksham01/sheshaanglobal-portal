@@ -2,14 +2,18 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import readXlsxFile from 'read-excel-file/browser';
-import { dbType, supabase } from '../lib/supabaseClient';
+import { dbType, isMock, supabase } from '../lib/supabaseClient';
 import {
   AppUser,
+  ActivityLog,
   Client,
   DocumentChecklist,
   FreightPreset,
   FreightRateHistory,
   InvoiceRecord,
+  InquiryFollowUpRecord,
+  InquiryQuotationRecord,
+  InquiryRecord,
   Lead,
   MessageTemplate,
   Product,
@@ -18,6 +22,7 @@ import {
   ShipmentRecord,
   TaskRecord,
   TimelineActivity,
+  TeamMessage,
   Vendor
 } from '../lib/types';
 import type { BlogPost } from '../lib/types';
@@ -99,7 +104,7 @@ const quoteStatuses: Quote['status'][] = [
 ];
 const buyerListPageSize = 48;
 const portalBuildLabel = 'Smart Trade OS v2026.08.21';
-const portalDataCacheVersion = 'smart-trade-os-2026-08-21';
+const portalDataCacheVersion = 'smart-trade-os-2026-10-07-responsive-load-fix';
 const reachoutListPageSize = 60;
 const missingPhonePageSize = 40;
 const sourceListPageSize = 60;
@@ -138,7 +143,7 @@ const getQuoteItemQuantityLabel = (item: QuoteItem) => (
     : `${Number(item.quantity || 0).toLocaleString()} kg`
 );
 
-type TabKey = 'overview' | 'actionQueue' | 'crm' | 'potentialBuyers' | 'dataSources' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'communications' | 'templates' | 'generateResponses' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'manager' | 'letterhead';
+type TabKey = 'overview' | 'actionQueue' | 'crm' | 'potentialBuyers' | 'dataSources' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'communications' | 'teamChat' | 'templates' | 'generateResponses' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'auditLog' | 'manager' | 'letterhead';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
@@ -324,7 +329,19 @@ const blankUser: Partial<AppUser> = {
   name: '',
   email: '',
   role: 'Sales',
-  active: true
+  requested_role: 'Sales',
+  active: true,
+  status: 'Approved',
+  phone: '',
+  title: ''
+};
+
+const blankTeamMessage: Partial<TeamMessage> = {
+  body: '',
+  link_url: '',
+  link_label: '',
+  tag_type: 'Quote',
+  tag_id: ''
 };
 
 const countryTimezoneOffsets: Record<string, number> = {
@@ -944,6 +961,9 @@ export const Dashboard: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [freightPresets, setFreightPresets] = useState<FreightPreset[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
+  const [inquiryQuotations, setInquiryQuotations] = useState<InquiryQuotationRecord[]>([]);
+  const [inquiryFollowUps, setInquiryFollowUps] = useState<InquiryFollowUpRecord[]>([]);
   const [activities, setActivities] = useState<TimelineActivity[]>([]);
   const [freightRates, setFreightRates] = useState<FreightRateHistory[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
@@ -953,6 +973,8 @@ export const Dashboard: React.FC = () => {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [blogs, setBlogs] = useState<BlogPost[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [teamMessages, setTeamMessages] = useState<TeamMessage[]>([]);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -981,6 +1003,8 @@ export const Dashboard: React.FC = () => {
   ]);
   const [autoDocShipmentId, setAutoDocShipmentId] = useState<string>('');
   const [autoDocType, setAutoDocType] = useState<'invoice' | 'packing_list'>('invoice');
+  const [teamMessageForm, setTeamMessageForm] = useState<Partial<TeamMessage>>(blankTeamMessage);
+  const [auditSearch, setAuditSearch] = useState('');
   const { email: authEmail } = usePortalIdentity();
   const currentRole = useMemo(() => {
     if (!authEmail) return 'Admin';
@@ -1004,6 +1028,12 @@ export const Dashboard: React.FC = () => {
   }, [users, authEmail]);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('crixy_actor_email', authEmail || 'portal-user');
+    localStorage.setItem('crixy_actor_name', operatorName || authEmail || 'Portal User');
+  }, [authEmail, operatorName]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
     setToast({ message, type });
@@ -1399,6 +1429,9 @@ export const Dashboard: React.FC = () => {
         { data: pData },
         { data: fData },
         { data: lData },
+        { data: inquiryData },
+        { data: inquiryQuotationData },
+        { data: inquiryFollowUpData },
         { data: aData },
         { data: rData },
         { data: iData },
@@ -1407,7 +1440,9 @@ export const Dashboard: React.FC = () => {
         { data: tData },
         { data: mtData },
         { data: bData },
-        { data: uData }
+        { data: uData },
+        { data: logData },
+        { data: chatData }
       ] = await Promise.all([
         supabase.from('quotes').select('*, client:clients(*), items:quote_items(*)').order('created_at', { ascending: false }),
         supabase.from('clients').select('*').order('company_name'),
@@ -1415,6 +1450,9 @@ export const Dashboard: React.FC = () => {
         supabase.from('products').select('*').order('sku'),
         supabase.from('freight_presets').select('*').order('name'),
         supabase.from('leads').select('*').order('updated_at', { ascending: false }),
+        supabase.from('inquiries').select('*').order('updated_at', { ascending: false }),
+        supabase.from('inquiry_quotations').select('*').order('created_at', { ascending: false }),
+        supabase.from('inquiry_follow_ups').select('*').order('follow_up_date', { ascending: true }),
         supabase.from('activities').select('*').order('activity_date', { ascending: false }),
         supabase.from('freight_rate_history').select('*').order('effective_date', { ascending: false }),
         supabase.from('invoices').select('*').order('created_at', { ascending: false }),
@@ -1423,7 +1461,9 @@ export const Dashboard: React.FC = () => {
         supabase.from('tasks').select('*').order('due_date', { ascending: true }),
         supabase.from('message_templates').select('*').order('name'),
         supabase.from('blogs').select('*').order('updated_at', { ascending: false }),
-        supabase.from('app_users').select('*').order('name')
+        supabase.from('app_users').select('*').order('name'),
+        supabase.from('activity_logs').select('*').order('created_at', { ascending: false }),
+        supabase.from('team_messages').select('*').order('created_at', { ascending: false })
       ]);
 
       setQuotes(qData || []);
@@ -1458,6 +1498,9 @@ export const Dashboard: React.FC = () => {
         return lead;
       });
       setLeads(alignedLeads);
+      setInquiries(inquiryData || []);
+      setInquiryQuotations(inquiryQuotationData || []);
+      setInquiryFollowUps(inquiryFollowUpData || []);
       setActivities(aData || []);
       setFreightRates(rData || []);
       setInvoices(iData || []);
@@ -1467,6 +1510,8 @@ export const Dashboard: React.FC = () => {
       setTemplates(mtData || []);
       setBlogs(bData || []);
       setUsers(uData || []);
+      setActivityLogs(logData || []);
+      setTeamMessages(chatData || []);
     } catch (err: any) {
       console.warn('Error fetching dashboard data:', err);
       alert(err?.message || 'Failed to sync dashboard data with database.');
@@ -1936,6 +1981,17 @@ export const Dashboard: React.FC = () => {
       console.warn('Lifecycle transition automation failed:', lifecycleErr);
     }
 
+    if (!isMock && table !== 'activity_logs') {
+      const record = Array.isArray(data) ? data[0] : data || finalPayload;
+      await logPortalAction({
+        action: editingId ? 'Updated' : 'Created',
+        table_name: table,
+        record_id: record?.id || editingId || '',
+        record_label: record?.name || record?.company_name || record?.quote_number || record?.title || record?.invoice_number || record?.booking_number || '',
+        details: editingId ? 'Record updated from portal.' : 'Record created from portal.'
+      });
+    }
+
     reset();
     await fetchData();
     return true;
@@ -1948,8 +2004,134 @@ export const Dashboard: React.FC = () => {
       alert(error.message || `Failed to delete ${label}`);
       return;
     }
+    if (!isMock && table !== 'activity_logs') {
+      await logPortalAction({
+        action: 'Deleted',
+        table_name: table,
+        record_id: id,
+        record_label: label,
+        details: `Deleted ${label}.`
+      });
+    }
     await fetchData();
   };
+
+  const logPortalAction = async (entry: Partial<ActivityLog>) => {
+    await supabase.from('activity_logs').insert([{
+      actor_email: authEmail || 'portal-user',
+      actor_name: operatorName,
+      action: entry.action || 'Updated',
+      table_name: entry.table_name || 'portal',
+      record_id: entry.record_id || '',
+      record_label: entry.record_label || '',
+      details: entry.details || '',
+      created_at: new Date().toISOString()
+    }]);
+  };
+
+  const approveUser = async (user: AppUser, role: AppUser['role']) => {
+    const { error } = await supabase.from('app_users').update({
+      role,
+      requested_role: user.requested_role || role,
+      active: true,
+      status: 'Approved',
+      approved_by: operatorName,
+      approved_at: new Date().toISOString()
+    }).eq('id', user.id);
+    if (error) return alert(error.message || 'Could not approve user.');
+    await logPortalAction({
+      action: 'Approved',
+      table_name: 'app_users',
+      record_id: user.id,
+      record_label: user.name,
+      details: `Approved ${user.email} as ${role}.`
+    });
+    await fetchData();
+    showToast(`${user.name} approved as ${role}`, 'success');
+  };
+
+  const rejectUser = async (user: AppUser) => {
+    const { error } = await supabase.from('app_users').update({
+      active: false,
+      status: 'Rejected',
+      approved_by: operatorName,
+      approved_at: new Date().toISOString()
+    }).eq('id', user.id);
+    if (error) return alert(error.message || 'Could not reject user.');
+    await logPortalAction({
+      action: 'Rejected',
+      table_name: 'app_users',
+      record_id: user.id,
+      record_label: user.name,
+      details: `Rejected ${user.email}.`
+    });
+    await fetchData();
+    showToast(`${user.name} rejected`, 'warning');
+  };
+
+  const tagOptions = useMemo(() => {
+    const quoteOptions = quotes.map((quote) => ({ type: 'Quote' as const, id: quote.id, label: quote.quote_number }));
+    const taskOptions = tasks.map((task) => ({ type: 'Task' as const, id: task.id, label: task.title }));
+    const buyerOptions = clients.map((client) => ({ type: 'Buyer' as const, id: client.id, label: client.company_name }));
+    const leadOptions = leads.map((lead) => ({ type: 'Lead' as const, id: lead.id, label: lead.company_name }));
+    const invoiceOptions = invoices.map((invoice) => ({ type: 'Invoice' as const, id: invoice.id, label: invoice.invoice_number }));
+    const shipmentOptions = shipments.map((shipment) => ({ type: 'Shipment' as const, id: shipment.id, label: shipment.booking_number || shipment.vessel_name || shipment.id }));
+    return [...quoteOptions, ...taskOptions, ...buyerOptions, ...leadOptions, ...invoiceOptions, ...shipmentOptions];
+  }, [quotes, tasks, clients, leads, invoices, shipments]);
+
+  const currentTagOptions = tagOptions.filter((item) => item.type === (teamMessageForm.tag_type || 'Quote'));
+  const sendTeamMessage = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const body = (teamMessageForm.body || '').trim();
+    const linkUrl = (teamMessageForm.link_url || '').trim();
+    if (!body && !linkUrl && !teamMessageForm.tag_id) return alert('Write a message, link, or tag a record.');
+    const tag = tagOptions.find((item) => item.type === teamMessageForm.tag_type && item.id === teamMessageForm.tag_id);
+    const { error } = await supabase.from('team_messages').insert([{
+      sender_email: authEmail || 'portal-user',
+      sender_name: operatorName,
+      body,
+      link_url: linkUrl,
+      link_label: (teamMessageForm.link_label || '').trim() || linkUrl,
+      tag_type: tag?.type || teamMessageForm.tag_type,
+      tag_id: tag?.id || teamMessageForm.tag_id || '',
+      tag_label: tag?.label || '',
+      created_at: new Date().toISOString()
+    }]);
+    if (error) return alert(error.message || 'Could not send team message.');
+    setTeamMessageForm(blankTeamMessage);
+    await fetchData();
+  };
+
+  const openTaggedRecord = (message: TeamMessage) => {
+    if (message.tag_type === 'Quote') {
+      setEditingQuoteId(message.tag_id);
+      navigateToTab('quotes');
+    } else if (message.tag_type === 'Task') {
+      navigateToTab('tasks');
+    } else if (message.tag_type === 'Buyer') {
+      setSelectedBuyerId(message.tag_id || null);
+      navigateToTab('potentialBuyers');
+    } else if (message.tag_type === 'Lead') {
+      navigateToTab('crm');
+    } else if (message.tag_type === 'Invoice') {
+      navigateToTab('accounts');
+    } else if (message.tag_type === 'Shipment') {
+      navigateToTab('shipments');
+    }
+  };
+
+  const filteredActivityLogs = useMemo(() => {
+    const search = auditSearch.trim().toLowerCase();
+    if (!search) return activityLogs;
+    return activityLogs.filter((log) => [
+      log.actor_name,
+      log.actor_email,
+      log.action,
+      log.table_name,
+      log.record_label,
+      log.details
+    ].join(' ').toLowerCase().includes(search));
+  }, [activityLogs, auditSearch]);
 
 
   const tradeOperatingMetrics = useMemo(() => {
@@ -2675,13 +2857,14 @@ export const Dashboard: React.FC = () => {
 
     for (const item of clients) pushIfMatch({ key: `buyer-${item.id}`, label: item.company_name, meta: `${buyerCountry(item)} | ${item.contact_email || item.destination_port || 'Buyer'}`, tab: 'crm', buyerId: item.id });
     for (const item of leads) pushIfMatch({ key: `lead-${item.id}`, label: item.company_name, meta: `${item.country || 'Country not set'} | ${item.stage} | ${item.product_interest || 'Lead'}`, tab: 'crm' });
+    for (const item of inquiries) pushIfMatch({ key: `inquiry-${item.id}`, label: item.inquiry_number, meta: `${item.buyer_company} | ${item.product_name} | ${item.stage} | ${item.destination_port}`, tab: 'crm', buyerId: item.client_id });
     for (const item of quotes) pushIfMatch({ key: `quote-${item.id}`, label: item.quote_number, meta: `${quoteClient(item)?.company_name || 'Unassigned'} | ${item.status}`, tab: 'quotes' });
     for (const item of invoices) pushIfMatch({ key: `invoice-${item.id}`, label: item.invoice_number, meta: `${item.payment_status} | ${formatQuoteCurrency(Number(item.balance_amount || item.amount || 0), item.currency || 'INR')}`, tab: 'accounts' });
     for (const item of shipments) pushIfMatch({ key: `shipment-${item.id}`, label: item.booking_number || item.vessel_name || 'Shipment', meta: `${item.status} | ETA ${item.eta || 'TBA'}`, tab: 'shipments' });
     for (const item of vendors) pushIfMatch({ key: `vendor-${item.id}`, label: item.company_name, meta: `${item.status} | ${item.product_categories || 'Vendor'}`, tab: 'vendors' });
 
     return results;
-  }, [deferredGlobalSearch, clients, leads, quotes, invoices, shipments, vendors]);
+  }, [deferredGlobalSearch, clients, leads, inquiries, quotes, invoices, shipments, vendors]);
 
   const communicationClient = clients.find((client) => client.id === selectedCommunicationClientId) || clients[0];
   const communicationQuote = quotes.find((quote) => quote.client_id === communicationClient?.id) || quotes[0];
@@ -4747,6 +4930,7 @@ export const Dashboard: React.FC = () => {
       { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
       { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
+      { key: 'teamChat', label: 'Team Chat', icon: <MessageSquare className="h-4 w-4" />, count: teamMessages.length },
       { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
       { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" /> },
       { key: 'blogs', label: 'Blog Management', icon: <FileText className="h-4 w-4" />, count: blogs.length },
@@ -4761,6 +4945,7 @@ export const Dashboard: React.FC = () => {
       { key: 'rates', label: 'Rate History', icon: <History className="h-4 w-4" />, count: freightRates.length },
       { key: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-4 w-4" /> },
       { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, count: users.length },
+      { key: 'auditLog', label: 'Activity Log', icon: <History className="h-4 w-4" />, count: activityLogs.length },
       { key: 'manager', label: 'Manager Dashboard', icon: <LineChart className="h-4 w-4" /> }
     ];
     return allNavItems.filter((item) => canAccessTab(currentRole, item.key));
@@ -4775,6 +4960,7 @@ export const Dashboard: React.FC = () => {
     reachoutBuyers,
     quotes,
     activities,
+    teamMessages,
     templates,
     blogs,
     tasks,
@@ -4785,7 +4971,8 @@ export const Dashboard: React.FC = () => {
     vendors,
     freightPresets,
     freightRates,
-    users
+    users,
+    activityLogs
   ]);
 
   const activeNavItem = navItems.find((item) => item.key === activeTab);
@@ -4793,9 +4980,9 @@ export const Dashboard: React.FC = () => {
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
   const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'dataCleanup', 'tasks'].includes(item.key)).slice(0, 5), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'generateResponses', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'teamChat', 'templates', 'generateResponses', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
-    { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'manager'].includes(item.key)) }
+    { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'auditLog', 'manager'].includes(item.key)) }
   ], [navItems]);
 
   const hasAccessToActiveTab = useMemo(() => {
@@ -5069,7 +5256,7 @@ export const Dashboard: React.FC = () => {
     if (selectedCrmLead?.id === id) {
       setSelectedCrmLead(null);
     }
-  }, [deleteRecord, selectedCrmLead]);
+  }, [selectedCrmLead]);
 
   const handleBulkDeleteLeads = useCallback(async () => {
     if (!selectedLeadIds.length) return;
@@ -5193,6 +5380,25 @@ export const Dashboard: React.FC = () => {
     setSelectedCrmLead(l);
   }, []);
 
+  const openNewLeadDrawer = useCallback((sourceLabel = 'Manual Entry') => {
+    const emptyLead: CrmLead = {
+      id: 'new-' + Math.random().toString(36).substring(2, 9),
+      company_name: '',
+      stage: 'New Lead' as CrmStage,
+      priority: 'Medium',
+      owner: operatorName || 'Sana Zeba',
+      contact_name: '',
+      contact_email: '',
+      phone: '',
+      country: '',
+      product_interest: '',
+      next_follow_up: new Date().toISOString().slice(0, 10),
+      notes: `Lead source: ${sourceLabel}`,
+      estimated_value: 0
+    };
+    setSelectedCrmLead(emptyLead);
+  }, [operatorName]);
+
   const handleSendEmail = useCallback((lead: CrmLead) => {
     handleLeadEmail(lead, leadEmailMode(lead));
   }, [handleLeadEmail, leadEmailMode]);
@@ -5217,38 +5423,47 @@ export const Dashboard: React.FC = () => {
     );
   }
 
+  const busyScreen = (
+    <div className="portal-busy-overlay" role="status" aria-live="polite" aria-label="Loading Sheshaan Global portal">
+      <div className="portal-busy-card">
+        <div className="portal-busy-logo-wrap">
+          <Image src="/logo.png" alt="Sheshaan Global" width={72} height={72} className="h-full w-full object-contain" />
+        </div>
+        <div className="min-w-0 text-center">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-sky-700">Sheshaan Global</p>
+          <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">
+            {importingBuyers ? 'Importing your trade data' : 'Preparing your workspace'}
+          </h2>
+          <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+            {importProgress
+              ? `${importProgress.label} (${importProgress.processed.toLocaleString()} / ${importProgress.total.toLocaleString()})`
+              : 'Syncing buyers, quotes, tasks, shipments, and documents.'}
+          </p>
+        </div>
+        <div className="portal-busy-status">
+          <span className="portal-busy-dot" />
+          <span>{importProgress ? `${importProgressPercent}% complete` : 'Secure operating system loading'}</span>
+        </div>
+        <div className="portal-busy-track" aria-hidden="true">
+          <span
+            className={importProgress ? 'portal-busy-track-fill-determinate' : undefined}
+            style={{ width: importProgress ? `${importProgressPercent}%` : undefined }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  if (appBusy) {
+    return (
+      <div className="portal-os relative min-h-screen">
+        {busyScreen}
+      </div>
+    );
+  }
+
   return (
     <div className="portal-os relative min-h-screen pb-28 lg:pb-0">
-      {appBusy && (
-        <div className="portal-busy-overlay" role="status" aria-live="polite" aria-label="Loading Sheshaan Global portal">
-          <div className="portal-busy-card">
-            <div className="portal-busy-logo-wrap">
-              <Image src="/logo.png" alt="Sheshaan Global" width={72} height={72} className="h-full w-full object-contain" />
-            </div>
-            <div className="min-w-0 text-center">
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-sky-700">Sheshaan Global</p>
-              <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">
-                {importingBuyers ? 'Importing your trade data' : 'Preparing your workspace'}
-              </h2>
-              <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
-                {importProgress
-                  ? `${importProgress.label} (${importProgress.processed.toLocaleString()} / ${importProgress.total.toLocaleString()})`
-                  : 'Syncing buyers, quotes, tasks, shipments, and documents.'}
-              </p>
-            </div>
-            <div className="portal-busy-status">
-              <span className="portal-busy-dot" />
-              <span>{importProgress ? `${importProgressPercent}% complete` : 'Secure operating system loading'}</span>
-            </div>
-            <div className="portal-busy-track" aria-hidden="true">
-              <span
-                className={importProgress ? 'portal-busy-track-fill-determinate' : undefined}
-                style={{ width: importProgress ? `${importProgressPercent}%` : undefined }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
       <div className="portal-shell">
         <div className="flex flex-col lg:flex-row">
           <aside
@@ -5648,6 +5863,7 @@ export const Dashboard: React.FC = () => {
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <span className="portal-chip portal-chip-strong"><Database className="h-3.5 w-3.5" /> {dbType}</span>
                 <span className="portal-chip"><Users className="h-3.5 w-3.5 text-sky-600" /> {clients.length.toLocaleString()} buyers</span>
+                <span className="portal-chip"><ClipboardList className="h-3.5 w-3.5 text-emerald-700" /> {inquiries.length.toLocaleString()} inquiries</span>
                 <span className="portal-chip"><Target className="h-3.5 w-3.5 text-emerald-600" /> {leads.length.toLocaleString()} leads</span>
                 <span className="portal-chip"><FileCheck2 className="h-3.5 w-3.5 text-amber-600" /> {quotes.length.toLocaleString()} quotes</span>
                 <span className="portal-chip"><Ship className="h-3.5 w-3.5 text-indigo-600" /> {shipments.length.toLocaleString()} shipments</span>
@@ -5728,7 +5944,12 @@ export const Dashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+                          <p className="text-[10px] font-extrabold uppercase text-slate-400">Structured Inquiries</p>
+                          <p className="text-2xl font-black mt-1 text-slate-900">{inquiries.length}</p>
+                          <p className="text-[10px] text-slate-500 mt-1">{inquiryQuotations.length} linked quotations | {inquiryFollowUps.filter((item) => item.status === 'Due Today' || item.status === 'Overdue').length} follow-ups due</p>
+                        </div>
                         <div className="p-4 bg-slate-950 text-white rounded-xl border border-slate-800 shadow-sm">
                           <p className="text-[10px] font-extrabold uppercase text-slate-400">Total Pipeline Value</p>
                           <p className="text-2xl font-black mt-1">
@@ -6185,6 +6406,14 @@ export const Dashboard: React.FC = () => {
                   <div className="flex flex-wrap gap-2 text-slate-950">
                     <button
                       type="button"
+                      onClick={() => openNewLeadDrawer('Quick Add')}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg font-black hover:bg-emerald-400 transition text-xs shadow-sm shadow-emerald-950/20"
+                    >
+                      <Plus className="h-4 w-4" />
+                      New Lead
+                    </button>
+                    <button
+                      type="button"
                       onClick={downloadCrmImportTemplate}
                       className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs"
                     >
@@ -6335,6 +6564,150 @@ export const Dashboard: React.FC = () => {
                 )}
               </div>
 
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Quick Lead Capture</p>
+                    <h3 className="text-sm font-black text-slate-950">Add a buyer inquiry in seconds</h3>
+                    <p className="mt-1 text-xs font-semibold text-slate-600">Use these shortcuts while reading WhatsApp, Titan email, or Embassy buyer data.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                    {[
+                      { label: 'WhatsApp', tone: 'bg-emerald-600 hover:bg-emerald-500 text-white' },
+                      { label: 'Titan Email', tone: 'bg-slate-950 hover:bg-slate-800 text-white' },
+                      { label: 'Embassy', tone: 'bg-sky-600 hover:bg-sky-500 text-white' },
+                      { label: 'Other', tone: 'bg-white hover:bg-slate-50 text-slate-800 border border-slate-200' }
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => openNewLeadDrawer(item.label)}
+                        className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-xs font-black transition ${item.tone}`}
+                      >
+                        <Plus className="h-4 w-4" />
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Sheshaan Inquiry Management</p>
+                      <h3 className="text-sm font-black text-slate-950">Agricultural Import/Export Inquiry Cockpit</h3>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">Buyer inquiries remain linked to the buyer profile, quotation records, follow-ups, and timeline history.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white">{inquiries.length} Inquiries</span>
+                      <span className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">{inquiries.filter((item) => item.stage === 'Won').length} Won</span>
+                      <span className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-black text-rose-700">{inquiries.filter((item) => item.stage === 'Lost').length} Lost</span>
+                    </div>
+                  </div>
+                  <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full min-w-[980px] text-left text-xs">
+                      <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">Inquiry</th>
+                          <th className="px-3 py-2">Buyer</th>
+                          <th className="px-3 py-2">Product</th>
+                          <th className="px-3 py-2">Qty</th>
+                          <th className="px-3 py-2">Port</th>
+                          <th className="px-3 py-2">Source</th>
+                          <th className="px-3 py-2">Stage</th>
+                          <th className="px-3 py-2">Follow-up</th>
+                          <th className="px-3 py-2">Owner</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {inquiries.length === 0 ? (
+                          <tr>
+                            <td colSpan={9} className="px-3 py-8 text-center font-semibold text-slate-400">
+                              No structured inquiries yet. Use the new inquiry schema for WhatsApp, Titan email, Embassy, Website, Referral, and Other sources.
+                            </td>
+                          </tr>
+                        ) : (
+                          inquiries.slice(0, 8).map((inquiry) => (
+                            <tr key={inquiry.id} className="hover:bg-slate-50">
+                              <td className="px-3 py-2 font-mono font-black text-slate-900">{inquiry.inquiry_number}</td>
+                              <td className="px-3 py-2">
+                                <div className="font-black text-slate-900">{inquiry.buyer_company}</div>
+                                <div className="text-[10px] font-semibold text-slate-400">{inquiry.country}</div>
+                              </td>
+                              <td className="px-3 py-2 font-bold text-slate-700">{inquiry.product_name}</td>
+                              <td className="px-3 py-2 font-black text-slate-700">{Number(inquiry.quantity || 0).toLocaleString()} {inquiry.quantity_unit}</td>
+                              <td className="px-3 py-2 font-semibold text-slate-600">{inquiry.destination_port || 'TBA'}</td>
+                              <td className="px-3 py-2"><SmallBadge text={inquiry.lead_source} /></td>
+                              <td className="px-3 py-2">
+                                <span className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                                  inquiry.stage === 'Won' ? 'bg-emerald-50 text-emerald-700' :
+                                  inquiry.stage === 'Lost' ? 'bg-rose-50 text-rose-700' :
+                                  inquiry.stage === 'Negotiation' ? 'bg-amber-50 text-amber-700' :
+                                  'bg-sky-50 text-sky-700'
+                                }`}>
+                                  {inquiry.stage}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className={`font-black ${
+                                  inquiry.follow_up_status === 'Overdue' ? 'text-rose-700' :
+                                  inquiry.follow_up_status === 'Due Today' ? 'text-amber-700' :
+                                  inquiry.follow_up_status === 'Completed' ? 'text-emerald-700' :
+                                  'text-slate-600'
+                                }`}>
+                                  {inquiry.follow_up_status || 'Upcoming'}
+                                </div>
+                                <div className="text-[10px] font-semibold text-slate-400">{inquiry.next_follow_up_date || 'No date'} | {inquiry.next_action || 'No action'}</div>
+                              </td>
+                              <td className="px-3 py-2 font-bold text-slate-600">{inquiry.salesperson}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Today&apos;s Follow-ups</p>
+                  <h3 className="mt-1 text-sm font-black text-slate-950">Due And Overdue</h3>
+                  <div className="mt-3 space-y-2">
+                    {inquiries
+                      .filter((item) => item.follow_up_status === 'Due Today' || item.follow_up_status === 'Overdue')
+                      .slice(0, 6)
+                      .map((item) => (
+                        <div key={item.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-black text-slate-900">{item.buyer_company}</p>
+                              <p className="mt-0.5 truncate text-[10px] font-bold text-slate-500">{item.product_name} | {item.country}</p>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${item.follow_up_status === 'Overdue' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {item.follow_up_status}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-[11px] font-semibold text-slate-600">{item.next_action || 'Follow up with buyer'}</p>
+                        </div>
+                      ))}
+                    {inquiries.filter((item) => item.follow_up_status === 'Due Today' || item.follow_up_status === 'Overdue').length === 0 && (
+                      <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-xs font-semibold text-slate-400">
+                        No inquiry follow-ups are due right now.
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {['Titan Email', 'WhatsApp', 'Embassy', 'Other'].map((source) => (
+                      <div key={source} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                        <p className="text-[9px] font-black uppercase text-slate-400">{source}</p>
+                        <p className="mt-1 text-lg font-black text-slate-950">{inquiries.filter((item) => item.lead_source === source).length}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               {/* Filter Controls Row */}
               <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm space-y-3">
                 <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
@@ -6415,27 +6788,11 @@ export const Dashboard: React.FC = () => {
                     {/* Add Lead manual button */}
                     <button
                       type="button"
-                      onClick={() => {
-                        const emptyLead: CrmLead = {
-                          id: 'new-' + Math.random().toString(36).substring(2, 9),
-                          company_name: '',
-                          stage: 'New Lead' as CrmStage,
-                          priority: 'Medium',
-                          owner: 'Sana Zeba',
-                          contact_name: '',
-                          contact_email: '',
-                          phone: '',
-                          country: '',
-                          product_interest: '',
-                          next_follow_up: '',
-                          notes: '',
-                          estimated_value: 0
-                        };
-                        setSelectedCrmLead(emptyLead);
-                      }}
-                      className="h-10 px-4 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition text-xs"
+                      onClick={() => openNewLeadDrawer('Manual Entry')}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white transition hover:bg-slate-800"
                     >
-                      + Add Lead
+                      <Plus className="h-4 w-4" />
+                      Add Lead
                     </button>
                   </div>
                 </div>
@@ -6610,6 +6967,15 @@ export const Dashboard: React.FC = () => {
                   />
                 )}
               </div>
+
+              <button
+                type="button"
+                onClick={() => openNewLeadDrawer('Mobile Quick Add')}
+                className="fixed bottom-20 right-4 z-30 inline-flex h-14 items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 text-sm font-black text-white shadow-xl shadow-emerald-950/25 transition hover:bg-emerald-500 active:scale-95 md:hidden"
+              >
+                <Plus className="h-5 w-5" />
+                New Lead
+              </button>
 
               {/* Workspace Slide-over Inspector Drawer */}
               <LeadInspectorDrawer
@@ -8961,6 +9327,217 @@ export const Dashboard: React.FC = () => {
             </TwoColumnManager>
           )}
 
+          {activeTab === 'teamChat' && (
+            <div className="overflow-hidden rounded-none border border-slate-200 bg-white shadow-sm sm:rounded-2xl">
+              <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-emerald-500 text-white shadow-sm">
+                      <MessageSquare className="h-5 w-5" />
+                      <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-black text-slate-950 sm:text-base">Sheshaan Team</h3>
+                      <p className="truncate text-[11px] font-bold text-slate-500">
+                        {users.filter((user) => user.active).length || users.length || 1} members • {teamMessages.length} message{teamMessages.length === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="hidden -space-x-2 sm:flex">
+                      {users.slice(0, 4).map((user) => (
+                        <div key={user.id} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-[10px] font-black text-white shadow-sm" title={user.name}>
+                          {(user.name || user.email || 'U').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('')}
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={fetchData}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50"
+                      title="Refresh chat"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="h-[calc(100vh-330px)] min-h-[430px] overflow-y-auto bg-[radial-gradient(circle_at_1px_1px,rgba(148,163,184,0.18)_1px,transparent_0)] bg-[length:22px_22px] bg-slate-50 px-3 py-4 sm:h-[62vh] sm:px-5">
+                <div className="mx-auto flex max-w-3xl flex-col-reverse gap-2.5">
+                  {teamMessages.map((message) => {
+                    const isMine = (message.sender_email || '').toLowerCase() === (authEmail || '').toLowerCase();
+                    const initials = (message.sender_name || message.sender_email || 'U')
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((part) => part.charAt(0).toUpperCase())
+                      .join('');
+                    return (
+                      <div key={message.id} className={`flex gap-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                        {!isMine && (
+                          <div className="mt-5 hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-black text-white shadow-sm sm:flex">
+                            {initials}
+                          </div>
+                        )}
+                        <div className={`flex max-w-[86%] flex-col sm:max-w-[72%] ${isMine ? 'items-end' : 'items-start'}`}>
+                          <div className={`mb-1 flex max-w-full items-center gap-2 px-1 text-[10px] font-bold ${isMine ? 'justify-end text-slate-400' : 'text-slate-500'}`}>
+                            <span>{isMine ? 'You' : message.sender_name || message.sender_email}</span>
+                            <span>{message.created_at ? new Date(message.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}</span>
+                          </div>
+                          <div className={`relative rounded-3xl px-3.5 py-2.5 shadow-sm ring-1 sm:px-4 sm:py-3 ${
+                            isMine
+                              ? 'rounded-br-md bg-emerald-600 text-white ring-emerald-600'
+                              : 'rounded-bl-md bg-white text-slate-800 ring-slate-200'
+                          }`}>
+                            {message.body && <p className="whitespace-pre-line break-words text-[13px] font-semibold leading-5 sm:text-sm sm:leading-6">{message.body}</p>}
+                            {(message.link_url || message.tag_id) && (
+                              <div className={`mt-3 flex flex-wrap gap-2 ${!message.body ? 'mt-0' : ''}`}>
+                                {message.link_url && (
+                                  <a
+                                    href={message.link_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-black ${
+                                      isMine ? 'bg-white/15 text-white hover:bg-white/20' : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+                                    }`}
+                                  >
+                                    <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate">{message.link_label || message.link_url}</span>
+                                  </a>
+                                )}
+                                {message.tag_id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openTaggedRecord(message)}
+                                    className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-black ${
+                                      isMine ? 'bg-white/15 text-white hover:bg-white/20' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                    }`}
+                                  >
+                                    <FileText className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="truncate">{message.tag_type}: {message.tag_label || message.tag_id}</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {isMine && (
+                          <div className="mt-5 hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-black text-white shadow-sm sm:flex">
+                            {initials || 'Y'}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {!teamMessages.length && (
+                    <div className="mx-auto mt-16 max-w-sm rounded-3xl border border-slate-200 bg-white/90 p-8 text-center shadow-sm backdrop-blur">
+                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                        <MessageSquare className="h-7 w-7" />
+                      </div>
+                      <p className="mt-4 text-sm font-black text-slate-800">Start the team conversation</p>
+                      <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Send updates, tag quotes, and share useful links in one place.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <form onSubmit={sendTeamMessage} className="border-t border-slate-200 bg-white p-2.5 sm:p-4">
+                <div className="mx-auto max-w-3xl">
+                  <div className="rounded-[1.6rem] border border-slate-200 bg-white p-2 shadow-lg shadow-slate-200/70 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/10">
+                    <div className="grid grid-cols-2 gap-1.5 border-b border-slate-100 pb-2 sm:grid-cols-4">
+                      <select
+                        value={teamMessageForm.tag_type || 'Quote'}
+                        onChange={(e) => setTeamMessageForm({ ...teamMessageForm, tag_type: e.target.value as TeamMessage['tag_type'], tag_id: '' })}
+                        className="h-8 min-w-0 rounded-full border border-slate-200 bg-slate-50 px-2 text-[11px] font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        title="Tag type"
+                      >
+                        {['Quote', 'Task', 'Buyer', 'Lead', 'Invoice', 'Shipment'].map((type) => <option key={type} value={type}>{type}</option>)}
+                      </select>
+                      <select
+                        value={teamMessageForm.tag_id || ''}
+                        onChange={(e) => setTeamMessageForm({ ...teamMessageForm, tag_id: e.target.value })}
+                        className="h-8 min-w-0 rounded-full border border-slate-200 bg-slate-50 px-2 text-[11px] font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        title="Tag record"
+                      >
+                        <option value="">No tag</option>
+                        {currentTagOptions.map((item) => <option key={`${item.type}-${item.id}`} value={item.id}>{item.label}</option>)}
+                      </select>
+                      <input
+                        value={teamMessageForm.link_url || ''}
+                        onChange={(e) => setTeamMessageForm({ ...teamMessageForm, link_url: e.target.value })}
+                        placeholder="Paste link"
+                        className="h-8 min-w-0 rounded-full border border-slate-200 bg-slate-50 px-3 text-[11px] font-bold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <input
+                        value={teamMessageForm.link_label || ''}
+                        onChange={(e) => setTeamMessageForm({ ...teamMessageForm, link_label: e.target.value })}
+                        placeholder="Link name"
+                        className="h-8 min-w-0 rounded-full border border-slate-200 bg-slate-50 px-3 text-[11px] font-bold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                    </div>
+                    <div className="flex items-end gap-2 pt-2">
+                      <SmoothTextarea
+                        value={teamMessageForm.body || ''}
+                        onChange={(value) => setTeamMessageForm({ ...teamMessageForm, body: value })}
+                        placeholder="Message..."
+                        rows={2}
+                        className="max-h-32 min-h-[44px] flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setTeamMessageForm(blankTeamMessage)}
+                        className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-black text-slate-500 hover:bg-slate-100 sm:inline-flex"
+                        title="Clear"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="submit"
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm hover:bg-emerald-500"
+                        title="Send message"
+                      >
+                        <Send className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+            </form>
+          </div>
+          )}
+
+          {activeTab === 'auditLog' && (
+            <div className="space-y-4">
+              <div className="portal-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-black text-slate-900">Activity Log</h3>
+                  <p className="text-xs text-slate-500">Every portal create, update, delete, approval, and request is recorded here.</p>
+                </div>
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                  <input
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                    placeholder="Search logs"
+                    className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                  />
+                </div>
+              </div>
+              <DataTable headers={['Time', 'Person', 'Action', 'Area', 'Record', 'Details']} pageSize={12}>
+                {filteredActivityLogs.map((log) => (
+                  <tr key={log.id} className="border-b border-slate-100">
+                    <td className="p-3 whitespace-nowrap text-[11px] text-slate-500">{log.created_at ? new Date(log.created_at).toLocaleString() : ''}</td>
+                    <td className="p-3"><div className="font-bold">{log.actor_name || log.actor_email}</div><div className="text-[10px] text-slate-400">{log.actor_email}</div></td>
+                    <td className="p-3"><SmallBadge text={log.action} /></td>
+                    <td className="p-3">{log.table_name}</td>
+                    <td className="p-3 font-semibold">{log.record_label || log.record_id}</td>
+                    <td className="p-3 text-slate-600">{log.details}</td>
+                  </tr>
+                ))}
+              </DataTable>
+            </div>
+          )}
+
           {activeTab === 'users' && (
             <TwoColumnManager
               formTitle={editingUserId ? 'Edit User' : 'Add User'}
@@ -8975,22 +9552,37 @@ export const Dashboard: React.FC = () => {
                 <>
                   <TextInput label="Name *" value={userForm.name || ''} onChange={(value) => setUserForm({ ...userForm, name: value })} required />
                   <TextInput label="Email *" value={userForm.email || ''} onChange={(value) => setUserForm({ ...userForm, email: value })} required />
+                  <TextInput label="Designation" value={userForm.title || ''} onChange={(value) => setUserForm({ ...userForm, title: value })} />
+                  <TextInput label="Phone" value={userForm.phone || ''} onChange={(value) => setUserForm({ ...userForm, phone: value })} />
                   <SelectInput label="Role" value={userForm.role || 'Sales'} onChange={(value) => setUserForm({ ...userForm, role: value as AppUser['role'] })} options={['Admin', 'Sales', 'Accounts', 'Operations']} />
+                  <SelectInput label="Status" value={userForm.status || 'Approved'} onChange={(value) => setUserForm({ ...userForm, status: value as AppUser['status'], active: value === 'Approved' })} options={['Pending', 'Approved', 'Rejected']} />
                   <CheckboxInput label="Active User" checked={Boolean(userForm.active)} onChange={(value) => setUserForm({ ...userForm, active: value })} />
                 </>
               }
             >
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800 mb-4 flex gap-2">
                 <Lock className="h-4 w-4 mt-0.5" />
-                <span>This manages app users and roles for workflow tracking. App access is protected by Firebase Authentication when Firebase is configured.</span>
+                <span>Pending requests stay blocked until the main admin approves them and assigns a role.</span>
               </div>
-              <DataTable headers={['Name', 'Email', 'Role', 'Status', 'Actions']}>
+              <DataTable headers={['Name', 'Email', 'Role', 'Status', 'Approval', 'Actions']}>
                 {users.map((user) => (
                   <tr key={user.id} className="border-b border-slate-100">
-                    <td className="p-3 font-bold">{user.name}</td>
+                    <td className="p-3"><div className="font-bold">{user.name}</div><div className="text-[10px] text-slate-400">{user.title || user.phone || ''}</div></td>
                     <td className="p-3">{user.email}</td>
                     <td className="p-3">{user.role}</td>
-                    <td className="p-3">{user.active ? 'Active' : 'Inactive'}</td>
+                    <td className="p-3"><SmallBadge text={user.status || (user.active ? 'Approved' : 'Pending')} /></td>
+                    <td className="p-3">
+                      {(user.status || (user.active ? 'Approved' : 'Pending')) === 'Pending' ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {(['Sales', 'Accounts', 'Operations', 'Admin'] as AppUser['role'][]).map((role) => (
+                            <button key={role} type="button" onClick={() => approveUser(user, role)} className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[10px] font-black hover:bg-emerald-100">{role}</button>
+                          ))}
+                          <button type="button" onClick={() => rejectUser(user)} className="px-2 py-1 rounded bg-red-50 text-red-700 text-[10px] font-black hover:bg-red-100">Reject</button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-500">{user.approved_by ? `By ${user.approved_by}` : 'No pending action'}</span>
+                      )}
+                    </td>
                     <td className="p-3"><RowActions currentRole={currentRole} onEdit={() => { setEditingUserId(user.id); setUserForm(user); }} onDelete={() => deleteRecord('app_users', user.id, 'user')} /></td>
                   </tr>
                 ))}

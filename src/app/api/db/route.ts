@@ -19,6 +19,10 @@ const emptyDB = {
   quote_items: [],
   blogs: [],
   leads: [],
+  inquiries: [],
+  inquiry_quotations: [],
+  inquiry_follow_ups: [],
+  inquiry_attachments: [],
   activities: [],
   freight_rate_history: [],
   invoices: [],
@@ -26,7 +30,9 @@ const emptyDB = {
   document_checklists: [],
   tasks: [],
   message_templates: [],
-  app_users: []
+  app_users: [],
+  activity_logs: [],
+  team_messages: []
 };
 
 const allowedTables = new Set(Object.keys(emptyDB));
@@ -288,6 +294,96 @@ export async function POST(req: NextRequest) {
       }
     ];
 
+    db.inquiries = [
+      {
+        id: 'inq-sg-1',
+        inquiry_number: 'SG-2026-00001',
+        inquiry_date: now.slice(0, 10),
+        lead_source: 'WhatsApp',
+        client_id: 'client-sg-1',
+        lead_id: 'lead-sg-1',
+        buyer_company: 'BusyExim Private Limited',
+        contact_person: 'Nancy Sharma',
+        contact_email: 'business@busyexim.com',
+        whatsapp_number: '+971 4 388 9100',
+        country: 'UAE',
+        salesperson: 'Sana Zeba',
+        priority: 'Hot',
+        stage: 'Quotation Sent',
+        product_name: 'Cumin Seeds Singapore 99',
+        product_category: 'Spices / Agricultural Products',
+        quantity: 13,
+        quantity_unit: 'MT',
+        target_price: 0,
+        currency: 'INR',
+        destination_country: 'UAE',
+        destination_port: 'Khor Fakkan Port, UAE',
+        required_delivery_date: '',
+        incoterm: 'CIF',
+        packaging_requirement: '325 Jute Bags (40 kg Net / Bag), 1 x 20ft FCL',
+        quality_specification: 'Machine cleaned / sortex cleaned, purity 99% min',
+        payment_terms: '50% Advance, 50% vs Shipping Bill',
+        additional_requirements: 'Buyer requested CIF quotation with export documents.',
+        original_message: 'WhatsApp inquiry for cumin seeds to UAE with CIF pricing and shipment timeline.',
+        last_contact_date: now.slice(0, 10),
+        next_follow_up_date: now.slice(0, 10),
+        next_action: 'WhatsApp follow-up on quotation acceptance',
+        follow_up_status: 'Due Today',
+        estimated_value: 3360370,
+        notes: 'Demo inquiry linked to the existing buyer, quote, activity, and task.',
+        created_by: 'Sana Zeba',
+        created_at: now,
+        updated_at: now
+      }
+    ];
+
+    db.inquiry_quotations = [
+      {
+        id: 'inq-quote-sg-1',
+        quotation_number: 'SG-CIF-2026-0001',
+        inquiry_id: 'inq-sg-1',
+        quote_id: 'quote-sg-1',
+        client_id: 'client-sg-1',
+        buyer_company: 'BusyExim Private Limited',
+        quotation_date: now.slice(0, 10),
+        product_name: 'Cumin Seeds Singapore 99',
+        quantity: 13,
+        quantity_unit: 'MT',
+        unit_price: 258490,
+        currency: 'INR',
+        incoterm: 'CIF',
+        destination_port: 'Khor Fakkan Port, UAE',
+        payment_terms: '50% Advance, 50% vs Shipping Bill',
+        validity_date: now.slice(0, 10),
+        packaging: '325 Jute Bags (40 kg Net / Bag)',
+        quality: 'Purity 99% Min',
+        freight: 260000,
+        total_amount: 3360370,
+        status: 'Sent',
+        notes: 'First quotation connected to inquiry SG-2026-00001.',
+        created_at: now,
+        updated_at: now
+      }
+    ];
+
+    db.inquiry_follow_ups = [
+      {
+        id: 'inq-fu-sg-1',
+        inquiry_id: 'inq-sg-1',
+        client_id: 'client-sg-1',
+        lead_id: 'lead-sg-1',
+        follow_up_date: now.slice(0, 10),
+        last_contact_date: now.slice(0, 10),
+        action: 'WhatsApp',
+        status: 'Due Today',
+        owner: 'Sana Zeba',
+        result: '',
+        notes: 'Confirm whether buyer accepts CIF quotation or needs revised price.',
+        created_at: now,
+        updated_at: now
+      }
+    ];
+
     db.activities = [
       {
         id: 'act-sg-1',
@@ -478,6 +574,8 @@ export async function POST(req: NextRequest) {
   }
   const currentTable = db[table] || [];
   const insertedOrUpdated: any[] = [];
+  const actorEmail = req.headers.get('x-portal-actor-email') || 'system';
+  const actorName = req.headers.get('x-portal-actor-name') || actorEmail;
 
   valArray.forEach((v: any) => {
     const id = v.id || `${table.substring(0, 3)}-${Math.random().toString(36).slice(2, 11)}`;
@@ -495,6 +593,21 @@ export async function POST(req: NextRequest) {
     else currentTable.push(record);
 
     insertedOrUpdated.push(record);
+
+    if (table !== 'activity_logs') {
+      db.activity_logs = db.activity_logs || [];
+      db.activity_logs.unshift({
+        id: `log-${Math.random().toString(36).slice(2, 11)}`,
+        actor_email: actorEmail,
+        actor_name: actorName,
+        action: existingIndex > -1 ? 'Updated' : 'Created',
+        table_name: table,
+        record_id: id,
+        record_label: record.name || record.company_name || record.quote_number || record.title || record.invoice_number || record.booking_number || id,
+        details: existingIndex > -1 ? 'Record updated from portal.' : 'Record created from portal.',
+        created_at: new Date().toISOString()
+      });
+    }
   });
 
   db[table] = currentTable;
@@ -520,7 +633,22 @@ export async function DELETE(req: NextRequest) {
   }
 
   const db = readDB();
+  const deletedRecord = (db[table] || []).find((r: any) => r.id === id);
   db[table] = (db[table] || []).filter((r: any) => r.id !== id);
+  if (table !== 'activity_logs') {
+    db.activity_logs = db.activity_logs || [];
+    db.activity_logs.unshift({
+      id: `log-${Math.random().toString(36).slice(2, 11)}`,
+      actor_email: req.headers.get('x-portal-actor-email') || 'system',
+      actor_name: req.headers.get('x-portal-actor-name') || req.headers.get('x-portal-actor-email') || 'system',
+      action: 'Deleted',
+      table_name: table,
+      record_id: id,
+      record_label: deletedRecord?.name || deletedRecord?.company_name || deletedRecord?.quote_number || deletedRecord?.title || deletedRecord?.invoice_number || deletedRecord?.booking_number || id,
+      details: 'Record deleted from portal.',
+      created_at: new Date().toISOString()
+    });
+  }
 
   const clearRelation = (targetTable: LocalTable, field: string) => {
     db[targetTable] = (db[targetTable] || []).map((record: any) => {
@@ -541,6 +669,8 @@ export async function DELETE(req: NextRequest) {
   if (table === 'leads') {
     clearRelation('tasks', 'lead_id');
     clearRelation('activities', 'lead_id');
+    clearRelation('inquiries', 'lead_id');
+    clearRelation('inquiry_follow_ups', 'lead_id');
   }
 
   if (table === 'quotes') {
@@ -550,6 +680,14 @@ export async function DELETE(req: NextRequest) {
     clearRelation('tasks', 'quote_id');
     clearRelation('activities', 'quote_id');
     clearRelation('document_checklists', 'quote_id');
+    clearRelation('inquiry_quotations', 'quote_id');
+  }
+
+  if (table === 'inquiries') {
+    db.inquiry_quotations = (db.inquiry_quotations || []).filter((record: any) => record.inquiry_id !== id);
+    db.inquiry_follow_ups = (db.inquiry_follow_ups || []).filter((record: any) => record.inquiry_id !== id);
+    db.inquiry_attachments = (db.inquiry_attachments || []).filter((record: any) => record.inquiry_id !== id);
+    clearRelation('activities', 'inquiry_id');
   }
 
   if (table === 'invoices') {

@@ -126,23 +126,23 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
   const isNewLead = lead.id.startsWith('new-');
 
   return (
-    <div className="fixed inset-0 z-40 overflow-hidden flex justify-end" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-40 flex justify-end items-start overflow-y-auto p-2 sm:p-3 pointer-events-none" role="dialog" aria-modal="true">
       {/* Background glass overlay */}
       <div
-        className="fixed inset-0 bg-slate-950/20 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-slate-950/5 transition-opacity pointer-events-auto"
         onClick={onClose}
       />
 
       {/* Drawer Body Panel */}
       <div
         ref={drawerRef}
-        className="relative w-full max-w-lg bg-white h-full shadow-2xl flex flex-col z-50 animate-fade-left border-l border-slate-200"
+        className="relative w-full max-w-[360px] lg:max-w-[400px] max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-1.5rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col z-50 animate-fade-left pointer-events-auto"
       >
         {/* Header */}
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-950 text-white">
+        <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-950 text-white">
           <div>
             <span className="text-[9px] font-black uppercase text-sky-400 tracking-wider">Buyer 360 Workspace</span>
-            <h3 className="text-sm font-extrabold truncate max-w-[320px]">{isNewLead ? 'Add Buyer / Lead' : companyName}</h3>
+            <h3 className="text-sm font-extrabold truncate max-w-[240px] sm:max-w-[320px]">{isNewLead ? 'Add Buyer / Lead' : companyName}</h3>
           </div>
           <button
             type="button"
@@ -155,7 +155,8 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
         </div>
 
         {/* Form Editor Contents */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+        <div className="overflow-y-auto p-3 space-y-3 text-xs">
+          {!isNewLead && (
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="grid grid-cols-2 gap-2">
               <div className={`rounded-lg border p-3 ${scoreTone}`}>
@@ -198,7 +199,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 </div>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => onSendEmail?.(lead)}
@@ -218,7 +219,9 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
               </button>
             </div>
           </div>
+          )}
 
+          {!isNewLead && (
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
@@ -251,6 +254,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
               <p>Shipment: <span className="text-slate-950">{relatedSummary?.shipmentStatus || 'No shipment linked'}</span></p>
             </div>
           </div>
+          )}
 
           {/* Company & Primary Info */}
           <div className="space-y-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
@@ -265,7 +269,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 placeholder="Buyer company name"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-slate-500 font-bold mb-1 uppercase text-[10px]">Contact Person</label>
                 <input
@@ -297,7 +301,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
                 placeholder="buyer@example.com"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-slate-500 font-bold mb-1 uppercase text-[10px]">Country</label>
                 <input
@@ -332,7 +336,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
           </div>
 
           {/* Deal & Sequence parameters */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
               <h4 className="font-extrabold text-[10px] uppercase text-slate-400 tracking-wider">Pipeline Coordinates</h4>
               <div>
@@ -442,12 +446,12 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
               {error}
             </div>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <button
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 rounded-lg bg-slate-950 px-4 py-2.5 text-xs font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full sm:flex-1 rounded-lg bg-slate-950 px-4 py-3 text-xs font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? 'Saving Lead...' : isNewLead ? 'Save Buyer / Lead' : 'Save Changes'}
             </button>
@@ -455,7 +459,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>

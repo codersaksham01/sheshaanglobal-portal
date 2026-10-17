@@ -4,8 +4,24 @@ import { firebaseApp, isFirebaseConfigured } from './firebaseClient';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const portalTables = ['clients', 'vendors', 'products', 'freight_presets', 'quotes', 'quote_items', 'blogs', 'leads', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users'] as const;
+const portalTables = ['clients', 'vendors', 'products', 'freight_presets', 'quotes', 'quote_items', 'blogs', 'leads', 'inquiries', 'inquiry_quotations', 'inquiry_follow_ups', 'inquiry_attachments', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users', 'activity_logs', 'team_messages'] as const;
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
+const localDbStorageKey = 'crixy_portal_db';
+const maxLocalDbCacheBytes = 1_500_000;
+
+const clearOversizedLocalDbCache = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    const cached = localStorage.getItem(localDbStorageKey);
+    if (cached && cached.length > maxLocalDbCacheBytes) {
+      localStorage.removeItem(localDbStorageKey);
+    }
+  } catch {
+    localStorage.removeItem(localDbStorageKey);
+  }
+};
+
+clearOversizedLocalDbCache();
 
 const cleanUndefined = (obj: any): any => {
   if (obj === null || typeof obj !== 'object') {
@@ -50,11 +66,15 @@ class ServerFileDB {
   private getLocalDB() {
     if (typeof window === 'undefined') return null;
     try {
-      const data = localStorage.getItem('crixy_portal_db');
+      const data = localStorage.getItem(localDbStorageKey);
+      if (data && data.length > maxLocalDbCacheBytes) {
+        localStorage.removeItem(localDbStorageKey);
+        return null;
+      }
       return data ? JSON.parse(data) : null;
     } catch (error) {
       console.warn('Ignoring an invalid local database cache:', error);
-      localStorage.removeItem('crixy_portal_db');
+      localStorage.removeItem(localDbStorageKey);
       return null;
     }
   }
@@ -62,7 +82,12 @@ class ServerFileDB {
   private saveLocalDB(db: any) {
     if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem('crixy_portal_db', JSON.stringify(db));
+      const serialized = JSON.stringify(db);
+      if (serialized.length > maxLocalDbCacheBytes) {
+        localStorage.removeItem(localDbStorageKey);
+        return;
+      }
+      localStorage.setItem(localDbStorageKey, serialized);
     } catch (error) {
       console.warn('Could not update the local database cache:', error);
     }
@@ -71,7 +96,11 @@ class ServerFileDB {
   private async saveServerRecords(table: string, records: any[]) {
     const response = await fetch(`/api/db?table=${encodeURIComponent(table)}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-portal-actor-email': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_email') || '' : '',
+        'x-portal-actor-name': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_name') || '' : ''
+      },
       body: JSON.stringify(records)
     });
 
@@ -85,7 +114,11 @@ class ServerFileDB {
 
   private async deleteServerRecord(table: string, id: string) {
     const response = await fetch(`/api/db?table=${encodeURIComponent(table)}&id=${encodeURIComponent(id)}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        'x-portal-actor-email': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_email') || '' : '',
+        'x-portal-actor-name': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_name') || '' : ''
+      }
     });
 
     const result = await response.json().catch(() => ({}));
@@ -96,18 +129,18 @@ class ServerFileDB {
 
   private async fetchTable(table: string): Promise<any[]> {
     if (typeof window === 'undefined') return [];
-    
-    const localDB = this.getLocalDB() || {};
 
     try {
       const response = await fetch(`/api/db?table=${encodeURIComponent(table)}`);
       if (response.ok) {
         const res = await response.json();
-        localDB[table] = res.data || [];
-        this.saveLocalDB(localDB);
-        return localDB[table];
+        return res.data || [];
       }
-      if (response.status === 401 || process.env.NODE_ENV === 'production') {
+      if (response.status === 401) {
+        localStorage.removeItem(localDbStorageKey);
+        return [];
+      }
+      if (process.env.NODE_ENV === 'production') {
         const result = await response.json().catch(() => ({}));
         throw new Error(result.error || `Could not load ${table}`);
       }
@@ -115,7 +148,8 @@ class ServerFileDB {
       console.error(`Failed to fetch saved data for ${table}`, e);
       if (process.env.NODE_ENV === 'production') throw e;
     }
-    
+
+    const localDB = this.getLocalDB() || {};
     return localDB[table] || [];
   }
 

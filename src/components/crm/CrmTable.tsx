@@ -57,24 +57,24 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
           aria-label={`Select ${lead.company_name}`}
         />
       </td>
-      <td className="py-1.5 px-2 font-medium text-slate-900">
-        <div className="font-extrabold truncate max-w-[160px] text-xs" title={lead.company_name}>
+      <td className="py-2 px-3 font-medium text-slate-900">
+        <div className="font-extrabold truncate text-xs" title={lead.company_name}>
           {lead.company_name}
         </div>
-        <div className="text-[9px] text-slate-400 truncate max-w-[160px] font-semibold" title={lead.product_interest}>
+        <div className="text-[9px] text-slate-400 truncate font-semibold" title={lead.product_interest}>
           {lead.product_interest || 'General Export'}
         </div>
       </td>
-      <td className="py-1.5 px-2 font-bold text-slate-500 truncate max-w-[80px]" title={lead.country || 'Global'}>
+      <td className="py-2 px-3 font-bold text-slate-500 truncate" title={lead.country || 'Global'}>
         {lead.country || 'Global'}
       </td>
-      <td className="py-1.5 px-2">
-        <span className={`inline-block px-1.5 py-0.5 rounded border text-[9px] font-black tracking-wide ${leadCategoryClass(actionCategory)}`}>
+      <td className="py-2 px-3">
+        <span className={`inline-flex max-w-full px-2 py-1 rounded border text-[9px] font-black tracking-wide ${leadCategoryClass(actionCategory)}`}>
           {actionCategory}
         </span>
       </td>
-      <td className="py-1.5 px-2">
-        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-black ${
+      <td className="py-2 px-3">
+        <span className={`inline-block px-2 py-1 rounded text-[9px] font-black ${
           lead.priority === 'High' ? 'bg-red-50 text-red-700 border border-red-100' :
           lead.priority === 'Medium' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
           'bg-slate-100 text-slate-600'
@@ -82,7 +82,7 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
           {lead.priority || 'Medium'}
         </span>
       </td>
-      <td className="py-1.5 px-2 text-center">
+      <td className="py-2 px-3 text-center">
         <span className={`inline-block px-1.5 py-0.5 rounded-full font-extrabold text-[9px] ${
           score >= 70 ? 'bg-emerald-50 text-emerald-700' :
           score >= 50 ? 'bg-sky-50 text-sky-700' :
@@ -91,12 +91,12 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
           {score}
         </span>
       </td>
-      <td className="py-1.5 px-2 text-center">
+      <td className="py-2 px-3 text-center">
         <span className="inline-block px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-250 font-black text-[9px]">
           {velocity}
         </span>
       </td>
-      <td className="py-1.5 px-2 font-bold text-slate-600">
+      <td className="py-2 px-3 font-bold text-slate-600">
         <div className="flex items-center gap-1">
           <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isWorkingHours ? 'bg-emerald-500' : 'bg-slate-400'}`} />
           <span className={isWorkingHours ? 'text-emerald-700 text-[10px]' : 'text-slate-500 text-[10px]'}>
@@ -104,7 +104,7 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
           </span>
         </div>
       </td>
-      <td className="py-1.5 px-2 text-right" onClick={(e) => e.stopPropagation()}>
+      <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-1">
           <button
             type="button"
@@ -183,11 +183,11 @@ const CrmTableComponent: React.FC<CrmTableProps> = ({
   const allSelected = leads.length > 0 && leads.every((lead) => selectedLeadIdSet.has(lead.id));
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-      <table className="w-full text-left border-collapse text-xs table-fixed">
+    <div className="w-full overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <table className="min-w-[1120px] w-full text-left border-collapse text-xs table-auto">
         <thead>
           <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-            <th className="py-2 px-2 w-8 text-center">
+            <th className="py-2 px-2 w-10 text-center">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -196,14 +196,14 @@ const CrmTableComponent: React.FC<CrmTableProps> = ({
                 aria-label="Select all leads"
               />
             </th>
-            <th className="py-2 px-2 font-extrabold w-44 text-slate-600">Company Name</th>
-            <th className="py-2 px-2 font-extrabold w-20 text-slate-600">Country</th>
-            <th className="py-2 px-2 font-extrabold w-32 text-slate-600">Stage</th>
-            <th className="py-2 px-2 font-extrabold w-20 text-slate-600">Priority</th>
-            <th className="py-2 px-2 font-extrabold text-center w-16 text-slate-600">Score</th>
-            <th className="py-2 px-2 font-extrabold text-center w-16 text-slate-600">Velocity</th>
-            <th className="py-2 px-2 font-extrabold w-24 text-slate-600">Status</th>
-            <th className="py-2 px-2 font-extrabold text-right w-28 text-slate-600">Actions</th>
+            <th className="py-2 px-3 font-extrabold w-[30%] text-slate-600">Company / Product</th>
+            <th className="py-2 px-3 font-extrabold w-[12%] text-slate-600">Country</th>
+            <th className="py-2 px-3 font-extrabold w-[18%] text-slate-600">Stage</th>
+            <th className="py-2 px-3 font-extrabold w-[10%] text-slate-600">Priority</th>
+            <th className="py-2 px-3 font-extrabold text-center w-[8%] text-slate-600">Score</th>
+            <th className="py-2 px-3 font-extrabold text-center w-[8%] text-slate-600">Velocity</th>
+            <th className="py-2 px-3 font-extrabold w-[8%] text-slate-600">Status</th>
+            <th className="py-2 px-3 font-extrabold text-right w-[12%] text-slate-600">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">

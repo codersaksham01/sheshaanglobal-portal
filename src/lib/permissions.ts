@@ -3,10 +3,10 @@ import type { AppUser } from './types';
 export type PortalRole = AppUser['role'];
 
 export const roleTabs: Record<PortalRole, readonly string[]> = {
-  Admin: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'generateResponses', 'blogs', 'tasks', 'accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'users', 'manager', 'letterhead'],
-  Sales: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'templates', 'generateResponses', 'blogs', 'tasks', 'products', 'analytics', 'letterhead'],
-  Accounts: ['overview', 'quotes', 'tasks', 'accounts', 'analytics', 'letterhead'],
-  Operations: ['overview', 'tasks', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'letterhead']
+  Admin: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'teamChat', 'templates', 'generateResponses', 'blogs', 'tasks', 'accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'users', 'auditLog', 'manager', 'letterhead'],
+  Sales: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'teamChat', 'templates', 'generateResponses', 'blogs', 'tasks', 'products', 'analytics', 'letterhead'],
+  Accounts: ['overview', 'quotes', 'teamChat', 'tasks', 'accounts', 'analytics', 'letterhead'],
+  Operations: ['overview', 'teamChat', 'tasks', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'letterhead']
 };
 
 const tableArea: Record<string, string> = {
@@ -25,7 +25,9 @@ const tableArea: Record<string, string> = {
   vendors: 'vendors',
   freight_presets: 'freight',
   freight_rate_history: 'rates',
-  app_users: 'users'
+  app_users: 'users',
+  activity_logs: 'auditLog',
+  team_messages: 'teamChat'
 };
 
 export const canAccessTab = (role: PortalRole, tab: string) => roleTabs[role].includes(tab);
