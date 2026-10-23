@@ -1,6 +1,6 @@
 import React from 'react';
 import { CrmLead } from '../../lib/types/crm';
-import { Mail, Phone, Edit2, Trash2 } from 'lucide-react';
+import { Mail, Phone, Edit2, Trash2, Check } from 'lucide-react';
 
 const TIMEZONE_MAP: Record<string, number> = {
   india: 5.5, sweden: 1, france: 1, uae: 4, usa: -5,
@@ -40,12 +40,13 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
   const localHour = (utcHour + offset + 24) % 24;
   const isWorkingHours = localHour >= 9 && localHour <= 18;
   const localTimeFormatted = `${Math.floor(localHour).toString().padStart(2, '0')}:${Math.round((localHour % 1) * 60).toString().padStart(2, '0')}`;
+  const isSent = actionCategory === 'Email Sent' || actionCategory === 'Follow-up Sent' || (lead.notes && (lead.notes.includes('Email Status: Email Sent') || lead.notes.includes('Email Status: Follow-up Sent')));
 
   return (
     <tr
       onClick={() => onEditLead(lead)}
       className={`hover:bg-slate-50/90 transition-colors cursor-pointer select-none ${
-        selected ? 'bg-sky-50/30' : ''
+        selected ? 'bg-sky-50/30' : isSent ? 'bg-emerald-50/20' : ''
       }`}
     >
       <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -69,7 +70,8 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
         {lead.country || 'Global'}
       </td>
       <td className="py-2 px-3">
-        <span className={`inline-flex max-w-full px-2 py-1 rounded border text-[9px] font-black tracking-wide ${leadCategoryClass(actionCategory)}`}>
+        <span className={`inline-flex items-center gap-1 max-w-full px-2 py-1 rounded border text-[9px] font-black tracking-wide ${leadCategoryClass(actionCategory)}`}>
+          {isSent && <Check className="h-2.5 w-2.5 text-emerald-600 stroke-[3]" />}
           {actionCategory}
         </span>
       </td>
@@ -105,15 +107,36 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
         </div>
       </td>
       <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => onSendEmail(lead)}
-            className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded transition"
-            title="Send Email"
-          >
-            <Mail className="h-3.5 w-3.5" />
-          </button>
+        <div className="flex items-center justify-end gap-1.5">
+          {isSent ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onSendEmail(lead);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-250 text-[10px] font-black transition active:scale-95"
+              title="Email Sent • Click to re-send or follow-up"
+            >
+              <Check className="h-3 w-3 text-emerald-600 stroke-[3]" />
+              <span>Sent</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onSendEmail(lead);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-sky-600 text-white hover:bg-sky-700 text-[10px] font-black uppercase tracking-wider shadow-sm transition active:scale-95"
+              title="Send Reach Out Email"
+            >
+              <Mail className="h-3 w-3" />
+              <span>Send Mail</span>
+            </button>
+          )}
           {lead.phone && (
             <button
               type="button"
@@ -198,7 +221,7 @@ const CrmTableComponent: React.FC<CrmTableProps> = ({
             </th>
             <th className="py-2 px-3 font-extrabold w-[30%] text-slate-600">Company / Product</th>
             <th className="py-2 px-3 font-extrabold w-[12%] text-slate-600">Country</th>
-            <th className="py-2 px-3 font-extrabold w-[18%] text-slate-600">Stage</th>
+            <th className="py-2 px-3 font-extrabold w-[18%] text-slate-600">Outreach / Stage</th>
             <th className="py-2 px-3 font-extrabold w-[10%] text-slate-600">Priority</th>
             <th className="py-2 px-3 font-extrabold text-center w-[8%] text-slate-600">Score</th>
             <th className="py-2 px-3 font-extrabold text-center w-[8%] text-slate-600">Velocity</th>

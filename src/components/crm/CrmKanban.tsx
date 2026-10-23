@@ -1,6 +1,6 @@
 import React from 'react';
 import { CrmLead, CrmStage } from '../../lib/types/crm';
-import { Edit2, Trash2, Mail } from 'lucide-react';
+import { Edit2, Trash2, Mail, Check } from 'lucide-react';
 
 interface CrmKanbanCardProps {
   lead: CrmLead;
@@ -94,9 +94,10 @@ const CrmKanbanCardComponent: React.FC<CrmKanbanCardProps> = ({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             onSendEmail(lead, 'First Reach');
           }}
-          className="w-full mt-2.5 py-1 px-2 bg-sky-600 hover:bg-sky-700 text-white rounded text-[10px] font-black uppercase flex items-center justify-center gap-1 transition shadow-sm"
+          className="w-full mt-2.5 py-1 px-2 bg-sky-600 hover:bg-sky-700 text-white rounded text-[10px] font-black uppercase flex items-center justify-center gap-1 transition shadow-sm active:scale-95"
         >
           <Mail className="h-3 w-3" />
           Send Reach Out
@@ -107,13 +108,34 @@ const CrmKanbanCardComponent: React.FC<CrmKanbanCardProps> = ({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             onSendEmail(lead, 'Follow-up');
           }}
-          className="w-full mt-2.5 py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-black uppercase flex items-center justify-center gap-1 transition shadow-sm"
+          className="w-full mt-2.5 py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-black uppercase flex items-center justify-center gap-1 transition shadow-sm active:scale-95"
         >
           <Mail className="h-3 w-3" />
           Send Follow-up
         </button>
+      )}
+      {(actionCategory === 'Email Sent' || actionCategory === 'Follow-up Sent' || lead.stage === 'Contacted') && (
+        <div className="w-full mt-2.5 py-1 px-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded text-[10px] font-black uppercase flex items-center justify-between transition">
+          <span className="flex items-center gap-1">
+            <Check className="h-3 w-3 text-emerald-600 stroke-[3]" />
+            Sent
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onSendEmail(lead, 'Follow-up');
+            }}
+            className="text-[9px] text-emerald-700 hover:text-emerald-900 underline font-extrabold capitalize"
+            title="Send follow-up email"
+          >
+            Follow-up
+          </button>
+        </div>
       )}
 
       <div className="mt-3 flex justify-between items-center text-[9px] text-slate-400 font-bold border-t border-slate-50 pt-2">
@@ -181,9 +203,11 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
 
       if (actionCat === 'Follow-up Due' && lead.stage !== 'Won' && lead.stage !== 'Lost') {
         columnId = 'Follow-up Due';
+      } else if (actionCat === 'Email Sent' || actionCat === 'Follow-up Sent' || lead.stage === 'Contacted') {
+        columnId = 'Contacted';
       } else if (lead.stage !== 'Won' && lead.stage !== 'Lost' && (lead.stage === 'New Lead' || actionCat === 'Need Reach Out' || actionCat === 'Needs Email Fix')) {
         columnId = 'New Lead';
-      } else if (lead.stage === 'Contacted' || lead.stage === 'Quoted' || lead.stage === 'Negotiation' || lead.stage === 'Won' || lead.stage === 'Lost') {
+      } else if (lead.stage === 'Quoted' || lead.stage === 'Negotiation' || lead.stage === 'Won' || lead.stage === 'Lost') {
         columnId = lead.stage;
       }
 

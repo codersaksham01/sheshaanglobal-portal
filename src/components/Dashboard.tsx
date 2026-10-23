@@ -978,6 +978,7 @@ export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [reachoutSearchQuery, setReachoutSearchQuery] = useState('');
   const [reachoutCountryFilter, setReachoutCountryFilter] = useState('All');
@@ -1419,8 +1420,9 @@ export const Dashboard: React.FC = () => {
     setCrmColumnVisibleCounts({});
   }, [crmSearchQuery, crmCountryFilter, crmSortKey]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (options?: { silent?: boolean } | unknown) => {
+    const isSilent = typeof options === 'object' && options !== null && 'silent' in options ? Boolean((options as { silent?: boolean }).silent) : false;
+    if (!isSilent) setLoading(true);
     try {
       const [
         { data: qData },
@@ -1516,7 +1518,8 @@ export const Dashboard: React.FC = () => {
       console.warn('Error fetching dashboard data:', err);
       alert(err?.message || 'Failed to sync dashboard data with database.');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
+      setInitialDataLoaded(true);
     }
   };
 
@@ -1793,6 +1796,11 @@ export const Dashboard: React.FC = () => {
     if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
     if (leadResponded(lead)) return 'Responded / Qualify';
     if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
+
+    const emailStatus = leadEmailStatus(lead);
+    if (emailStatus === 'Email Sent') return 'Email Sent';
+    if (emailStatus === 'Follow-up Sent') return 'Follow-up Sent';
+
     if (leadNextFollowUpScheduled(lead)) return 'Next Follow-up';
     if (leadHasOutreach(lead)) return 'Waiting Reply';
     return 'Review';
@@ -3056,40 +3064,95 @@ export const Dashboard: React.FC = () => {
             'Next Action': 'Waiting for buyer response'
           };
 
-    // 1. Launch email client instantly (non-blocking)
+    const updatedNotes = setLeadNoteValues(lead, fields);
+    const nextStage = ['Won', 'Lost'].includes(lead.stage) ? lead.stage : 'Contacted';
+
+    // 1. Optimistically update local state immediately so UI updates without delay or page reload
+    setLeads((prevLeads) =>
+      prevLeads.map((l) =>
+        l.id === lead.id
+          ? {
+              ...l,
+              notes: updatedNotes,
+              stage: nextStage,
+              next_follow_up: nextFollowUp,
+              updated_at: new Date().toISOString()
+            }
+          : l
+      )
+    );
+
+    setSelectedCrmLead((prev) =>
+      prev && prev.id === lead.id
+        ? {
+            ...prev,
+            notes: updatedNotes,
+            stage: nextStage,
+            next_follow_up: nextFollowUp,
+            updated_at: new Date().toISOString()
+          }
+        : prev
+    );
+
+    // 2. Launch email client instantly (non-blocking)
     const mailtoUrl = `mailto:${cleanEmails.join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = mailtoUrl;
-    document.body.appendChild(iframe);
-    setTimeout(() => {
-      document.body.removeChild(iframe);
-    }, 300);
+    try {
+      const link = document.createElement('a');
+      link.href = mailtoUrl;
+      link.rel = 'noopener noreferrer';
+      link.click();
+    } catch {
+      window.open(mailtoUrl, '_blank', 'noopener,noreferrer');
+    }
 
-    // 2. Perform database actions in the background concurrently
+    // 3. Perform database actions in the background concurrently without page reload
     (async () => {
-      const { error: leadUpdateError } = await supabase.from('leads').update({
-        notes: setLeadNoteValues(lead, fields),
-        stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : 'Contacted',
-        next_follow_up: nextFollowUp
-      }).eq('id', lead.id);
+      try {
+        const { error: leadUpdateError } = await supabase.from('leads').update({
+          notes: updatedNotes,
+          stage: nextStage,
+          next_follow_up: nextFollowUp
+        }).eq('id', lead.id);
 
-      if (leadUpdateError) {
-        console.error('Could not update lead outreach status:', leadUpdateError.message);
-        return;
+        if (leadUpdateError) {
+          console.error('Could not update lead outreach status:', leadUpdateError.message);
+          return;
+        }
+
+        const activityPayload = {
+          client_id: lead.client_id,
+          lead_id: lead.id,
+          type: 'Email' as const,
+          title: `${mode} email prepared for ${lead.company_name}`,
+          details: `Template: ${template?.name || 'Default message'}\nTo: ${cleanEmails.join(', ')}`,
+          activity_date: today,
+          owner: lead.owner || 'Sana Zeba'
+        };
+
+        const { data: insertedActivity, error: activityError } = await supabase
+          .from('activities')
+          .insert([activityPayload])
+          .select()
+          .single();
+
+        if (!activityError && insertedActivity) {
+          setActivities((prev) => [insertedActivity as TimelineActivity, ...prev]);
+        }
+
+        if (!isMock) {
+          await logPortalAction({
+            action: 'Created',
+            table_name: 'activities',
+            record_id: insertedActivity?.id || '',
+            record_label: `${mode} email for ${lead.company_name}`,
+            details: `${mode} email launched for ${lead.company_name}.`
+          });
+        }
+      } catch (err) {
+        console.error('Error updating outreach status or activity:', err);
       }
-
-      saveRecord<TimelineActivity>('activities', null, {
-        client_id: lead.client_id,
-        lead_id: lead.id,
-        type: 'Email',
-        title: `${mode} email prepared for ${lead.company_name}`,
-        details: `Template: ${template?.name || 'Default message'}\nTo: ${cleanEmails.join(', ')}`,
-        activity_date: today,
-        owner: lead.owner || 'Sana Zeba'
-      }, resetActivityForm);
     })();
-  }, [extractContactEmails, resolveCrmEmailTemplate, replaceLeadTemplateVars, saveRecord, fetchData]);
+  }, [extractContactEmails, resolveCrmEmailTemplate, replaceLeadTemplateVars, leadNoteValue, setLeadNoteValues, isMock, logPortalAction]);
 
   const handleLeadWhatsApp = useCallback(async (lead: Lead) => {
     if (!lead.phone) {
@@ -3103,38 +3166,93 @@ export const Dashboard: React.FC = () => {
     const today = new Date().toISOString().slice(0, 10);
     const nextFollowUpDate = new Date();
     nextFollowUpDate.setDate(nextFollowUpDate.getDate() + 3);
+    const nextFollowUp = nextFollowUpDate.toISOString().slice(0, 10);
 
-    // 1. Launch WhatsApp instantly (non-blocking)
+    const updatedNotes = setLeadNoteValues(lead, {
+      'Email Status': 'WhatsApp Sent',
+      'Last Email Sent On': today,
+      'Next Action': 'Waiting for buyer response'
+    });
+    const nextStage = ['Won', 'Lost'].includes(lead.stage) ? lead.stage : 'Contacted';
+
+    // 1. Optimistically update local state immediately
+    setLeads((prevLeads) =>
+      prevLeads.map((l) =>
+        l.id === lead.id
+          ? {
+              ...l,
+              notes: updatedNotes,
+              stage: nextStage,
+              next_follow_up: nextFollowUp,
+              updated_at: new Date().toISOString()
+            }
+          : l
+      )
+    );
+
+    setSelectedCrmLead((prev) =>
+      prev && prev.id === lead.id
+        ? {
+            ...prev,
+            notes: updatedNotes,
+            stage: nextStage,
+            next_follow_up: nextFollowUp,
+            updated_at: new Date().toISOString()
+          }
+        : prev
+    );
+
+    // 2. Launch WhatsApp instantly (non-blocking)
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(body)}`, '_blank', 'noopener,noreferrer');
 
-    // 2. Perform database actions in the background concurrently
+    // 3. Perform database actions in the background concurrently without page reload
     (async () => {
-      const { error: leadUpdateError } = await supabase.from('leads').update({
-        notes: setLeadNoteValues(lead, {
-          'Email Status': 'WhatsApp Sent',
-          'Last Email Sent On': today,
-          'Next Action': 'Waiting for buyer response'
-        }),
-        stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : 'Contacted',
-        next_follow_up: nextFollowUpDate.toISOString().slice(0, 10)
-      }).eq('id', lead.id);
+      try {
+        const { error: leadUpdateError } = await supabase.from('leads').update({
+          notes: updatedNotes,
+          stage: nextStage,
+          next_follow_up: nextFollowUp
+        }).eq('id', lead.id);
 
-      if (leadUpdateError) {
-        console.error('Could not update WhatsApp outreach status:', leadUpdateError.message);
-        return;
+        if (leadUpdateError) {
+          console.error('Could not update WhatsApp outreach status:', leadUpdateError.message);
+          return;
+        }
+
+        const activityPayload = {
+          client_id: lead.client_id,
+          lead_id: lead.id,
+          type: 'Note' as const,
+          title: `WhatsApp message opened for ${lead.company_name}`,
+          details: `Template: ${template?.name || 'Default WhatsApp message'}\nPhone: ${lead.phone}`,
+          activity_date: today,
+          owner: lead.owner || 'Sana Zeba'
+        };
+
+        const { data: insertedActivity, error: activityError } = await supabase
+          .from('activities')
+          .insert([activityPayload])
+          .select()
+          .single();
+
+        if (!activityError && insertedActivity) {
+          setActivities((prev) => [insertedActivity as TimelineActivity, ...prev]);
+        }
+
+        if (!isMock) {
+          await logPortalAction({
+            action: 'Created',
+            table_name: 'activities',
+            record_id: insertedActivity?.id || '',
+            record_label: `WhatsApp message for ${lead.company_name}`,
+            details: `WhatsApp outreach launched for ${lead.company_name}.`
+          });
+        }
+      } catch (err) {
+        console.error('Error recording WhatsApp activity:', err);
       }
-
-      saveRecord<TimelineActivity>('activities', null, {
-        client_id: lead.client_id,
-        lead_id: lead.id,
-        type: 'Note',
-        title: `WhatsApp message opened for ${lead.company_name}`,
-        details: `Template: ${template?.name || 'Default WhatsApp message'}\nPhone: ${lead.phone}`,
-        activity_date: today,
-        owner: lead.owner || 'Sana Zeba'
-      }, resetActivityForm);
     })();
-  }, [templates, selectedCrmTemplate, replaceLeadTemplateVars, saveRecord, fetchData]);
+  }, [templates, selectedCrmTemplate, replaceLeadTemplateVars, setLeadNoteValues, isMock, logPortalAction]);
 
   const handleBuyerWhatsAppReachout = async (client: Client, phone: string) => {
     if (!phone) {
@@ -3165,18 +3283,30 @@ export const Dashboard: React.FC = () => {
     if (linkedLead?.id) {
       const nextFollowUpDate = new Date();
       nextFollowUpDate.setDate(nextFollowUpDate.getDate() + 3);
+      const nextFollowUp = nextFollowUpDate.toISOString().slice(0, 10);
+      const updatedNotes = setLeadNoteValues(linkedLead, {
+        'Email Status': 'WhatsApp Intro Sent',
+        'Last Email Sent On': today,
+        'Next Action': 'Waiting for buyer response'
+      });
+      const nextStage = ['Won', 'Lost'].includes(linkedLead.stage) ? linkedLead.stage : 'Contacted';
+
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === linkedLead.id
+            ? { ...l, notes: updatedNotes, stage: nextStage, next_follow_up: nextFollowUp, updated_at: new Date().toISOString() }
+            : l
+        )
+      );
+
       await supabase.from('leads').update({
-        notes: setLeadNoteValues(linkedLead, {
-          'Email Status': 'WhatsApp Intro Sent',
-          'Last Email Sent On': today,
-          'Next Action': 'Waiting for buyer response'
-        }),
-        stage: ['Won', 'Lost'].includes(linkedLead.stage) ? linkedLead.stage : 'Contacted',
-        next_follow_up: nextFollowUpDate.toISOString().slice(0, 10)
+        notes: updatedNotes,
+        stage: nextStage,
+        next_follow_up: nextFollowUp
       }).eq('id', linkedLead.id);
     }
 
-    await saveRecord<TimelineActivity>('activities', null, {
+    const { data: insertedActivity } = await supabase.from('activities').insert([{
       client_id: client.id,
       lead_id: linkedLead?.id || undefined,
       type: 'Note',
@@ -3184,7 +3314,11 @@ export const Dashboard: React.FC = () => {
       details: `Template: ${template.name || 'WhatsApp Introduction'}\nPhone: ${phone}`,
       activity_date: today,
       owner: 'Sana Zeba'
-    }, resetActivityForm);
+    }]).select().single();
+
+    if (insertedActivity) {
+      setActivities((prev) => [insertedActivity as TimelineActivity, ...prev]);
+    }
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(body)}`, '_blank', 'noopener,noreferrer');
   };
@@ -4190,7 +4324,7 @@ export const Dashboard: React.FC = () => {
         if (crmQueueFilter === 'Need Reach Out') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Need Reach Out';
         if (crmQueueFilter === 'Follow-up Due') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Follow-up Due';
         if (crmQueueFilter === 'Next Follow-up') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Next Follow-up';
-        if (crmQueueFilter === 'Waiting Reply') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Waiting Reply';
+        if (crmQueueFilter === 'Waiting Reply') return lead.stage !== 'Won' && lead.stage !== 'Lost' && (category === 'Waiting Reply' || category === 'Email Sent' || category === 'Follow-up Sent');
         return true;
       });
     }
@@ -4354,7 +4488,7 @@ export const Dashboard: React.FC = () => {
     { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Need Reach Out') },
     { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Follow-up Due') },
     { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
-    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Waiting Reply') },
+    { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && (getLeadActionCategory(lead) === 'Waiting Reply' || getLeadActionCategory(lead) === 'Email Sent' || getLeadActionCategory(lead) === 'Follow-up Sent')) },
     { label: 'Responded / Qualify', description: 'Buyer replied; review requirement', tone: 'teal' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Responded / Qualify') },
     { label: 'Needs Email Fix', description: 'No contactable email found', tone: 'red' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Needs Email Fix') },
     { label: 'Needs Review', description: 'Imported action is unclear', tone: 'violet' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Review') },
@@ -4799,10 +4933,41 @@ export const Dashboard: React.FC = () => {
   const updateLeadTracking = async (lead: Lead, action: LeadTrackingAction, refresh = true) => {
     const actionMap = leadTrackingDefinition(action);
     const today = new Date().toISOString().slice(0, 10);
+    const updatedNotes = setLeadNoteValues(lead, actionMap.fields);
+    const nextStage = ['Won', 'Lost'].includes(lead.stage) ? lead.stage : actionMap.stage;
+    const nextFollowUp = actionMap.nextFollowUp === null ? lead.next_follow_up : actionMap.nextFollowUp;
+
+    // Optimistically update local state immediately
+    setLeads((prevLeads) =>
+      prevLeads.map((l) =>
+        l.id === lead.id
+          ? {
+              ...l,
+              notes: updatedNotes,
+              stage: nextStage,
+              next_follow_up: nextFollowUp,
+              updated_at: new Date().toISOString()
+            }
+          : l
+      )
+    );
+
+    setSelectedCrmLead((prev) =>
+      prev && prev.id === lead.id
+        ? {
+            ...prev,
+            notes: updatedNotes,
+            stage: nextStage,
+            next_follow_up: nextFollowUp,
+            updated_at: new Date().toISOString()
+          }
+        : prev
+    );
+
     const { error } = await supabase.from('leads').update({
-      notes: setLeadNoteValues(lead, actionMap.fields),
-      stage: ['Won', 'Lost'].includes(lead.stage) ? lead.stage : actionMap.stage,
-      next_follow_up: actionMap.nextFollowUp === null ? lead.next_follow_up : actionMap.nextFollowUp
+      notes: updatedNotes,
+      stage: nextStage,
+      next_follow_up: nextFollowUp
     }).eq('id', lead.id);
 
     if (error) {
@@ -4810,7 +4975,7 @@ export const Dashboard: React.FC = () => {
       return false;
     }
 
-    await supabase.from('activities').insert([{
+    const { data: insertedActivity } = await supabase.from('activities').insert([{
       client_id: lead.client_id,
       lead_id: lead.id,
       type: action === 'responded' ? 'Status' : 'Email',
@@ -4818,9 +4983,13 @@ export const Dashboard: React.FC = () => {
       details: `Smart CRM tracker updated ${lead.company_name}.`,
       activity_date: today,
       owner: lead.owner || 'Sana Zeba'
-    }]);
+    }]).select().single();
 
-    if (refresh) await fetchData();
+    if (insertedActivity) {
+      setActivities((prev) => [insertedActivity as TimelineActivity, ...prev]);
+    }
+
+    if (refresh) await fetchData({ silent: true });
     return true;
   };
 
@@ -4976,7 +5145,8 @@ export const Dashboard: React.FC = () => {
   ]);
 
   const activeNavItem = navItems.find((item) => item.key === activeTab);
-  const appBusy = loading || importingBuyers;
+  const isSyncing = loading || importingBuyers;
+  const appBusy = (!initialDataLoaded && loading) || importingBuyers;
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
   const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'dataCleanup', 'tasks'].includes(item.key)).slice(0, 5), [navItems]);
   const navGroups = useMemo(() => [
@@ -5022,12 +5192,14 @@ export const Dashboard: React.FC = () => {
     if (category === 'Waiting Reply') return 'bg-slate-100 text-slate-700 border-slate-200';
     if (category === 'Responded / Qualify') return 'bg-teal-50 text-teal-700 border-teal-100';
     if (category === 'Needs Email Fix') return 'bg-red-50 text-red-700 border-red-100';
+    if (category === 'Email Sent' || category === 'Contacted') return 'bg-emerald-50 text-emerald-800 border-emerald-200';
+    if (category === 'Follow-up Sent') return 'bg-teal-50 text-teal-800 border-teal-200';
     return 'bg-violet-50 text-violet-700 border-violet-100';
   }, []);
   const leadEmailMode = useCallback((lead: Lead): 'First Reach' | 'Follow-up' => {
     const category = leadActionCategory(lead);
     if (category === 'Need Reach Out') return 'First Reach';
-    if (category === 'Follow-up Due' || category === 'Next Follow-up' || category === 'Waiting Reply' || category === 'Responded / Qualify') return 'Follow-up';
+    if (category === 'Follow-up Due' || category === 'Next Follow-up' || category === 'Waiting Reply' || category === 'Responded / Qualify' || category === 'Email Sent' || category === 'Follow-up Sent') return 'Follow-up';
     if (leadNextActionRequiresFollowUp(lead) || leadFollowUpDue(lead) || leadHasOutreach(lead)) return 'Follow-up';
     return 'First Reach';
   }, [leadActionCategory]);
@@ -5186,6 +5358,7 @@ export const Dashboard: React.FC = () => {
   const renderLeadCard = (lead: Lead, compact = false) => {
     const actionCategory = leadActionCategory(lead);
     const emailMode = leadEmailMode(lead);
+    const isSent = actionCategory === 'Email Sent' || actionCategory === 'Follow-up Sent' || (lead.notes && (lead.notes.includes('Email Status: Email Sent') || lead.notes.includes('Email Status: Follow-up Sent')));
     const emailButtonLabel = actionCategory === 'Needs Email Fix' ? 'Fix Email' : emailMode;
     const whatsappButtonLabel = lead.phone ? 'WhatsApp' : 'Add Phone';
     const sendWindow = bestSendWindowIST(lead.country);
@@ -5231,11 +5404,33 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" onClick={() => actionCategory === 'Needs Email Fix' ? editLeadFromCard(lead) : handleLeadEmail(lead, emailMode)} className="flex-1 min-w-[104px] py-1.5 bg-slate-900 text-white rounded font-bold flex items-center justify-center gap-1.5 hover:bg-slate-800 transition">
-          <Mail className="h-3.5 w-3.5" />
-          {emailButtonLabel}
-        </button>
-        <button type="button" onClick={() => lead.phone ? handleLeadWhatsApp(lead) : editLeadFromCard(lead)} className={`flex-1 min-w-[104px] py-1.5 text-white rounded font-bold flex items-center justify-center gap-1.5 transition ${lead.phone ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-500 hover:bg-slate-600'}`}>
+        {isSent ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              handleLeadEmail(lead, 'Follow-up');
+            }}
+            className="flex-1 min-w-[104px] py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold flex items-center justify-center gap-1.5 transition shadow-sm active:scale-95"
+            title="Email Sent • Click to send follow-up"
+          >
+            <Check className="h-3.5 w-3.5 stroke-[3]" />
+            ✓ Sent
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              actionCategory === 'Needs Email Fix' ? editLeadFromCard(lead) : handleLeadEmail(lead, emailMode);
+            }}
+            className="flex-1 min-w-[104px] py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded font-bold flex items-center justify-center gap-1.5 transition shadow-sm active:scale-95"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            {emailButtonLabel}
+          </button>
+        )}
+        <button type="button" onClick={(e) => { e.preventDefault(); lead.phone ? handleLeadWhatsApp(lead) : editLeadFromCard(lead); }} className={`flex-1 min-w-[104px] py-1.5 text-white rounded font-bold flex items-center justify-center gap-1.5 transition ${lead.phone ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-500 hover:bg-slate-600'}`}>
           <Phone className="h-3.5 w-3.5" />
           {whatsappButtonLabel}
         </button>
@@ -5293,7 +5488,7 @@ export const Dashboard: React.FC = () => {
       if (error) {
         alert(`Failed to schedule follow-up: ${error.message}`);
       }
-      await fetchData();
+      await fetchData({ silent: true });
       return;
     }
 
@@ -5324,9 +5519,9 @@ export const Dashboard: React.FC = () => {
 
     if (error) {
       alert(`Failed to move lead: ${error.message}`);
-      await fetchData();
+      await fetchData({ silent: true });
     } else {
-      await fetchData();
+      await fetchData({ silent: true });
     }
   }, [fetchData, leads]);
 
@@ -5869,7 +6064,7 @@ export const Dashboard: React.FC = () => {
                 <span className="portal-chip"><Ship className="h-3.5 w-3.5 text-indigo-600" /> {shipments.length.toLocaleString()} shipments</span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className="portal-chip"><RefreshCw className={`h-3.5 w-3.5 ${appBusy ? 'animate-spin text-sky-600' : 'text-slate-400'}`} /> {lastSyncedLabel || 'Ready'}</span>
+                <span className="portal-chip"><RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-sky-600' : 'text-slate-400'}`} /> {lastSyncedLabel || 'Ready'}</span>
                 <span className="portal-chip portal-chip-strong">USD/INR {fxRate.toFixed(2)}</span>
               </div>
             </div>
@@ -6200,7 +6395,7 @@ export const Dashboard: React.FC = () => {
               <SmartCommandCenter
                 pulse={smartPortalPulse}
                 insights={smartPortalInsights}
-                busy={appBusy}
+                busy={isSyncing}
                 lastSyncedAt={lastSyncedLabel}
                 operatorName={operatorName}
                 commandMetrics={businessCommandMetrics}
@@ -7146,15 +7341,28 @@ export const Dashboard: React.FC = () => {
                           <div className="mt-3 flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => handleLeadEmail(lead, leadEmailMode(lead))}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleLeadEmail(lead, leadEmailMode(lead));
+                              }}
                               disabled={!hasContactableEmail(lead.contact_email)}
-                              className="flex-1 rounded-lg bg-slate-950 px-3 py-2 font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                              className={`flex-1 rounded-lg px-3 py-2 font-black text-white disabled:cursor-not-allowed disabled:opacity-40 transition active:scale-95 flex items-center justify-center gap-1.5 ${
+                                category === 'Email Sent' || category === 'Follow-up Sent' || (lead.notes && (lead.notes.includes('Email Status: Email Sent') || lead.notes.includes('Email Status: Follow-up Sent')))
+                                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                                  : 'bg-sky-600 hover:bg-sky-700'
+                              }`}
                             >
-                              Email
+                              {(category === 'Email Sent' || category === 'Follow-up Sent' || (lead.notes && (lead.notes.includes('Email Status: Email Sent') || lead.notes.includes('Email Status: Follow-up Sent')))) && (
+                                <Check className="h-3.5 w-3.5 stroke-[3]" />
+                              )}
+                              {category === 'Email Sent' || category === 'Follow-up Sent' || (lead.notes && (lead.notes.includes('Email Status: Email Sent') || lead.notes.includes('Email Status: Follow-up Sent'))) ? 'Sent' : 'Send Mail'}
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleLeadWhatsApp(lead)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleLeadWhatsApp(lead);
+                              }}
                               disabled={!hasContactablePhone(lead.phone)}
                               className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 font-black text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
                             >
@@ -7327,8 +7535,8 @@ export const Dashboard: React.FC = () => {
                             <SmallMetric label="Phone" value={lead.phone || 'Missing'} />
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" onClick={() => handleLeadEmail(lead, 'First Reach')} className="flex-1 rounded-lg bg-slate-950 px-3 py-2 font-black text-white hover:bg-slate-800">Reach Out Email</button>
-                            <button type="button" onClick={() => handleLeadEmail(lead, 'Follow-up')} className="flex-1 rounded-lg bg-amber-500 px-3 py-2 font-black text-white hover:bg-amber-400">Follow-up Email</button>
+                            <button type="button" onClick={(e) => { e.preventDefault(); handleLeadEmail(lead, 'First Reach'); }} className="flex-1 rounded-lg bg-slate-950 px-3 py-2 font-black text-white hover:bg-slate-800">Reach Out Email</button>
+                            <button type="button" onClick={(e) => { e.preventDefault(); handleLeadEmail(lead, 'Follow-up'); }} className="flex-1 rounded-lg bg-amber-500 px-3 py-2 font-black text-white hover:bg-amber-400">Follow-up Email</button>
                           </div>
                           <div className="mt-2 grid grid-cols-3 gap-1.5">
                             <button type="button" onClick={() => updateLeadTracking(lead, 'email_sent')} className="rounded bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700 hover:bg-sky-100">Contacted</button>
@@ -9353,7 +9561,7 @@ export const Dashboard: React.FC = () => {
                     </div>
                     <button
                       type="button"
-                      onClick={fetchData}
+                      onClick={() => fetchData()}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50"
                       title="Refresh chat"
                     >

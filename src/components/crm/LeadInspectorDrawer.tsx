@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { CrmLead, CrmStage, CrmPriority } from '../../lib/types/crm';
-import { X, Clock, Mail, Phone, Gauge, Globe2, PackageSearch, Target, Database } from 'lucide-react';
+import { X, Clock, Mail, Phone, Gauge, Globe2, PackageSearch, Target, Database, Check } from 'lucide-react';
 
 interface LeadInspectorDrawerProps {
   lead: CrmLead | null;
@@ -200,19 +200,37 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
               </div>
             </div>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => onSendEmail?.(lead)}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-slate-950 text-xs font-black text-white hover:bg-slate-800"
-              >
-                <Mail className="h-4 w-4" />
-                Smart Email
-              </button>
+              {actionCategory === 'Email Sent' || actionCategory === 'Follow-up Sent' || (lead?.notes && (lead.notes.includes('Email Status: Email Sent') || lead.notes.includes('Email Status: Follow-up Sent'))) ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onSendEmail?.(lead);
+                  }}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-600 text-xs font-black text-white hover:bg-emerald-700 transition active:scale-95 shadow-sm"
+                  title="Email already sent. Click to send follow-up."
+                >
+                  <Check className="h-4 w-4 stroke-[3]" />
+                  ✓ Sent (Follow-up)
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onSendEmail?.(lead);
+                  }}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-sky-600 text-xs font-black text-white hover:bg-sky-700 transition active:scale-95 shadow-sm"
+                >
+                  <Mail className="h-4 w-4" />
+                  Send Reach Out
+                </button>
+              )}
               <button
                 type="button"
                 disabled={!phone}
                 onClick={() => onSendWhatsApp?.(lead)}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-600 text-xs font-black text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-emerald-600 text-xs font-black text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40 transition active:scale-95"
               >
                 <Phone className="h-4 w-4" />
                 WhatsApp
