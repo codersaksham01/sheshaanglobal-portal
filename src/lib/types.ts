@@ -28,13 +28,59 @@ export interface Vendor {
   contact_name?: string;
   contact_email?: string;
   phone?: string;
+  address?: string;
   city?: string;
+  state?: string;
   country?: string;
+  postal_code?: string;
+  tax_id?: string;
+  bank_details?: string;
   product_categories?: string;
   payment_terms?: string;
   rating?: number;
   status: 'Active' | 'Preferred' | 'On Hold';
   notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AgreementProductItem {
+  id: string;
+  product_name: string;
+  specification?: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total_price: number;
+}
+
+export interface SupplierAgreement {
+  id: string;
+  agreement_number: string;
+  supplier_id?: string;
+  supplier_company_name: string;
+  supplier_contact_name?: string;
+  supplier_email?: string;
+  supplier_phone?: string;
+  supplier_address?: string;
+  supplier_tax_id?: string;
+  date: string;
+  effective_date?: string;
+  shipment_target_date: string;
+  loading_port: string;
+  destination_port: string;
+  incoterm: string;
+  payment_terms: string;
+  items: AgreementProductItem[];
+  currency: string;
+  total_value: number;
+  agreement_title: string;
+  agreement_body: string;
+  include_stamp: boolean;
+  include_signature: boolean;
+  signatory_name: string;
+  signatory_title: string;
+  status: 'Draft' | 'Sent' | 'Signed' | 'Fulfilled' | 'Cancelled';
   created_at?: string;
   updated_at?: string;
 }

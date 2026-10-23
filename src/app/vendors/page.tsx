@@ -1,18 +1,18 @@
 'use client';
 
 import React from 'react';
-import { AuthGate } from '../../components/AuthGate';
-import { AppErrorBoundary } from '../../components/AppErrorBoundary';
-import { Dashboard } from '../../components/Dashboard';
+import { PortalLayout } from '../../components/portal/PortalLayout';
+import { SuppliersWorkspace } from '../../components/suppliers/SuppliersWorkspace';
+import { Building2 } from 'lucide-react';
 
-export default function Page() {
+export default function VendorsPage() {
   return (
-    <main className="min-h-screen bg-slate-50">
-      <AuthGate>
-        <AppErrorBoundary>
-          <Dashboard initialTab="vendors" />
-        </AppErrorBoundary>
-      </AuthGate>
-    </main>
+    <PortalLayout
+      activeTab="vendors"
+      pageTitle="Suppliers & Agreement Management"
+      pageIcon={<Building2 className="h-4 w-4" />}
+    >
+      <SuppliersWorkspace />
+    </PortalLayout>
   );
 }

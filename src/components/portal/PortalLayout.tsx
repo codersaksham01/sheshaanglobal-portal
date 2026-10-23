@@ -236,7 +236,7 @@ export function PortalLayoutContent({
     { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" />, href: '/generate-responses' },
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
     { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, href: '/products', count: badgeCounts.products },
-    { key: 'vendors', label: 'Suppliers / Vendors', icon: <Building2 className="h-4 w-4" />, href: '/vendors', count: badgeCounts.vendors },
+    { key: 'vendors', label: 'Suppliers Management', icon: <Building2 className="h-4 w-4" />, href: '/vendors', count: badgeCounts.vendors },
     { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, href: '/users', count: badgeCounts.users }
   ], [badgeCounts, quickCounts]);
 

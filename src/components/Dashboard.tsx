@@ -35,6 +35,7 @@ import { CrmTable } from './crm/CrmTable';
 import { CrmKanban } from './crm/CrmKanban';
 import { LeadInspectorDrawer } from './crm/LeadInspectorDrawer';
 import { LetterheadGenerator } from './LetterheadGenerator';
+import { SuppliersWorkspace } from './suppliers/SuppliersWorkspace';
 import { CrmLead, CrmStage } from '../lib/types/crm';
 import { useCallback } from 'react';
 import { SmartCommandCenter, SmartCommandMetric, SmartPortalInsight, SmartPortalPulse } from './SmartCommandCenter';
@@ -5177,7 +5178,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
       { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" /> },
       { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" /> },
       { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, count: products.length },
-      { key: 'vendors', label: 'Suppliers / Vendors', icon: <Building2 className="h-4 w-4" />, count: vendors.length },
+      { key: 'vendors', label: 'Suppliers Management', icon: <Building2 className="h-4 w-4" />, count: vendors.length },
       { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, count: users.length }
     ];
     return allNavItems.filter((item) => canAccessTab(currentRole, item.key));
@@ -5232,6 +5233,10 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
     }
     if (tab === 'overview') {
       router.push('/overview');
+      return;
+    }
+    if (tab === 'vendors') {
+      router.push('/vendors');
       return;
     }
     setActiveTab(tab);
@@ -8899,53 +8904,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
           )}
 
           {activeTab === 'vendors' && (
-            <TwoColumnManager
-              formTitle={editingVendorId ? 'Edit Supplier / Vendor' : 'Add Supplier / Vendor'}
-              onSubmit={saveVendor}
-              onCancel={resetVendorForm}
-              isEditing={Boolean(editingVendorId)}
-              form={
-                <>
-                  <TextInput label="Company Name *" value={vendorForm.company_name || ''} onChange={(value) => setVendorForm({ ...vendorForm, company_name: value })} required />
-                  <TextInput label="Contact Person" value={vendorForm.contact_name || ''} onChange={(value) => setVendorForm({ ...vendorForm, contact_name: value })} />
-                  <TextInput label="Email" type="email" value={vendorForm.contact_email || ''} onChange={(value) => setVendorForm({ ...vendorForm, contact_email: value })} />
-                  <TextInput label="Phone / WhatsApp" value={vendorForm.phone || ''} onChange={(value) => setVendorForm({ ...vendorForm, phone: value })} />
-                  <TextInput label="City" value={vendorForm.city || ''} onChange={(value) => setVendorForm({ ...vendorForm, city: value })} />
-                  <TextInput label="Country" value={vendorForm.country || ''} onChange={(value) => setVendorForm({ ...vendorForm, country: value })} />
-                  <TextInput label="Product Categories" value={vendorForm.product_categories || ''} onChange={(value) => setVendorForm({ ...vendorForm, product_categories: value })} />
-                  <TextInput label="Payment Terms" value={vendorForm.payment_terms || ''} onChange={(value) => setVendorForm({ ...vendorForm, payment_terms: value })} />
-                  <NumberInput label="Rating (1-5)" value={Number(vendorForm.rating) || 3} onChange={(value) => setVendorForm({ ...vendorForm, rating: Math.max(1, Math.min(5, Math.round(value))) })} />
-                  <SelectInput label="Status" value={vendorForm.status || 'Active'} onChange={(value) => setVendorForm({ ...vendorForm, status: value as Vendor['status'] })} options={['Active', 'Preferred', 'On Hold']} />
-                  <TextArea label="Notes" value={vendorForm.notes || ''} onChange={(value) => setVendorForm({ ...vendorForm, notes: value })} />
-                </>
-              }
-            >
-              {vendors.length === 0 ? <EmptyState text="No suppliers or vendors registered yet." /> : (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  {vendors.map((vendor) => (
-                    <div key={vendor.id} className="bg-white border border-slate-200 rounded-lg p-4 text-xs shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-bold text-slate-900">{vendor.company_name}</div>
-                          <div className="text-[10px] text-slate-500">{vendor.city || 'City N/A'}, {vendor.country || 'Country N/A'} | {vendor.status}</div>
-                        </div>
-                        <RowActions currentRole={currentRole} onEdit={() => { setEditingVendorId(vendor.id); setVendorForm(vendor); }} onDelete={() => deleteRecord('vendors', vendor.id, 'supplier/vendor')} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 mt-3">
-                        <SmallMetric label="Categories" value={vendor.product_categories || 'Not set'} />
-                        <SmallMetric label="Payment" value={vendor.payment_terms || 'Not set'} />
-                        <SmallMetric label="Rating" value={`${vendor.rating || 3}/5`} />
-                        <SmallMetric label="Contact" value={vendor.contact_name || vendor.phone || 'Not set'} />
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {vendor.contact_email && <a href={`mailto:${vendor.contact_email}`} className="px-3 py-1.5 rounded bg-slate-900 text-white font-bold flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> Email</a>}
-                        {vendor.phone && <a target="_blank" rel="noreferrer" href={`https://wa.me/${vendor.phone.replace(/[^\d]/g, '')}`} className="px-3 py-1.5 rounded bg-emerald-600 text-white font-bold flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" /> WhatsApp</a>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </TwoColumnManager>
+            <SuppliersWorkspace />
           )}
 
           {activeTab === 'freight' && (
