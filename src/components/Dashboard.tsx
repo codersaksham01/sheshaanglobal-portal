@@ -1769,14 +1769,33 @@ export const Dashboard: React.FC = () => {
   };
   const leadIsPotentialBuyer = (lead: Lead) => leadNoteValue(lead, 'Potential Buyer').toLowerCase() === 'yes';
   const leadHasOutreach = (lead: Lead) => {
-    const status = leadEmailStatus(lead).toLowerCase();
-    return ['sent', 'follow', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded', 'email'].some((term) => status.includes(term)) 
-      || leadsWithOutreachActivities.has(lead.id);
+    const rawStatus = leadEmailStatus(lead).trim().toLowerCase();
+    if (
+      !rawStatus || 
+      rawStatus === 'not tracked' || 
+      rawStatus === 'not contacted' || 
+      rawStatus === 'not sent' || 
+      rawStatus === 'none' || 
+      rawStatus === 'pending' ||
+      rawStatus.startsWith('not ') || 
+      rawStatus.includes('no email') ||
+      rawStatus.includes('to be contacted')
+    ) {
+      return leadsWithOutreachActivities.has(lead.id);
+    }
+    const positiveOutreachTerms = ['sent', 'opened', 'replied', 'whatsapp', 'reached', 'contacted', 'done', 'yes', 'responded'];
+    return positiveOutreachTerms.some((term) => rawStatus.includes(term)) || leadsWithOutreachActivities.has(lead.id);
   };
   const leadResponded = (lead: Lead) => leadResponseStatus(lead).toLowerCase().startsWith('yes');
   const leadFollowUpDue = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() <= todayEnd && !['Won', 'Lost'].includes(lead.stage));
   const leadNextFollowUpScheduled = (lead: Lead) => Boolean(lead.next_follow_up && new Date(lead.next_follow_up).getTime() > todayEnd && !leadResponded(lead) && !['Won', 'Lost'].includes(lead.stage));
-  const leadNeedsFirstReach = (lead: Lead) => !leadHasOutreach(lead) && !['Won', 'Lost'].includes(lead.stage);
+  const leadNeedsFirstReach = (lead: Lead) => {
+    if (['Won', 'Lost'].includes(lead.stage)) return false;
+    const status = leadEmailStatus(lead).trim().toLowerCase();
+    if (status === 'email sent' || status === 'follow-up sent' || status === 'whatsapp sent') return false;
+    if (lead.stage === 'New Lead') return true;
+    return !leadHasOutreach(lead);
+  };
   const leadMissingEmail = (lead: Lead) => hasEmailQualityIssue(lead.contact_email);
   const leadNextActionRequiresFollowUp = (lead: Lead) => {
     const nextAction = leadNextAction(lead).toLowerCase();
@@ -1798,13 +1817,13 @@ export const Dashboard: React.FC = () => {
     if (emailStatus === 'Follow-up Sent') return 'Follow-up Sent';
 
     const nextAction = leadNextAction(lead).toLowerCase();
-    if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
+    if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email') || nextAction.includes('reach out')) return 'Need Reach Out';
     if (leadResponded(lead)) return 'Responded / Qualify';
     if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
 
     if (leadNextFollowUpScheduled(lead)) return 'Next Follow-up';
     if (leadHasOutreach(lead)) return 'Waiting Reply';
-    return 'Review';
+    return 'Need Reach Out';
   }, [activities, todayEnd]);
 
   const leadActionCategoryById = useMemo(() => {
@@ -4345,7 +4364,7 @@ export const Dashboard: React.FC = () => {
     if (crmQueueFilter) {
       finalLeads = searchedCrmLeads.filter((lead) => {
         const category = getLeadActionCategory(lead);
-        if (crmQueueFilter === 'Need Reach Out') return lead.stage !== 'Won' && lead.stage !== 'Lost' && (category === 'Need Reach Out' || category === 'Email Sent');
+        if (crmQueueFilter === 'Need Reach Out') return lead.stage !== 'Won' && lead.stage !== 'Lost' && (category === 'Need Reach Out' || leadNeedsFirstReach(lead));
         if (crmQueueFilter === 'Follow-up Due') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Follow-up Due';
         if (crmQueueFilter === 'Next Follow-up') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Next Follow-up';
         if (crmQueueFilter === 'Waiting Reply') return lead.stage !== 'Won' && lead.stage !== 'Lost' && (category === 'Waiting Reply' || category === 'Email Sent' || category === 'Follow-up Sent');
@@ -4520,7 +4539,7 @@ export const Dashboard: React.FC = () => {
   };
 
   const crmQueues = useMemo(() => [
-    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Need Reach Out') },
+    { label: 'Need Reach Out', description: 'No email/WhatsApp sent yet', tone: 'sky' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && (getLeadActionCategory(lead) === 'Need Reach Out' || leadNeedsFirstReach(lead))) },
     { label: 'Follow-up Due', description: 'Due now or next action says follow-up', tone: 'amber' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Follow-up Due') },
     { label: 'Next Follow-up', description: 'Scheduled later with date', tone: 'indigo' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && getLeadActionCategory(lead) === 'Next Follow-up').sort((a, b) => (a.next_follow_up || '').localeCompare(b.next_follow_up || '')) },
     { label: 'Waiting Reply', description: 'Reached out, no response yet', tone: 'slate' as const, leads: searchedCrmLeads.filter((lead) => lead.stage !== 'Won' && lead.stage !== 'Lost' && (getLeadActionCategory(lead) === 'Waiting Reply' || getLeadActionCategory(lead) === 'Email Sent' || getLeadActionCategory(lead) === 'Follow-up Sent')) },
@@ -6964,6 +6983,25 @@ export const Dashboard: React.FC = () => {
                         {['All', ...crmCountries].map((c) => (
                           <option key={c} value={c}>{c === 'All' ? 'All Countries' : c}</option>
                         ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
+                    </div>
+                    <div className="relative w-44">
+                      <select
+                        aria-label="Filter Queue"
+                        value={crmQueueFilter || 'All'}
+                        onChange={(e) => setCrmQueueFilter(e.target.value === 'All' ? null : e.target.value)}
+                        className={`h-10 w-full appearance-none rounded-lg border px-3 pr-9 text-xs font-bold outline-none focus:ring-2 ${
+                          crmQueueFilter === 'Need Reach Out'
+                            ? 'border-sky-400 bg-sky-50 text-sky-800 focus:ring-sky-500/20'
+                            : 'border-slate-200 bg-slate-50 text-slate-800 focus:border-sky-500 focus:ring-sky-500/20'
+                        }`}
+                      >
+                        <option value="All">All Outreach Queues</option>
+                        <option value="Need Reach Out">⚡ Need Reach Out</option>
+                        <option value="Follow-up Due">⏰ Follow-up Due</option>
+                        <option value="Next Follow-up">📅 Next Follow-up</option>
+                        <option value="Waiting Reply">⏳ Waiting Reply</option>
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
                     </div>
