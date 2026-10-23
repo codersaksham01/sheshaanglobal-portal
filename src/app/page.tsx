@@ -1,18 +1,18 @@
 'use client';
 
 import React from 'react';
-import { AuthGate } from '../components/AuthGate';
-import { Dashboard } from '../components/Dashboard';
-import { AppErrorBoundary } from '../components/AppErrorBoundary';
+import { PortalLayout } from '../components/portal/PortalLayout';
+import { CrmWorkspace } from '../components/crm/CrmWorkspace';
+import { KanbanSquare } from 'lucide-react';
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-slate-50">
-      <AuthGate>
-        <AppErrorBoundary>
-          <Dashboard />
-        </AppErrorBoundary>
-      </AuthGate>
-    </main>
+    <PortalLayout
+      activeTab="crm"
+      pageTitle="Smart CRM Pipeline"
+      pageIcon={<KanbanSquare className="h-4 w-4" />}
+    >
+      <CrmWorkspace />
+    </PortalLayout>
   );
 }

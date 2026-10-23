@@ -1,6 +1,7 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import readXlsxFile from 'read-excel-file/browser';
 import { dbType, isMock, supabase } from '../lib/supabaseClient';
 import {
@@ -954,7 +955,7 @@ const LogisticsCompletionGauge = ({ completionRate, totalCount }: { completionRa
   );
 };
 
-export const Dashboard: React.FC = () => {
+export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'overview' }) => {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -975,7 +976,8 @@ export const Dashboard: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [teamMessages, setTeamMessages] = useState<TeamMessage[]>([]);
-  const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
+  const router = useRouter();
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
@@ -5210,6 +5212,26 @@ export const Dashboard: React.FC = () => {
     return canAccessTab(currentRole, activeTab);
   }, [currentRole, activeTab]);
   const navigateToTab = (tab: TabKey) => {
+    if (tab === 'crm') {
+      router.push('/crm');
+      return;
+    }
+    if (tab === 'quotes') {
+      router.push('/quotes');
+      return;
+    }
+    if (tab === 'shipments') {
+      router.push('/shipments');
+      return;
+    }
+    if (tab === 'overview') {
+      router.push('/overview');
+      return;
+    }
+    if (tab === 'accounts') {
+      router.push('/accounts');
+      return;
+    }
     setActiveTab(tab);
     setShowMobileMenu(false);
     setShowNotifications(false);
