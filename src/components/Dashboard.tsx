@@ -3094,16 +3094,44 @@ export const Dashboard: React.FC = () => {
         : prev
     );
 
-    // 2. Launch email client instantly (non-blocking)
+    // Optimistically update activities immediately so timeline & category counters update in 0ms
+    const optimisticActivity: TimelineActivity = {
+      id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      client_id: lead.client_id,
+      lead_id: lead.id,
+      type: 'Email',
+      title: `${mode} email prepared for ${lead.company_name}`,
+      details: `Template: ${template?.name || 'Default message'}\nTo: ${cleanEmails.join(', ')}`,
+      activity_date: today,
+      owner: lead.owner || 'Sana Zeba'
+    };
+    setActivities((prev) => [optimisticActivity, ...prev]);
+    showToast(`✓ Email prepared for ${lead.company_name} • Sent status marked`, 'success');
+
+    // 2. Launch email client asynchronously without blocking the UI thread or suspending the portal tab
     const mailtoUrl = `mailto:${cleanEmails.join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    try {
-      const link = document.createElement('a');
-      link.href = mailtoUrl;
-      link.rel = 'noopener noreferrer';
-      link.click();
-    } catch {
-      window.open(mailtoUrl, '_blank', 'noopener,noreferrer');
-    }
+    setTimeout(() => {
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.top = '-9999px';
+        iframe.style.left = '-9999px';
+        iframe.style.width = '1px';
+        iframe.style.height = '1px';
+        iframe.style.opacity = '0.001';
+        iframe.style.pointerEvents = 'none';
+        iframe.setAttribute('aria-hidden', 'true');
+        iframe.src = mailtoUrl;
+        document.body.appendChild(iframe);
+        setTimeout(() => {
+          try {
+            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+          } catch {}
+        }, 3000);
+      } catch {
+        window.open(mailtoUrl, '_blank', 'noopener,noreferrer');
+      }
+    }, 10);
 
     // 3. Perform database actions in the background concurrently without page reload
     (async () => {
@@ -5002,7 +5030,7 @@ export const Dashboard: React.FC = () => {
     try {
       await Promise.all(selectedLeads.map((lead) => updateLeadTracking(lead, action, false)));
       setSelectedLeadIds([]);
-      await fetchData();
+      await fetchData({ silent: true });
     } catch (err) {
       console.warn('Bulk lead update failed:', err);
       alert('Could not update selected leads. Please try again.');
@@ -5016,18 +5044,15 @@ export const Dashboard: React.FC = () => {
     }
 
     try {
-      setLoading(true);
       const results = await Promise.all(selectedLeads.map((lead) => supabase.from('leads').update(buildUpdates(lead)).eq('id', lead.id)));
       const failed = results.find((result) => result.error);
       if (failed?.error) throw new Error(failed.error.message || 'Bulk update failed.');
       setSelectedLeadIds([]);
-      await fetchData();
+      await fetchData({ silent: true });
       showToast(successMessage, 'success');
     } catch (err) {
       console.warn('Bulk lead patch failed:', err);
       alert(err instanceof Error ? err.message : 'Could not update selected leads.');
-    } finally {
-      setLoading(false);
     }
   };
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { CrmLead } from '../../lib/types/crm';
-import { Mail, Phone, Edit2, Trash2, Check } from 'lucide-react';
+import { Mail, Phone, Edit2, Trash2, Check, Copy } from 'lucide-react';
 
 const TIMEZONE_MAP: Record<string, number> = {
   india: 5.5, sweden: 1, france: 1, uae: 4, usa: -5,
@@ -135,6 +135,20 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
             >
               <Mail className="h-3 w-3" />
               <span>Send Mail</span>
+            </button>
+          )}
+          {lead.contact_email && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                navigator.clipboard.writeText(lead.contact_email || '');
+              }}
+              className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition"
+              title={`Copy email address: ${lead.contact_email}`}
+            >
+              <Copy className="h-3 w-3" />
             </button>
           )}
           {lead.phone && (
