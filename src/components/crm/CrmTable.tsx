@@ -106,8 +106,8 @@ const CrmTableRowComponent: React.FC<CrmTableRowProps> = ({
           </span>
         </div>
       </td>
-      <td className="py-2 px-3 text-right" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-end gap-1.5">
+      <td className="py-2 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+        <div className="inline-flex items-center justify-end gap-1 shrink-0">
           {isSent ? (
             <button
               type="button"

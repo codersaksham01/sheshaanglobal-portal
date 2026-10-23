@@ -902,60 +902,77 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
           {directoryViewMode === 'table' ? (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full text-left text-xs border-collapse min-w-[650px] sm:min-w-full">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3 px-4">Supplier Company</th>
-                      <th className="py-3 px-4">Contact & Location</th>
-                      <th className="py-3 px-4">GSTIN / Tax ID</th>
-                      <th className="py-3 px-4">Commodities Handled</th>
-                      <th className="py-3 px-4">Payment Terms</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
+                      <th className="py-3 px-3 sm:px-4">Supplier Company</th>
+                      <th className="py-3 px-3 sm:px-4 hidden sm:table-cell">Contact & Location</th>
+                      <th className="py-3 px-3 sm:px-4 hidden lg:table-cell">GSTIN / Tax ID</th>
+                      <th className="py-3 px-3 sm:px-4 hidden xl:table-cell">Commodities Handled</th>
+                      <th className="py-3 px-3 sm:px-4 hidden 2xl:table-cell">Payment Terms</th>
+                      <th className="py-3 px-2 sm:px-3 text-center">Status</th>
+                      <th className="py-3 px-3 sm:px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredSuppliers.map(supplier => (
                       <tr key={supplier.id} className="hover:bg-slate-50/70 transition">
-                        <td className="py-3 px-4 font-bold text-slate-900">
-                          <button
-                            type="button"
-                            onClick={() => setViewingSupplier(supplier)}
-                            className="font-bold text-slate-900 hover:text-blue-900 hover:underline text-left block"
-                            title="Click to view full supplier profile"
-                          >
-                            {supplier.company_name}
-                          </button>
-                          <span className="block text-[10px] text-slate-400 font-normal">
-                            {supplier.notes ? supplier.notes.slice(0, 45) + '...' : 'Registered supplier'}
+                        <td className="py-3 px-3 sm:px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-8 w-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-900 font-black text-xs shrink-0">
+                              {supplier.company_name.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 max-w-[200px] sm:max-w-xs">
+                              <button
+                                type="button"
+                                onClick={() => setViewingSupplier(supplier)}
+                                className="font-bold text-slate-900 hover:text-blue-900 hover:underline text-left block leading-tight truncate"
+                                title="Click to view full supplier profile"
+                              >
+                                {supplier.company_name}
+                              </button>
+                              <span className="sm:hidden text-[10px] text-slate-500 flex items-center gap-1 mt-0.5 truncate">
+                                <MapPin className="h-2.5 w-2.5 text-slate-400 shrink-0" />
+                                {supplier.city || 'City N/A'}, {supplier.country || 'India'}
+                              </span>
+                              <span className="hidden sm:block text-[10px] text-slate-400 font-normal truncate">
+                                {supplier.notes ? supplier.notes.slice(0, 45) + '...' : 'Registered supplier'}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3 sm:px-4 hidden sm:table-cell">
+                          <span className="font-semibold text-slate-800 block truncate max-w-[160px]">{supplier.contact_name || 'N/A'}</span>
+                          <span className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
+                            <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                            <span className="truncate max-w-[150px]">{supplier.city || 'City N/A'}, {supplier.country || 'India'}</span>
                           </span>
                         </td>
 
-                        <td className="py-3 px-4">
-                          <span className="font-semibold text-slate-800 block">{supplier.contact_name || 'N/A'}</span>
-                          <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                            <MapPin className="h-3 w-3 text-slate-400" />
-                            {supplier.city || 'City N/A'}, {supplier.country || 'India'}
-                          </span>
+                        <td className="py-3 px-3 sm:px-4 font-mono font-bold text-slate-700 text-[11px] hidden lg:table-cell whitespace-nowrap">
+                          {supplier.tax_id ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">
+                              {supplier.tax_id}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300 font-sans font-normal italic">None</span>
+                          )}
                         </td>
 
-                        <td className="py-3 px-4 font-mono font-bold text-slate-700 text-[11px]">
-                          {supplier.tax_id || <span className="text-slate-300 font-sans font-normal italic">None</span>}
-                        </td>
-
-                        <td className="py-3 px-4 max-w-xs">
+                        <td className="py-3 px-3 sm:px-4 max-w-xs hidden xl:table-cell">
                           <span className="text-slate-700 font-medium line-clamp-1">
                             {supplier.product_categories || 'Various Agri Products'}
                           </span>
                         </td>
 
-                        <td className="py-3 px-4 text-slate-700 font-medium">
-                          {supplier.payment_terms || 'Standard'}
+                        <td className="py-3 px-3 sm:px-4 text-slate-700 font-medium hidden 2xl:table-cell whitespace-nowrap">
+                          <span className="text-slate-600 font-semibold">{supplier.payment_terms || 'Standard'}</span>
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-2 sm:px-3 text-center whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black ${
                               supplier.status === 'Preferred'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : supplier.status === 'Active'
@@ -967,64 +984,66 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                           </span>
                         </td>
 
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
+                        <td className="py-3 px-3 sm:px-4 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
                             <button
                               type="button"
                               onClick={() => setViewingSupplier(supplier)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-[11px] font-bold shadow-sm transition active:scale-95"
-                              title="View all details, contact info, and agreements"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 text-[11px] font-bold shadow-sm transition active:scale-95 shrink-0"
+                              title="View full supplier details"
                             >
-                              <Eye className="h-3.5 w-3.5 text-blue-900" />
-                              <span>View Info</span>
+                              <Eye className="h-3.5 w-3.5 text-blue-900 shrink-0" />
+                              <span className="hidden xl:inline">View</span>
                             </button>
 
                             <button
                               onClick={() => handleCreateAgreementForSupplier(supplier)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-[11px] font-bold shadow-sm transition active:scale-95"
-                              title="Create Agreement"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-[11px] font-bold shadow-sm transition active:scale-95 shrink-0"
+                              title="Draft Supply Agreement"
                             >
-                              <FileCheck2 className="h-3 w-3 text-orange-400" />
-                              <span>Agreement</span>
+                              <FileCheck2 className="h-3.5 w-3.5 text-orange-400 shrink-0" />
+                              <span className="hidden xl:inline">Agreement</span>
                             </button>
 
-                            {supplier.contact_email && (
-                              <a
-                                href={`mailto:${supplier.contact_email}`}
-                                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-blue-900 hover:bg-slate-100"
-                                title="Send Email"
+                            <div className="flex items-center gap-1 pl-1 border-l border-slate-200 ml-0.5 shrink-0">
+                              {supplier.phone && (
+                                <a
+                                  href={`https://wa.me/${supplier.phone.replace(/[^\d]/g, '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 shrink-0 transition"
+                                  title={`WhatsApp: ${supplier.phone}`}
+                                >
+                                  <Phone className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+
+                              {supplier.contact_email && (
+                                <a
+                                  href={`mailto:${supplier.contact_email}`}
+                                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-900 hover:bg-blue-50 hover:border-blue-200 shrink-0 transition"
+                                  title={`Email: ${supplier.contact_email}`}
+                                >
+                                  <Mail className="h-3.5 w-3.5" />
+                                </a>
+                              )}
+
+                              <button
+                                onClick={() => handleOpenEditSupplier(supplier)}
+                                className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 shrink-0 transition"
+                                title="Edit Supplier"
                               >
-                                <Mail className="h-3.5 w-3.5" />
-                              </a>
-                            )}
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </button>
 
-                            {supplier.phone && (
-                              <a
-                                href={`https://wa.me/${supplier.phone.replace(/[^\d]/g, '')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1.5 rounded-lg border border-slate-200 text-emerald-600 hover:bg-emerald-50"
-                                title="WhatsApp"
+                              <button
+                                onClick={() => handleDeleteSupplier(supplier.id, supplier.company_name)}
+                                className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 shrink-0 transition"
+                                title="Delete Supplier"
                               >
-                                <Phone className="h-3.5 w-3.5" />
-                              </a>
-                            )}
-
-                            <button
-                              onClick={() => handleOpenEditSupplier(supplier)}
-                              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                              title="Edit Supplier"
-                            >
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </button>
-
-                            <button
-                              onClick={() => handleDeleteSupplier(supplier.id, supplier.company_name)}
-                              className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -1179,32 +1198,38 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full text-left text-xs border-collapse min-w-[650px] sm:min-w-full">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
-                    <th className="py-3 px-4">Agreement Ref</th>
-                    <th className="py-3 px-4">Supplier / Vendor</th>
-                    <th className="py-3 px-4">Commodity / Qty</th>
-                    <th className="py-3 px-4">Target Window</th>
-                    <th className="py-3 px-4">Contract Value</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
+                    <th className="py-3 px-3 sm:px-4">Agreement Ref</th>
+                    <th className="py-3 px-3 sm:px-4">Supplier / Vendor</th>
+                    <th className="py-3 px-3 sm:px-4 hidden sm:table-cell">Commodity / Qty</th>
+                    <th className="py-3 px-3 sm:px-4 hidden lg:table-cell">Target Window</th>
+                    <th className="py-3 px-3 sm:px-4">Contract Value</th>
+                    <th className="py-3 px-2 sm:px-3 text-center">Status</th>
+                    <th className="py-3 px-3 sm:px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredAgreements.map(agreement => (
                     <tr key={agreement.id} className="hover:bg-slate-50/70 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-blue-900">
-                        {agreement.agreement_number}
-                        <span className="block text-[10px] text-slate-400 font-sans font-normal">{agreement.date}</span>
+                      <td className="py-3 px-3 sm:px-4 font-mono font-bold text-blue-900 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5">
+                          <FileText className="h-3.5 w-3.5 text-blue-900 shrink-0" />
+                          {agreement.agreement_number}
+                        </span>
+                        <span className="block text-[10px] text-slate-400 font-sans font-normal ml-5">{agreement.date}</span>
                       </td>
 
-                      <td className="py-3 px-4">
-                        <span className="font-bold text-slate-900 block">{agreement.supplier_company_name}</span>
-                        <span className="text-[10px] text-slate-500">{agreement.supplier_contact_name || 'Contact'}</span>
+                      <td className="py-3 px-3 sm:px-4">
+                        <span className="font-bold text-slate-900 block truncate max-w-[200px]">{agreement.supplier_company_name}</span>
+                        <span className="text-[10px] text-slate-500 sm:hidden block truncate max-w-[180px]">
+                          {agreement.items.map(i => i.product_name).join(', ')}
+                        </span>
+                        <span className="text-[10px] text-slate-400 hidden sm:block truncate max-w-[180px]">{agreement.supplier_contact_name || 'Contact'}</span>
                       </td>
 
-                      <td className="py-3 px-4 max-w-xs">
+                      <td className="py-3 px-3 sm:px-4 max-w-xs hidden sm:table-cell">
                         <span className="font-bold text-slate-800 line-clamp-1">
                           {agreement.items.map(i => i.product_name).join(', ') || 'Agri Cargo'}
                         </span>
@@ -1213,18 +1238,18 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                         </span>
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-3 sm:px-4 hidden lg:table-cell whitespace-nowrap">
                         <span className="font-semibold text-slate-800 block">{agreement.shipment_target_date}</span>
                         <span className="text-[10px] text-slate-400">{agreement.incoterm}</span>
                       </td>
 
-                      <td className="py-3 px-4 font-black text-slate-900">
+                      <td className="py-3 px-3 sm:px-4 font-black text-slate-900 whitespace-nowrap">
                         {formatCurrency(agreement.total_value, agreement.currency)}
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-2 sm:px-3 text-center whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black ${
                             agreement.status === 'Signed'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : 'bg-slate-100 text-slate-600 border border-slate-200'
@@ -1234,8 +1259,8 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="py-3 px-3 sm:px-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
                           <button
                             onClick={() => {
                               setAgreementNumber(agreement.agreement_number);
@@ -1254,18 +1279,19 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                               if (agreement.supplier_id) setSelectedSupplierId(agreement.supplier_id);
                               setActiveView('studio');
                             }}
-                            className="p-1.5 text-slate-600 hover:text-blue-900 rounded-lg hover:bg-slate-100"
-                            title="Open in Studio"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-blue-900 text-[11px] font-bold shadow-sm transition active:scale-95 shrink-0"
+                            title="Open in Agreement Studio"
                           >
-                            <Eye className="h-4 w-4" />
+                            <Eye className="h-3.5 w-3.5 text-blue-900 shrink-0" />
+                            <span className="hidden sm:inline">Open</span>
                           </button>
 
                           <button
                             onClick={() => handleDeleteAgreement(agreement.id, agreement.agreement_number)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
-                            title="Delete"
+                            className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 shrink-0 transition"
+                            title="Delete Agreement"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       </td>
@@ -2022,43 +2048,43 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                           </span>
                         </div>
 
-                        <table className="w-full text-left text-[9px] border-collapse border border-slate-300">
+                        <table className="w-full text-left text-[9px] border-collapse border border-slate-300 table-fixed">
                           <thead>
                             <tr className="bg-blue-900 text-white font-black text-[8.5px] uppercase">
-                              <th className="py-1.5 px-2.5 border border-slate-400 w-8 text-center">#</th>
-                              <th className="py-1.5 px-2.5 border border-slate-400">Commodity / Item Description</th>
-                              <th className="py-1.5 px-2.5 border border-slate-400">Quality Specifications</th>
-                              <th className="py-1.5 px-2.5 border border-slate-400 text-center">Quantity</th>
-                              <th className="py-1.5 px-2.5 border border-slate-400 text-right">Unit Price</th>
-                              <th className="py-1.5 px-2.5 border border-slate-400 text-right">Total ({currency})</th>
+                              <th className="py-1.5 px-2 border border-slate-400 w-[6%] text-center">#</th>
+                              <th className="py-1.5 px-2 border border-slate-400 w-[28%]">Commodity / Item Description</th>
+                              <th className="py-1.5 px-2 border border-slate-400 w-[28%]">Quality Specifications</th>
+                              <th className="py-1.5 px-2 border border-slate-400 w-[14%] text-center">Quantity</th>
+                              <th className="py-1.5 px-2 border border-slate-400 w-[11%] text-right">Unit Price</th>
+                              <th className="py-1.5 px-2 border border-slate-400 w-[13%] text-right">Total ({currency})</th>
                             </tr>
                           </thead>
                           <tbody>
                             {productItems.map((item, idx) => (
                               <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                                <td className="py-1.5 px-2.5 border border-slate-300 text-center font-bold">{idx + 1}</td>
-                                <td className="py-1.5 px-2.5 border border-slate-300 font-extrabold text-slate-900">
+                                <td className="py-1.5 px-2 border border-slate-300 text-center font-bold">{idx + 1}</td>
+                                <td className="py-1.5 px-2 border border-slate-300 font-extrabold text-slate-900 truncate">
                                   {item.product_name || 'Commodity item'}
                                 </td>
-                                <td className="py-1.5 px-2.5 border border-slate-300 text-[8px] text-slate-600">
+                                <td className="py-1.5 px-2 border border-slate-300 text-[8px] text-slate-600 line-clamp-2">
                                   {item.specification || 'Standard export quality'}
                                 </td>
-                                <td className="py-1.5 px-2.5 border border-slate-300 text-center font-bold">
+                                <td className="py-1.5 px-2 border border-slate-300 text-center font-bold">
                                   {item.quantity} {item.unit}
                                 </td>
-                                <td className="py-1.5 px-2.5 border border-slate-300 text-right font-semibold">
+                                <td className="py-1.5 px-2 border border-slate-300 text-right font-semibold">
                                   {formatCurrency(item.unit_price, currency)}
                                 </td>
-                                <td className="py-1.5 px-2.5 border border-slate-300 text-right font-black text-slate-900">
+                                <td className="py-1.5 px-2 border border-slate-300 text-right font-black text-slate-900">
                                   {formatCurrency(item.total_price, currency)}
                                 </td>
                               </tr>
                             ))}
                             <tr className="bg-slate-100 font-black text-[9.5px]">
-                              <td colSpan={5} className="py-1.5 px-2.5 border border-slate-300 text-right uppercase text-slate-700">
+                              <td colSpan={5} className="py-1.5 px-2 border border-slate-300 text-right uppercase text-slate-700">
                                 Total Contract Value ({currency}):
                               </td>
-                              <td className="py-1.5 px-2.5 border border-slate-300 text-right text-blue-900">
+                              <td className="py-1.5 px-2 border border-slate-300 text-right text-blue-900">
                                 {formatCurrency(agreementGrandTotal, currency)}
                               </td>
                             </tr>
