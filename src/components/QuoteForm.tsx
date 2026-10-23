@@ -246,6 +246,7 @@ class PdfPreviewBoundary extends React.Component<
 
 export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, onCancel }) => {
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [freightPresets, setFreightPresets] = useState<FreightPreset[]>([]);
@@ -1291,6 +1292,27 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     }
   };
 
+  // Delete Quote
+  const handleDeleteQuote = async () => {
+    if (!quoteId) return;
+    if (!confirm(`Are you sure you want to permanently delete quote "${quoteNumber || 'this quote'}" and all its line items? This cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await supabase.from('quote_items').delete().eq('quote_id', quoteId);
+      const { error } = await supabase.from('quotes').delete().eq('id', quoteId);
+      if (error) throw error;
+      clearDraft();
+      onSaveSuccess();
+    } catch (err: any) {
+      console.error('Error deleting quote:', err);
+      alert(err?.message || 'Could not delete this quote.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const manualPreviewClient = useMemo<Client | undefined>(() => {
     if (buyerEntryMode !== 'manual') return undefined;
     const companyName = (manualBuyer.company_name || '').trim();
@@ -1554,6 +1576,18 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             >
               {downloadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}
+            </button>
+          )}
+          {quoteId && (
+            <button
+              type="button"
+              onClick={handleDeleteQuote}
+              disabled={deleting || loading}
+              className="flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-semibold rounded shadow transition min-h-9"
+              title="Delete this quote"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete
             </button>
           )}
           <button
@@ -2705,6 +2739,42 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <div className="flex justify-between font-bold text-sky-400 border-t border-slate-800 pt-2 text-sm">
               <span>Total CIF Value:</span>
               <span className="font-mono text-base">{formatCurrency(totalCIF)}</span>
+            </div>
+          </div>
+
+          {/* Form Footer Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200">
+            {quoteId ? (
+              <button
+                type="button"
+                onClick={handleDeleteQuote}
+                disabled={deleting || loading}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition disabled:opacity-50"
+                title="Permanently delete this quote"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Delete Quote
+              </button>
+            ) : <div />}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  writeLatestDraft();
+                  onCancel();
+                }}
+                className="flex-1 sm:flex-none px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold shadow transition disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Quote
+              </button>
             </div>
           </div>
         </form>

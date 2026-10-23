@@ -87,10 +87,46 @@ const CrmMetric = ({
 );
 
 export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps) {
-  const [leads, setLeads] = useState<Lead[]>(initialLeads || []);
-  const [activities, setActivities] = useState<TimelineActivity[]>([]);
+  // Fast hydration from sessionStorage if available for 0ms initial render
+  const [leads, setLeads] = useState<Lead[]>(() => {
+    if (initialLeads && initialLeads.length) return initialLeads;
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('cached_crm_leads');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
+  const [activities, setActivities] = useState<TimelineActivity[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('cached_crm_activities');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
-  const [loading, setLoading] = useState(!initialLeads);
+  const [loading, setLoading] = useState(() => {
+    if (initialLeads && initialLeads.length) return false;
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('cached_crm_leads');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return false;
+        }
+      } catch {}
+    }
+    return true;
+  });
   const [importingBuyers, setImportingBuyers] = useState(false);
   const [importDataSource, setImportDataSource] = useState<'Custom Researched Data' | 'Embassy Data'>('Custom Researched Data');
 
@@ -123,10 +159,17 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
       ]);
 
       const loadedLeads = lData || [];
+      const loadedActivities = aData || [];
       setLeads(loadedLeads);
-      setActivities(aData || []);
+      setActivities(loadedActivities);
       setTemplates(mtData || []);
       if (onLeadsChange) onLeadsChange(loadedLeads);
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('cached_crm_leads', JSON.stringify(loadedLeads));
+          sessionStorage.setItem('cached_crm_activities', JSON.stringify(loadedActivities));
+        } catch {}
+      }
     } catch (err) {
       console.error('Failed to load CRM data:', err);
     } finally {

@@ -1496,7 +1496,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
         }
         
         if (finalStage !== lead.stage) {
-          supabase.from('leads').update({ stage: finalStage }).eq('id', lead.id);
           return { ...lead, stage: finalStage };
         }
         return lead;
@@ -3567,13 +3566,38 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   };
 
   const handleDeleteQuote = async (id: string) => {
-    if (!confirm('Delete this quote and all line items?')) return;
-    const { error } = await supabase.from('quotes').delete().eq('id', id);
-    if (error) {
-      alert(error.message || 'Failed to delete quote');
-      return;
+    if (!confirm('Are you sure you want to permanently delete this quote and all its line items?')) return;
+    try {
+      await supabase.from('quote_items').delete().eq('quote_id', id);
+      const { error } = await supabase.from('quotes').delete().eq('id', id);
+      if (error) {
+        alert(error.message || 'Failed to delete quote');
+        return;
+      }
+      setQuotes((current) => current.filter((q) => q.id !== id));
+      setSelectedQuoteIds((current) => current.filter((qid) => qid !== id));
+      showToast('Quote deleted successfully', 'success');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete quote');
     }
-    setQuotes((current) => current.filter((q) => q.id !== id));
+  };
+
+  const handleBulkDeleteQuotes = async () => {
+    if (!selectedQuoteIds.length) return;
+    if (!confirm(`Are you sure you want to permanently delete ${selectedQuoteIds.length} selected quotes and all their line items?`)) return;
+    try {
+      await Promise.all(selectedQuoteIds.map((id) => supabase.from('quote_items').delete().eq('quote_id', id)));
+      const { error } = await supabase.from('quotes').delete().in('id', selectedQuoteIds);
+      if (error) {
+        alert(error.message || 'Failed to delete quotes');
+        return;
+      }
+      setQuotes((current) => current.filter((q) => !selectedQuoteIds.includes(q.id)));
+      setSelectedQuoteIds([]);
+      showToast(`Deleted ${selectedQuoteIds.length} quotes successfully`, 'success');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete quotes');
+    }
   };
 
   const saveClient = async (e: React.FormEvent) => {
@@ -6628,7 +6652,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                               <button onClick={() => createShipmentFromQuote(q)} className="p-1 hover:bg-teal-50 text-slate-500 hover:text-teal-700 rounded transition" title="Auto-create shipment">
                                 <Ship className="h-4 w-4" />
                               </button>
-                              <button onClick={() => handleDeleteQuote(q.id)} disabled={currentRole !== 'Admin'} className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition disabled:opacity-40 disabled:hover:bg-transparent" title={currentRole === 'Admin' ? "Delete Deal" : "Only Admins can delete"}>
+                              <button onClick={() => handleDeleteQuote(q.id)} className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition" title="Delete Deal">
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
@@ -6642,6 +6666,14 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                     <div className="bulk-action-bar sticky bottom-0 flex items-center justify-between gap-3 bg-slate-900 text-white px-4 py-2.5 border-t border-slate-700">
                       <span className="text-xs font-bold">{selectedQuoteIds.length} selected</span>
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleBulkDeleteQuotes}
+                          className="text-xs px-3 py-1 rounded bg-rose-600 hover:bg-rose-500 font-bold text-white transition flex items-center gap-1.5"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete ({selectedQuoteIds.length})
+                        </button>
                         <select className="text-xs bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white" onChange={async e => { const st = e.target.value as Quote['status']; if (!st) return; await Promise.all(selectedQuoteIds.map(id => supabase.from('quotes').update({ status: st }).eq('id', id))); setQuotes(prev => prev.map(q => selectedQuoteIds.includes(q.id) ? { ...q, status: st } : q)); setSelectedQuoteIds([]); showToast(`Updated ${selectedQuoteIds.length} quotes to ${st}`, 'success'); }}>
                           <option value="">Bulk Status…</option>
                           {(['Draft','Sent','Negotiation','Approved','Invoice Raised','Shipped','Closed','Lost'] as Quote['status'][]).map(s => <option key={s} value={s}>{s}</option>)}

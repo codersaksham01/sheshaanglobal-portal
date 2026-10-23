@@ -120,19 +120,24 @@ export function PortalLayoutContent({
   const [showNotifications, setShowNotifications] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
 
-  // Quick stats state
+  // Quick stats state with 0ms cached initial render
   const [quickCounts, setQuickCounts] = useState<{
     buyers: number;
     inquiries: number;
     leads: number;
     quotes: number;
     shipments: number;
-  }>({
-    buyers: 0,
-    inquiries: 0,
-    leads: 0,
-    quotes: 0,
-    shipments: 0
+  }>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = sessionStorage.getItem('portal_quick_counts');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === 'object') return parsed;
+        }
+      } catch {}
+    }
+    return { buyers: 0, inquiries: 0, leads: 0, quotes: 0, shipments: 0 };
   });
 
   // USD / INR FX State
@@ -162,30 +167,32 @@ export function PortalLayoutContent({
     })();
   }, [authEmail]);
 
-  // Load quick counters
+  // Load quick counters in background and cache
   useEffect(() => {
     let isMounted = true;
     (async () => {
       try {
         const [
-          { count: leadsCount },
-          { count: clientsCount },
-          { count: quotesCount },
-          { count: shipmentsCount }
+          { data: lData },
+          { data: cData },
+          { data: qData },
+          { data: sData }
         ] = await Promise.all([
-          supabase.from('leads').select('*', { count: 'exact', head: true }),
-          supabase.from('clients').select('*', { count: 'exact', head: true }),
-          supabase.from('quotes').select('*', { count: 'exact', head: true }),
-          supabase.from('shipments').select('*', { count: 'exact', head: true })
+          supabase.from('leads').select('*'),
+          supabase.from('clients').select('*'),
+          supabase.from('quotes').select('*'),
+          supabase.from('shipments').select('*')
         ]);
         if (isMounted) {
-          setQuickCounts({
-            leads: leadsCount || 0,
-            buyers: clientsCount || 0,
-            quotes: quotesCount || 0,
-            shipments: shipmentsCount || 0,
+          const counts = {
+            leads: lData?.length || 0,
+            buyers: cData?.length || 0,
+            quotes: qData?.length || 0,
+            shipments: sData?.length || 0,
             inquiries: 0
-          });
+          };
+          setQuickCounts(counts);
+          sessionStorage.setItem('portal_quick_counts', JSON.stringify(counts));
         }
       } catch {
         // Silent

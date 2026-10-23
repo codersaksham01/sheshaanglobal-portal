@@ -352,13 +352,46 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey && su
 
 class FirebaseDB {
   private db = getFirestore(firebaseApp!);
+  private tableCache = new Map<string, { data: any[]; timestamp: number }>();
+  private inFlightRequests = new Map<string, Promise<any[]>>();
+  private cacheTTL = 30_000; // 30 seconds TTL for fast client navigation
 
-  private async fetchRawTable(table: string) {
-    const snapshot = await getDocs(collection(this.db, table));
-    return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+  private invalidateCache(table: string) {
+    this.tableCache.delete(table);
+    this.inFlightRequests.delete(table);
+    if (table === 'quote_items' || table === 'clients') {
+      this.tableCache.delete('quotes');
+      this.inFlightRequests.delete('quotes');
+    }
   }
 
-  private async fetchTable(table: string) {
+  private async fetchRawTable(table: string): Promise<any[]> {
+    const now = Date.now();
+    const cached = this.tableCache.get(table);
+    if (cached && now - cached.timestamp < this.cacheTTL) {
+      return cached.data;
+    }
+
+    if (this.inFlightRequests.has(table)) {
+      return this.inFlightRequests.get(table)!;
+    }
+
+    const request = (async () => {
+      try {
+        const snapshot = await getDocs(collection(this.db, table));
+        const data = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+        this.tableCache.set(table, { data, timestamp: Date.now() });
+        return data;
+      } finally {
+        this.inFlightRequests.delete(table);
+      }
+    })();
+
+    this.inFlightRequests.set(table, request);
+    return request;
+  }
+
+  private async fetchTable(table: string): Promise<any[]> {
     try {
       const records = await this.fetchRawTable(table);
 
@@ -401,6 +434,7 @@ class FirebaseDB {
           saved.push(record);
         }
 
+        this.invalidateCache(table);
         return { data: saved, error: null };
       } catch (error) {
         return { data: [], error: { message: errorMessage(error, `Could not save ${table} to Firebase.`) } };
@@ -409,22 +443,24 @@ class FirebaseDB {
 
     return {
       select: () => {
-        const basePromise = fetchTable().then(data => ({ data, error: null }));
+        const fetchPromise = fetchTable();
+        const basePromise = fetchPromise.then(data => ({ data, error: null }));
 
         const selectMethods = {
           order: (col: string, { ascending = true } = {}) => {
-            const orderPromise = fetchTable().then(data => {
-              data.sort((a: any, b: any) => {
+            const orderPromise = fetchPromise.then(data => {
+              const sorted = [...data];
+              sorted.sort((a: any, b: any) => {
                 if (a[col] < b[col]) return ascending ? -1 : 1;
                 if (a[col] > b[col]) return ascending ? 1 : -1;
                 return 0;
               });
-              return { data, error: null };
+              return { data: sorted, error: null };
             });
             return makeChainPromise(orderPromise);
           },
           eq: (col: string, val: any) => {
-            const eqPromise = fetchTable().then(data => ({
+            const eqPromise = fetchPromise.then(data => ({
               data: data.filter((r: any) => r[col] === val),
               error: null
             }));
@@ -454,7 +490,9 @@ class FirebaseDB {
             const data = await this.fetchRawTable(table);
             const matches = data.filter((r: any) => r[col] === val);
             if (!matches.length) return { data: [], error: null };
-            return writeRecords(matches.map((record: any) => ({ ...record, ...values })));
+            const res = await writeRecords(matches.map((record: any) => ({ ...record, ...values })));
+            this.invalidateCache(table);
+            return res;
           } catch (error) {
             return { data: [], error: { message: errorMessage(error, `Could not update ${table} in Firebase.`) } };
           }
@@ -472,6 +510,7 @@ class FirebaseDB {
               await deleteDoc(doc(this.db, table, record.id));
             }
 
+            this.invalidateCache(table);
             return { data: null, error: null };
           } catch (error) {
             return { data: null, error: { message: errorMessage(error, `Could not delete ${table} from Firebase.`) } };
@@ -488,6 +527,7 @@ class FirebaseDB {
               await deleteDoc(doc(this.db, table, record.id));
             }
 
+            this.invalidateCache(table);
             return { data: null, error: null };
           } catch (error) {
             return { data: null, error: { message: errorMessage(error, `Could not delete ${table} from Firebase.`) } };
