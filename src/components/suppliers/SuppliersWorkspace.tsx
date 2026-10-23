@@ -29,7 +29,8 @@ import {
   LayoutGrid,
   List,
   Columns,
-  Check
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -239,6 +240,7 @@ export function SuppliersWorkspace() {
   // Modals & Forms
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Vendor | null>(null);
+  const [viewingSupplier, setViewingSupplier] = useState<Vendor | null>(null);
   const [supplierFormData, setSupplierFormData] = useState<Partial<Vendor>>({
     status: 'Active',
     rating: 4,
@@ -916,7 +918,14 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                     {filteredSuppliers.map(supplier => (
                       <tr key={supplier.id} className="hover:bg-slate-50/70 transition">
                         <td className="py-3 px-4 font-bold text-slate-900">
-                          {supplier.company_name}
+                          <button
+                            type="button"
+                            onClick={() => setViewingSupplier(supplier)}
+                            className="font-bold text-slate-900 hover:text-blue-900 hover:underline text-left block"
+                            title="Click to view full supplier profile"
+                          >
+                            {supplier.company_name}
+                          </button>
                           <span className="block text-[10px] text-slate-400 font-normal">
                             {supplier.notes ? supplier.notes.slice(0, 45) + '...' : 'Registered supplier'}
                           </span>
@@ -960,6 +969,16 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
 
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setViewingSupplier(supplier)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-[11px] font-bold shadow-sm transition active:scale-95"
+                              title="View all details, contact info, and agreements"
+                            >
+                              <Eye className="h-3.5 w-3.5 text-blue-900" />
+                              <span>View Info</span>
+                            </button>
+
                             <button
                               onClick={() => handleCreateAgreementForSupplier(supplier)}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-[11px] font-bold shadow-sm transition active:scale-95"
@@ -1034,7 +1053,14 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <h3 className="font-bold text-slate-900 text-sm truncate">{supplier.company_name}</h3>
+                        <button
+                          type="button"
+                          onClick={() => setViewingSupplier(supplier)}
+                          className="font-bold text-slate-900 text-sm truncate hover:text-blue-900 hover:underline text-left block max-w-full"
+                          title="Click to view details"
+                        >
+                          {supplier.company_name}
+                        </button>
                         <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                           <MapPin className="h-3 w-3 text-slate-400" />
                           <span>{supplier.city || 'City N/A'}, {supplier.country || 'India'}</span>
@@ -1084,17 +1110,27 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
 
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setViewingSupplier(supplier)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-[11px] font-bold transition"
+                        title="View Full Supplier Profile"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-blue-900" />
+                        <span>Details</span>
+                      </button>
+
                       {supplier.contact_email && (
-                        <a href={`mailto:${supplier.contact_email}`} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-blue-900">
+                        <a href={`mailto:${supplier.contact_email}`} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-blue-900" title="Send Email">
                           <Mail className="h-3.5 w-3.5" />
                         </a>
                       )}
                       {supplier.phone && (
-                        <a href={`https://wa.me/${supplier.phone.replace(/[^\d]/g, '')}`} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg border border-slate-200 text-emerald-600">
+                        <a href={`https://wa.me/${supplier.phone.replace(/[^\d]/g, '')}`} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg border border-slate-200 text-emerald-600" title="WhatsApp Chat">
                           <Phone className="h-3.5 w-3.5" />
                         </a>
                       )}
-                      <button onClick={() => handleOpenEditSupplier(supplier)} className="p-1.5 rounded-lg border border-slate-200 text-slate-600">
+                      <button onClick={() => handleOpenEditSupplier(supplier)} className="p-1.5 rounded-lg border border-slate-200 text-slate-600" title="Edit Supplier">
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -2406,6 +2442,329 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* VIEW SUPPLIER DETAILS MODAL */}
+      {viewingSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-0 shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-scale-up">
+            {/* Modal Header */}
+            <div className="bg-slate-900 text-white p-5 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="h-11 w-11 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-inner">
+                  <Building2 className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-black text-white">{viewingSupplier.company_name}</h2>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        viewingSupplier.status === 'Preferred'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : viewingSupplier.status === 'Active'
+                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {viewingSupplier.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1 flex items-center gap-1.5 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      {viewingSupplier.city || 'City N/A'}, {viewingSupplier.state ? `${viewingSupplier.state}, ` : ''}{viewingSupplier.country || 'India'}
+                    </span>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-amber-400 font-bold">★ {viewingSupplier.rating || 4}/5 Rating</span>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setViewingSupplier(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Quick Action Ribbon */}
+            <div className="bg-slate-100 border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                {viewingSupplier.phone && (
+                  <a
+                    href={`https://wa.me/${viewingSupplier.phone.replace(/[^\d]/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition active:scale-95"
+                  >
+                    <Phone className="h-3.5 w-3.5" />
+                    <span>WhatsApp ({viewingSupplier.phone})</span>
+                  </a>
+                )}
+
+                {viewingSupplier.contact_email && (
+                  <a
+                    href={`mailto:${viewingSupplier.contact_email}?subject=Sheshaan Global - Commodity Supply Inquiry`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition active:scale-95"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    <span>Send Email</span>
+                  </a>
+                )}
+
+                <button
+                  onClick={() => {
+                    const supp = viewingSupplier;
+                    setViewingSupplier(null);
+                    handleCreateAgreementForSupplier(supp);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-sm transition active:scale-95"
+                >
+                  <FileCheck2 className="h-3.5 w-3.5 text-orange-400" />
+                  <span>Create Supply Agreement</span>
+                </button>
+              </div>
+
+              <button
+                onClick={() => {
+                  const supp = viewingSupplier;
+                  setViewingSupplier(null);
+                  handleOpenEditSupplier(supp);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-white text-slate-700 text-xs font-semibold"
+              >
+                <Edit2 className="h-3.5 w-3.5" />
+                <span>Edit Profile</span>
+              </button>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs">
+              {/* Contact & Location Details */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
+                  Primary Contact & Communication
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Contact Person</span>
+                    <span className="text-xs font-bold text-slate-900 mt-0.5 block">{viewingSupplier.contact_name || 'N/A'}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Email Address</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-semibold text-slate-800">{viewingSupplier.contact_email || 'N/A'}</span>
+                      {viewingSupplier.contact_email && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(viewingSupplier.contact_email || '');
+                            showToast('Email address copied!');
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-700"
+                          title="Copy Email"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Phone / WhatsApp Number</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-semibold text-slate-800">{viewingSupplier.phone || 'N/A'}</span>
+                      {viewingSupplier.phone && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(viewingSupplier.phone || '');
+                            showToast('Phone number copied!');
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-700"
+                          title="Copy Phone"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Full Street Address</span>
+                    <span className="text-xs font-medium text-slate-800 mt-0.5 block leading-relaxed">
+                      {viewingSupplier.address || 'Address not registered'}
+                      {viewingSupplier.city ? `, ${viewingSupplier.city}` : ''}
+                      {viewingSupplier.state ? `, ${viewingSupplier.state}` : ''}
+                      {viewingSupplier.country ? `, ${viewingSupplier.country}` : ''}
+                      {viewingSupplier.postal_code ? ` - ${viewingSupplier.postal_code}` : ''}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Commercial & Statutory Details */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <h4 className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
+                  Commercial Terms & Statutory Details
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">GSTIN / Tax ID</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        {viewingSupplier.tax_id || 'Not Provided'}
+                      </span>
+                      {viewingSupplier.tax_id && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(viewingSupplier.tax_id || '');
+                            showToast('GSTIN copied!');
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-700"
+                          title="Copy GSTIN"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Standard Payment Terms</span>
+                    <span className="text-xs font-bold text-slate-800 mt-0.5 block">
+                      {viewingSupplier.payment_terms || 'Standard Terms'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Commodities Handled */}
+              {viewingSupplier.product_categories && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                  <h4 className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
+                    Commodities & Sourcing Scope
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {viewingSupplier.product_categories.split(',').map((cat, i) => (
+                      <span
+                        key={i}
+                        className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 text-xs font-bold border border-blue-200"
+                      >
+                        {cat.trim()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Internal Notes & Facilities */}
+              {viewingSupplier.notes && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1.5">
+                  <h4 className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
+                    Internal Notes & Processing Facilities
+                  </h4>
+                  <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                    {viewingSupplier.notes}
+                  </p>
+                </div>
+              )}
+
+              {/* Associated Supply Agreements */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[11px] font-black uppercase text-slate-700 tracking-wider">
+                    Supply Agreement History
+                  </h4>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    {agreements.filter(a => a.supplier_company_name === viewingSupplier.company_name).length} Recorded
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {agreements
+                    .filter(a => a.supplier_company_name === viewingSupplier.company_name)
+                    .map(agr => (
+                      <div
+                        key={agr.id}
+                        className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div>
+                          <span className="font-mono font-bold text-blue-900">{agr.agreement_number}</span>
+                          <span className="text-[10px] text-slate-400 ml-2">{agr.date}</span>
+                          <p className="text-[11px] font-bold text-slate-800 line-clamp-1 mt-0.5">
+                            {agr.items.map(i => `${i.product_name} (${i.quantity} ${i.unit})`).join(', ')}
+                          </p>
+                          <span className="text-[10px] text-slate-500">
+                            Shipment: {agr.shipment_target_date} • {agr.incoterm}
+                          </span>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="font-black text-slate-900 block">
+                            {formatCurrency(agr.total_value, agr.currency)}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setViewingSupplier(null);
+                              setAgreementNumber(agr.agreement_number);
+                              setAgreementDate(agr.date);
+                              setShipmentTargetDate(agr.shipment_target_date);
+                              setLoadingPort(agr.loading_port);
+                              setDestinationPort(agr.destination_port);
+                              setIncoterm(agr.incoterm);
+                              setPaymentTerms(agr.payment_terms);
+                              setProductItems(agr.items);
+                              setCurrency(agr.currency);
+                              setAgreementTitle(agr.agreement_title);
+                              setAgreementBody(agr.agreement_body);
+                              setIncludeStamp(agr.include_stamp);
+                              setIncludeSignature(agr.include_signature);
+                              if (agr.supplier_id) setSelectedSupplierId(agr.supplier_id);
+                              setActiveView('studio');
+                            }}
+                            className="text-[10px] font-bold text-blue-900 hover:underline mt-1 block"
+                          >
+                            Open in Studio →
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                  {agreements.filter(a => a.supplier_company_name === viewingSupplier.company_name).length === 0 && (
+                    <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <p className="text-xs text-slate-400 italic">
+                        No supply agreements created for this supplier yet.
+                      </p>
+                      <button
+                        onClick={() => {
+                          const supp = viewingSupplier;
+                          setViewingSupplier(null);
+                          handleCreateAgreementForSupplier(supp);
+                        }}
+                        className="mt-2 text-xs font-bold text-blue-900 hover:underline"
+                      >
+                        + Create First Supply Agreement
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 px-5 py-3 flex items-center justify-between">
+              <span className="text-[10px] font-mono text-slate-400">ID: {viewingSupplier.id}</span>
+              <button
+                onClick={() => setViewingSupplier(null)}
+                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
