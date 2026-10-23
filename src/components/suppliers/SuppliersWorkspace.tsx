@@ -15,28 +15,28 @@ import {
   Phone,
   FileText,
   CheckCircle2,
-  Clock,
   Sparkles,
-  ArrowRight,
   Eye,
   RefreshCw,
   X,
-  ExternalLink,
-  ChevronRight,
   ShieldCheck,
   Package,
   Layers,
-  Calendar,
   MapPin,
-  DollarSign,
-  AlertCircle
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  LayoutGrid,
+  List,
+  Columns,
+  Check
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { supabase } from '../../lib/supabaseClient';
 import { Vendor, SupplierAgreement, AgreementProductItem } from '../../lib/types';
 
-// Default Sample Suppliers for initial onboarding & testing
+// Default initial suppliers for onboarding
 const DEFAULT_SUPPLIERS: Vendor[] = [
   {
     id: 'supp-1',
@@ -94,10 +94,10 @@ const DEFAULT_SUPPLIERS: Vendor[] = [
   }
 ];
 
-// Pre-crafted professional body templates
+// Pre-crafted legal agreement templates
 const AGREEMENT_TEMPLATES: Record<string, { title: string; body: string }> = {
   standard_export: {
-    title: 'COMMERCIAL PRODUCT SUPPLY & SHIPMENT AGREEMENT',
+    title: 'COMMERCIAL COMMODITY SUPPLY & SHIPMENT AGREEMENT',
     body: `1. RECITALS & UNDERTAKING TO SUPPLY:
 The Supplier unconditionally covenants, warrants, and agrees to harvest, process, sort, pack, and supply the designated commodities specified in Schedule A strictly adhering to the agreed parameters, grade, and packaging conditions.
 
@@ -158,6 +158,10 @@ Supplier guarantees not to supply identical custom-branded packaging or propriet
 export function SuppliersWorkspace() {
   // Navigation View State
   const [activeView, setActiveView] = useState<'suppliers' | 'agreements' | 'studio'>('suppliers');
+  const [directoryViewMode, setDirectoryViewMode] = useState<'table' | 'grid'>('table');
+  const [studioLayoutMode, setStudioLayoutMode] = useState<'split' | 'editor' | 'preview'>('split');
+  const [studioStep, setStudioStep] = useState<'parties' | 'products' | 'clauses' | 'sign'>('parties');
+  const [previewZoom, setPreviewZoom] = useState<number>(0.85);
 
   // Suppliers Data State
   const [suppliers, setSuppliers] = useState<Vendor[]>(() => {
@@ -184,7 +188,6 @@ export function SuppliersWorkspace() {
         }
       } catch {}
     }
-    // Generate one default agreement
     return [
       {
         id: 'agr-sample-1',
@@ -228,7 +231,7 @@ export function SuppliersWorkspace() {
     ];
   });
 
-  // Filter & Search states
+  // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Preferred' | 'On Hold'>('All');
   const [agreementSearchQuery, setAgreementSearchQuery] = useState('');
@@ -291,7 +294,7 @@ export function SuppliersWorkspace() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Sync to database and localStorage
+  // Sync to localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -423,7 +426,7 @@ export function SuppliersWorkspace() {
         try {
           await supabase.from('vendors').upsert(updated);
         } catch {}
-        showToast(`Supplier "${updated.company_name}" updated successfully`);
+        showToast(`Supplier "${updated.company_name}" updated`);
       } else {
         const newSupplier: Vendor = {
           id: 'supp-' + Date.now(),
@@ -450,7 +453,7 @@ export function SuppliersWorkspace() {
         try {
           await supabase.from('vendors').insert(newSupplier);
         } catch {}
-        showToast(`Supplier "${newSupplier.company_name}" registered successfully`);
+        showToast(`Supplier "${newSupplier.company_name}" added`);
       }
 
       setShowSupplierModal(false);
@@ -477,7 +480,6 @@ export function SuppliersWorkspace() {
     setShowSupplierModal(true);
   };
 
-  // Launch Agreement Studio with specific supplier
   const handleCreateAgreementForSupplier = (supplier: Vendor) => {
     setSelectedSupplierId(supplier.id);
     if (supplier.payment_terms) {
@@ -491,7 +493,6 @@ export function SuppliersWorkspace() {
     showToast(`Drafting agreement for ${supplier.company_name}`);
   };
 
-  // Save Agreement Record
   const handleSaveAgreementRecord = () => {
     if (!activeSupplier) {
       showToast('Please select or specify a supplier');
@@ -529,10 +530,9 @@ export function SuppliersWorkspace() {
     };
 
     setAgreements(prev => [newAgreement, ...prev]);
-    showToast(`Agreement #${agreementNumber} saved to records`);
+    showToast(`Agreement #${agreementNumber} saved to archive`);
   };
 
-  // Delete Agreement
   const handleDeleteAgreement = (id: string, num: string) => {
     if (confirm(`Are you sure you want to delete agreement #${num}?`)) {
       setAgreements(prev => prev.filter(a => a.id !== id));
@@ -540,7 +540,7 @@ export function SuppliersWorkspace() {
     }
   };
 
-  // PDF Export Handler
+  // High-Resolution PDF Export
   const handleDownloadPDF = async () => {
     if (!previewRef.current) return;
     setGeneratingPdf(true);
@@ -571,7 +571,6 @@ export function SuppliersWorkspace() {
       pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
-      // Handle multi-page if content spans past 1 A4 page
       while (heightLeft > 5) {
         position = heightLeft - imgHeight;
         pdf.addPage();
@@ -590,12 +589,10 @@ export function SuppliersWorkspace() {
     }
   };
 
-  // Print Document Handler
   const handlePrintDocument = () => {
     window.print();
   };
 
-  // Copy Agreement Text to Clipboard
   const handleCopyText = () => {
     const textContent = `
 ${agreementTitle}
@@ -609,7 +606,7 @@ Contact: ${activeSupplier?.contact_name || ''} | ${activeSupplier?.contact_email
 Address: ${activeSupplier?.address || ''}, ${activeSupplier?.city || ''}, ${activeSupplier?.country || ''}
 Tax ID: ${activeSupplier?.tax_id || ''}
 
-SCHEDULE A: PRODUCTS TO SUPPLY:
+SCHEDULE A: COMMODITY SPECIFICATIONS:
 ${productItems.map((p, idx) => `${idx + 1}. ${p.product_name} | Specs: ${p.specification} | Qty: ${p.quantity} ${p.unit} | Unit Price: ${formatCurrency(p.unit_price, currency)} | Total: ${formatCurrency(p.total_price, currency)}`).join('\n')}
 GRAND TOTAL CONTRACT VALUE: ${formatCurrency(agreementGrandTotal, currency)}
 
@@ -625,11 +622,8 @@ SCHEDULE C: TERMS & CONDITIONS:
 ${agreementBody}
 
 SCHEDULE D: EXECUTION & ATTESTATION:
-For & On Behalf of Sheshaan Global:
-Signatory: ${signatoryName} (${signatoryTitle})
-
-For & On Behalf of ${activeSupplier?.company_name}:
-Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
+For & On Behalf of Sheshaan Global: ${signatoryName} (${signatoryTitle})
+For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${supplierSignatoryTitle})
     `.trim();
 
     navigator.clipboard.writeText(textContent);
@@ -664,7 +658,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
   }, [agreements, agreementSearchQuery]);
 
   return (
-    <div className="space-y-6 animate-fade-in text-slate-800">
+    <div className="space-y-5 animate-fade-in text-slate-800 max-w-[1600px] mx-auto pb-12">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl text-xs font-bold border border-slate-700 animate-slide-up">
@@ -673,145 +667,226 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
         </div>
       )}
 
-      {/* Top Banner & Fast Metrics */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-2xl p-5 sm:p-6 text-white shadow-xl relative overflow-hidden">
-        {/* Subtle decorative background shapes */}
-        <div className="absolute -top-12 -right-12 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-orange-500/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-[11px] font-bold text-sky-300 border border-white/10 mb-2">
-              <Building2 className="h-3.5 w-3.5" />
-              <span>Procurement & Supply Chain Operations</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2.5">
-              Suppliers & Agreement Management
-            </h1>
-            <p className="text-xs text-slate-300 mt-1 max-w-2xl font-medium">
-              Manage verified commodity suppliers, customize legally binding supply agreements, and export print-ready PDFs with official company stamp and CEO signature.
-            </p>
+      {/* TOP HEADER: Clean, Professional, High-Contrast */}
+      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="p-1.5 rounded-lg bg-blue-50 text-blue-900 font-bold">
+              <Building2 className="h-4 w-4" />
+            </span>
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Procurement & Supply Chain
+            </span>
           </div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            Suppliers Management
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Verified suppliers network, commercial commodity agreements, and print-ready PDF execution with official stamp and signature.
+          </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <button
-              onClick={() => {
-                setEditingSupplier(null);
-                setSupplierFormData({ status: 'Active', rating: 4, country: 'India' });
-                setShowSupplierModal(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white text-slate-900 text-xs font-black shadow-md hover:bg-slate-100 transition active:scale-95"
-            >
-              <Plus className="h-4 w-4 text-blue-900" />
-              <span>Add Supplier</span>
-            </button>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => {
+              setEditingSupplier(null);
+              setSupplierFormData({ status: 'Active', rating: 4, country: 'India' });
+              setShowSupplierModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold shadow-sm transition active:scale-95"
+          >
+            <Plus className="h-3.5 w-3.5 text-blue-900" />
+            <span>Add Supplier</span>
+          </button>
 
-            <button
-              onClick={() => {
-                setAgreementNumber('SG/SA/2026/' + Math.floor(100 + Math.random() * 900));
-                setActiveView('studio');
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 text-white text-xs font-black shadow-md hover:from-orange-600 hover:to-amber-700 transition active:scale-95"
-            >
-              <FileCheck2 className="h-4 w-4" />
-              <span>Create Agreement PDF</span>
-            </button>
+          <button
+            onClick={() => {
+              setAgreementNumber('SG/SA/2026/' + Math.floor(100 + Math.random() * 900));
+              setActiveView('studio');
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-sm transition active:scale-95"
+          >
+            <FileCheck2 className="h-4 w-4 text-orange-400" />
+            <span>Create Agreement</span>
+          </button>
+        </div>
+      </div>
+
+      {/* KPI METRICS STRIP: Compact & Elegant */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total Suppliers</span>
+            <span className="text-xl font-black text-slate-900 mt-0.5 block">{suppliers.length}</span>
+          </div>
+          <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold">
+            <Building2 className="h-4 w-4" />
           </div>
         </div>
 
-        {/* Quick KPI Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-4 border-t border-white/10">
-          <div className="bg-white/5 backdrop-blur-md rounded-xl p-3 border border-white/5">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Total Suppliers</span>
-            <span className="text-xl font-black text-white mt-0.5 block">{suppliers.length}</span>
-            <span className="text-[10px] text-emerald-400 font-semibold">{suppliers.filter(s => s.status === 'Preferred').length} Preferred Partners</span>
-          </div>
-
-          <div className="bg-white/5 backdrop-blur-md rounded-xl p-3 border border-white/5">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Active Supply Agreements</span>
-            <span className="text-xl font-black text-white mt-0.5 block">{agreements.length}</span>
-            <span className="text-[10px] text-sky-400 font-semibold">Legally Prepared & Drafted</span>
-          </div>
-
-          <div className="bg-white/5 backdrop-blur-md rounded-xl p-3 border border-white/5">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Commodity Scope</span>
-            <span className="text-xl font-black text-white mt-0.5 block">Spices, Rice, Seeds</span>
-            <span className="text-[10px] text-amber-300 font-semibold">Export Grade & Sortex</span>
-          </div>
-
-          <div className="bg-white/5 backdrop-blur-md rounded-xl p-3 border border-white/5">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Official Stamp & Signature</span>
-            <span className="text-xl font-black text-emerald-400 mt-0.5 block flex items-center gap-1">
-              <ShieldCheck className="h-5 w-5" /> Enabled
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Preferred Partners</span>
+            <span className="text-xl font-black text-emerald-600 mt-0.5 block">
+              {suppliers.filter(s => s.status === 'Preferred').length}
             </span>
-            <span className="text-[10px] text-slate-300 font-semibold">Sheshaan Global Seal</span>
+          </div>
+          <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+            <ShieldCheck className="h-4 w-4" />
+          </div>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Drafted Agreements</span>
+            <span className="text-xl font-black text-slate-900 mt-0.5 block">{agreements.length}</span>
+          </div>
+          <div className="h-9 w-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+            <FileText className="h-4 w-4" />
+          </div>
+        </div>
+
+        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Official Attestation</span>
+            <span className="text-xs font-black text-emerald-600 mt-1 block flex items-center gap-1">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Stamp & Sign Ready
+            </span>
+          </div>
+          <div className="h-9 w-9 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
+            <FileCheck2 className="h-4 w-4" />
           </div>
         </div>
       </div>
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex border-b border-slate-200 bg-white rounded-xl p-1.5 shadow-sm">
-        <button
-          onClick={() => setActiveView('suppliers')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-black transition ${
-            activeView === 'suppliers'
-              ? 'bg-blue-900 text-white shadow'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Building2 className="h-4 w-4" />
-          <span>Suppliers Directory ({suppliers.length})</span>
-        </button>
+      {/* VIEW SELECTOR PILLS */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          <button
+            onClick={() => setActiveView('suppliers')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              activeView === 'suppliers'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Building2 className="h-3.5 w-3.5" />
+            <span>Suppliers Directory</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeView === 'suppliers' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+              {suppliers.length}
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveView('agreements')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-black transition ${
-            activeView === 'agreements'
-              ? 'bg-blue-900 text-white shadow'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <FileText className="h-4 w-4" />
-          <span>Supply Agreements Hub ({agreements.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveView('agreements')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              activeView === 'agreements'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span>Agreements Archive</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeView === 'agreements' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+              {agreements.length}
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveView('studio')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-black transition ${
-            activeView === 'studio'
-              ? 'bg-blue-900 text-white shadow'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <FileCheck2 className="h-4 w-4" />
-          <span>Agreement Creator & PDF Studio</span>
-        </button>
+          <button
+            onClick={() => setActiveView('studio')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              activeView === 'studio'
+                ? 'bg-blue-900 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <FileCheck2 className="h-3.5 w-3.5 text-orange-400" />
+            <span>Agreement Studio & PDF</span>
+          </button>
+        </div>
+
+        {/* View mode toggle for suppliers directory */}
+        {activeView === 'suppliers' && (
+          <div className="flex items-center gap-1 border border-slate-200 p-0.5 rounded-lg bg-slate-50">
+            <button
+              onClick={() => setDirectoryViewMode('table')}
+              className={`p-1.5 rounded-md text-xs font-bold transition ${
+                directoryViewMode === 'table' ? 'bg-white shadow text-slate-900' : 'text-slate-400 hover:text-slate-700'
+              }`}
+              title="Table View"
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setDirectoryViewMode('grid')}
+              className={`p-1.5 rounded-md text-xs font-bold transition ${
+                directoryViewMode === 'grid' ? 'bg-white shadow text-slate-900' : 'text-slate-400 hover:text-slate-700'
+              }`}
+              title="Card Grid View"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Studio layout mode toggles */}
+        {activeView === 'studio' && (
+          <div className="flex items-center gap-1 border border-slate-200 p-0.5 rounded-lg bg-slate-50 text-xs">
+            <button
+              onClick={() => setStudioLayoutMode('split')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-bold transition ${
+                studioLayoutMode === 'split' ? 'bg-white shadow text-blue-900' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Columns className="h-3.5 w-3.5" />
+              <span>Split View</span>
+            </button>
+            <button
+              onClick={() => setStudioLayoutMode('editor')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-bold transition ${
+                studioLayoutMode === 'editor' ? 'bg-white shadow text-blue-900' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Edit2 className="h-3.5 w-3.5" />
+              <span>Editor Only</span>
+            </button>
+            <button
+              onClick={() => setStudioLayoutMode('preview')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-bold transition ${
+                studioLayoutMode === 'preview' ? 'bg-white shadow text-blue-900' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Eye className="h-3.5 w-3.5" />
+              <span>Preview & PDF</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* VIEW 1: SUPPLIERS DIRECTORY */}
       {activeView === 'suppliers' && (
         <div className="space-y-4 animate-fade-in">
           {/* Search & Status Filters */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search suppliers by company, contact person, product, city..."
+                placeholder="Search suppliers by name, contact, product, location, tax ID..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto">
               {(['All', 'Preferred', 'Active', 'On Hold'] as const).map(status => (
                 <button
                   key={status}
                   onClick={() => setStatusFilter(status)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
                     statusFilter === status
-                      ? 'bg-slate-900 text-white'
+                      ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
@@ -821,24 +896,57 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
             </div>
           </div>
 
-          {/* Suppliers Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredSuppliers.map(supplier => {
-              const agreementCount = agreements.filter(a => a.supplier_company_name === supplier.company_name).length;
+          {/* TABLE VIEW */}
+          {directoryViewMode === 'table' ? (
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-4">Supplier Company</th>
+                      <th className="py-3 px-4">Contact & Location</th>
+                      <th className="py-3 px-4">GSTIN / Tax ID</th>
+                      <th className="py-3 px-4">Commodities Handled</th>
+                      <th className="py-3 px-4">Payment Terms</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredSuppliers.map(supplier => (
+                      <tr key={supplier.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3 px-4 font-bold text-slate-900">
+                          {supplier.company_name}
+                          <span className="block text-[10px] text-slate-400 font-normal">
+                            {supplier.notes ? supplier.notes.slice(0, 45) + '...' : 'Registered supplier'}
+                          </span>
+                        </td>
 
-              return (
-                <div
-                  key={supplier.id}
-                  className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between"
-                >
-                  <div>
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-black text-slate-900 text-sm truncate">{supplier.company_name}</h3>
+                        <td className="py-3 px-4">
+                          <span className="font-semibold text-slate-800 block">{supplier.contact_name || 'N/A'}</span>
+                          <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-slate-400" />
+                            {supplier.city || 'City N/A'}, {supplier.country || 'India'}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4 font-mono font-bold text-slate-700 text-[11px]">
+                          {supplier.tax_id || <span className="text-slate-300 font-sans font-normal italic">None</span>}
+                        </td>
+
+                        <td className="py-3 px-4 max-w-xs">
+                          <span className="text-slate-700 font-medium line-clamp-1">
+                            {supplier.product_categories || 'Various Agri Products'}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4 text-slate-700 font-medium">
+                          {supplier.payment_terms || 'Standard'}
+                        </td>
+
+                        <td className="py-3 px-4">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                               supplier.status === 'Preferred'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 : supplier.status === 'Active'
@@ -848,133 +956,173 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                           >
                             {supplier.status}
                           </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 font-medium">
+                        </td>
+
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleCreateAgreementForSupplier(supplier)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-[11px] font-bold shadow-sm transition active:scale-95"
+                              title="Create Agreement"
+                            >
+                              <FileCheck2 className="h-3 w-3 text-orange-400" />
+                              <span>Agreement</span>
+                            </button>
+
+                            {supplier.contact_email && (
+                              <a
+                                href={`mailto:${supplier.contact_email}`}
+                                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-blue-900 hover:bg-slate-100"
+                                title="Send Email"
+                              >
+                                <Mail className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+
+                            {supplier.phone && (
+                              <a
+                                href={`https://wa.me/${supplier.phone.replace(/[^\d]/g, '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 rounded-lg border border-slate-200 text-emerald-600 hover:bg-emerald-50"
+                                title="WhatsApp"
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+
+                            <button
+                              onClick={() => handleOpenEditSupplier(supplier)}
+                              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                              title="Edit Supplier"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteSupplier(supplier.id, supplier.company_name)}
+                              className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {filteredSuppliers.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-400">
+                          <Building2 className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                          <p className="font-bold text-xs">No suppliers found matching your query.</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            /* GRID VIEW */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredSuppliers.map(supplier => (
+                <div
+                  key={supplier.id}
+                  className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-slate-900 text-sm truncate">{supplier.company_name}</h3>
+                        <p className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                           <MapPin className="h-3 w-3 text-slate-400" />
-                          <span>{supplier.city || 'City N/A'}, {supplier.state ? `${supplier.state}, ` : ''}{supplier.country || 'India'}</span>
+                          <span>{supplier.city || 'City N/A'}, {supplier.country || 'India'}</span>
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleOpenEditSupplier(supplier)}
-                          className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100"
-                          title="Edit Supplier"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteSupplier(supplier.id, supplier.company_name)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
-                          title="Delete Supplier"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
+                          supplier.status === 'Preferred'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : supplier.status === 'Active'
+                            ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        }`}
+                      >
+                        {supplier.status}
+                      </span>
                     </div>
 
-                    {/* Contact & Tax Details */}
-                    <div className="mt-3.5 bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs space-y-1.5">
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="font-bold text-slate-500">Contact Person:</span>
-                        <span className="font-semibold text-slate-900 text-right truncate max-w-[180px]">{supplier.contact_name || 'N/A'}</span>
+                    <div className="mt-3 bg-slate-50 rounded-lg p-2.5 text-xs space-y-1 text-slate-600">
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-slate-400">Contact:</span>
+                        <span className="font-bold text-slate-800 truncate max-w-[170px]">{supplier.contact_name || 'N/A'}</span>
                       </div>
                       {supplier.tax_id && (
-                        <div className="flex items-center justify-between text-slate-600">
-                          <span className="font-bold text-slate-500">GSTIN / Tax ID:</span>
-                          <span className="font-mono font-bold text-slate-800 text-[11px]">{supplier.tax_id}</span>
+                        <div className="flex justify-between">
+                          <span className="font-semibold text-slate-400">Tax ID:</span>
+                          <span className="font-mono font-bold text-slate-800">{supplier.tax_id}</span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="font-bold text-slate-500">Payment Terms:</span>
-                        <span className="font-semibold text-slate-700 text-right text-[11px] truncate max-w-[170px]">
-                          {supplier.payment_terms || 'Standard Terms'}
-                        </span>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-slate-400">Payment:</span>
+                        <span className="font-medium text-slate-700 truncate max-w-[170px]">{supplier.payment_terms || 'Standard'}</span>
                       </div>
                     </div>
 
-                    {/* Product Categories */}
                     {supplier.product_categories && (
-                      <div className="mt-3">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Products Dealing</span>
-                        <div className="flex flex-wrap gap-1">
-                          {supplier.product_categories.split(',').slice(0, 4).map((cat, i) => (
-                            <span key={i} className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 text-[10px] font-bold border border-blue-100">
-                              {cat.trim()}
-                            </span>
-                          ))}
-                        </div>
+                      <div className="mt-2.5 flex flex-wrap gap-1">
+                        {supplier.product_categories.split(',').slice(0, 3).map((c, i) => (
+                          <span key={i} className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold">
+                            {c.trim()}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
 
-                  {/* Actions & Agreement CTA */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       {supplier.contact_email && (
-                        <a
-                          href={`mailto:${supplier.contact_email}?subject=Sheshaan Global - Commodity Supply Inquiry`}
-                          className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-blue-900 hover:bg-slate-50"
-                          title="Send Email"
-                        >
+                        <a href={`mailto:${supplier.contact_email}`} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-blue-900">
                           <Mail className="h-3.5 w-3.5" />
                         </a>
                       )}
                       {supplier.phone && (
-                        <a
-                          href={`https://wa.me/${supplier.phone.replace(/[^\d]/g, '')}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-1.5 rounded-lg border border-slate-200 text-emerald-600 hover:bg-emerald-50"
-                          title="WhatsApp Chat"
-                        >
+                        <a href={`https://wa.me/${supplier.phone.replace(/[^\d]/g, '')}`} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg border border-slate-200 text-emerald-600">
                           <Phone className="h-3.5 w-3.5" />
                         </a>
                       )}
-                      <span className="text-[11px] font-bold text-slate-400">
-                        {agreementCount} {agreementCount === 1 ? 'Agreement' : 'Agreements'}
-                      </span>
+                      <button onClick={() => handleOpenEditSupplier(supplier)} className="p-1.5 rounded-lg border border-slate-200 text-slate-600">
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
 
                     <button
                       onClick={() => handleCreateAgreementForSupplier(supplier)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-[11px] font-bold transition shadow-sm active:scale-95"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-[11px] font-bold shadow-sm"
                     >
-                      <FileCheck2 className="h-3.5 w-3.5 text-orange-400" />
-                      <span>Create Agreement</span>
+                      <FileCheck2 className="h-3 w-3 text-orange-400" />
+                      <span>Agreement</span>
                     </button>
                   </div>
                 </div>
-              );
-            })}
-
-            {filteredSuppliers.length === 0 && (
-              <div className="col-span-full bg-white border border-slate-200 rounded-2xl p-12 text-center">
-                <Building2 className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-                <h4 className="text-sm font-black text-slate-700">No suppliers found matching your query</h4>
-                <p className="text-xs text-slate-500 mt-1">Try modifying your search or add a new supplier record.</p>
-                <button
-                  onClick={() => setShowSupplierModal(true)}
-                  className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
-                >
-                  <Plus className="h-4 w-4" /> Add New Supplier
-                </button>
-              </div>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* VIEW 2: SUPPLY AGREEMENTS HUB */}
+      {/* VIEW 2: SUPPLY AGREEMENTS ARCHIVE */}
       {activeView === 'agreements' && (
         <div className="space-y-4 animate-fade-in">
-          {/* Top Actions */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search agreements by reference number, supplier, product..."
+                placeholder="Search archive by agreement number, supplier, product..."
                 value={agreementSearchQuery}
                 onChange={e => setAgreementSearchQuery(e.target.value)}
                 className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
@@ -989,21 +1137,20 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-900 text-white text-xs font-bold hover:bg-blue-800 transition"
             >
               <Plus className="h-4 w-4 text-orange-400" />
-              <span>New Supply Agreement</span>
+              <span>Draft New Agreement</span>
             </button>
           </div>
 
-          {/* Agreements Table */}
-          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
                     <th className="py-3 px-4">Agreement Ref</th>
                     <th className="py-3 px-4">Supplier / Vendor</th>
-                    <th className="py-3 px-4">Product(s) & Quantity</th>
-                    <th className="py-3 px-4">Shipment Target</th>
-                    <th className="py-3 px-4">Total Value</th>
+                    <th className="py-3 px-4">Commodity / Qty</th>
+                    <th className="py-3 px-4">Target Window</th>
+                    <th className="py-3 px-4">Contract Value</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
@@ -1011,41 +1158,39 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                 <tbody className="divide-y divide-slate-100">
                   {filteredAgreements.map(agreement => (
                     <tr key={agreement.id} className="hover:bg-slate-50/70 transition">
-                      <td className="py-3.5 px-4 font-mono font-bold text-blue-900">
+                      <td className="py-3 px-4 font-mono font-bold text-blue-900">
                         {agreement.agreement_number}
-                        <span className="block text-[10px] text-slate-400 font-sans font-medium">{agreement.date}</span>
+                        <span className="block text-[10px] text-slate-400 font-sans font-normal">{agreement.date}</span>
                       </td>
 
-                      <td className="py-3.5 px-4">
+                      <td className="py-3 px-4">
                         <span className="font-bold text-slate-900 block">{agreement.supplier_company_name}</span>
-                        <span className="text-[10px] text-slate-500 font-medium">{agreement.supplier_contact_name || agreement.loading_port}</span>
+                        <span className="text-[10px] text-slate-500">{agreement.supplier_contact_name || 'Contact'}</span>
                       </td>
 
-                      <td className="py-3.5 px-4 max-w-xs">
+                      <td className="py-3 px-4 max-w-xs">
                         <span className="font-bold text-slate-800 line-clamp-1">
-                          {agreement.items.map(i => i.product_name).join(', ') || 'Commodity cargo'}
+                          {agreement.items.map(i => i.product_name).join(', ') || 'Agri Cargo'}
                         </span>
                         <span className="text-[10px] text-slate-500">
                           {agreement.items.map(i => `${i.quantity} ${i.unit}`).join(', ')}
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4">
-                        <span className="font-bold text-slate-700 block">{agreement.shipment_target_date}</span>
-                        <span className="text-[10px] text-slate-400 font-medium">Incoterm: {agreement.incoterm}</span>
+                      <td className="py-3 px-4">
+                        <span className="font-semibold text-slate-800 block">{agreement.shipment_target_date}</span>
+                        <span className="text-[10px] text-slate-400">{agreement.incoterm}</span>
                       </td>
 
-                      <td className="py-3.5 px-4 font-black text-slate-900">
+                      <td className="py-3 px-4 font-black text-slate-900">
                         {formatCurrency(agreement.total_value, agreement.currency)}
                       </td>
 
-                      <td className="py-3.5 px-4">
+                      <td className="py-3 px-4">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                             agreement.status === 'Signed'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : agreement.status === 'Sent'
-                              ? 'bg-sky-50 text-sky-700 border border-sky-200'
                               : 'bg-slate-100 text-slate-600 border border-slate-200'
                           }`}
                         >
@@ -1053,11 +1198,10 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4 text-right">
+                      <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => {
-                              // Populate studio with this agreement
                               setAgreementNumber(agreement.agreement_number);
                               setAgreementDate(agreement.date);
                               setShipmentTargetDate(agreement.shipment_target_date);
@@ -1074,7 +1218,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                               if (agreement.supplier_id) setSelectedSupplierId(agreement.supplier_id);
                               setActiveView('studio');
                             }}
-                            className="p-1.5 text-slate-600 hover:text-blue-900 rounded-lg hover:bg-slate-100 font-bold"
+                            className="p-1.5 text-slate-600 hover:text-blue-900 rounded-lg hover:bg-slate-100"
                             title="Open in Studio"
                           >
                             <Eye className="h-4 w-4" />
@@ -1083,7 +1227,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                           <button
                             onClick={() => handleDeleteAgreement(agreement.id, agreement.agreement_number)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
-                            title="Delete Agreement"
+                            title="Delete"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -1097,7 +1241,6 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                       <td colSpan={7} className="py-12 text-center text-slate-400">
                         <FileText className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                         <p className="font-bold text-xs">No supply agreements recorded yet.</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Click "New Supply Agreement" to draft your first contract.</p>
                       </td>
                     </tr>
                   )}
@@ -1108,807 +1251,949 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
         </div>
       )}
 
-      {/* VIEW 3: AGREEMENT CREATOR & LIVE A4 PDF STUDIO */}
+      {/* VIEW 3: AGREEMENT STUDIO & PDF GENERATOR */}
       {activeView === 'studio' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in items-start">
-          {/* LEFT COLUMN: Controls, Line Items & Clause Customizer (5 cols) */}
-          <div className="lg:col-span-5 space-y-5">
-            {/* Action Bar */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="font-black text-slate-900 text-sm">Agreement Studio</h3>
-                <p className="text-[11px] text-slate-500">Live preview & PDF rendering engine</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleDownloadPDF}
-                  disabled={generatingPdf}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-900 text-white text-xs font-black shadow-md hover:bg-blue-800 active:scale-95 transition disabled:opacity-50"
-                >
-                  <Download className="h-3.5 w-3.5 text-orange-400" />
-                  <span>{generatingPdf ? 'Rendering...' : 'Download PDF'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handlePrintDocument}
-                  className="p-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100"
-                  title="Print Agreement"
-                >
-                  <Printer className="h-4 w-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCopyText}
-                  className="p-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100"
-                  title="Copy Text"
-                >
-                  <Copy className="h-4 w-4" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSaveAgreementRecord}
-                  className="p-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
-                  title="Save Agreement to Records"
-                >
-                  <FileCheck2 className="h-4 w-4" />
-                </button>
-              </div>
+        <div className="space-y-4 animate-fade-in">
+          {/* Studio Top Control Bar */}
+          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="font-black text-slate-900 text-sm">Agreement Studio:</span>
+              <span className="font-mono text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                {agreementNumber}
+              </span>
+              <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+                • {activeSupplier?.company_name || 'Select Supplier'}
+              </span>
             </div>
 
-            {/* Panel 1: Supplier & Agreement Header */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5 text-blue-900" />
-                  <span>1. Supplier & Contract Header</span>
-                </span>
-                <span className="text-[10px] font-bold text-slate-400">Step 1 of 4</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadPDF}
+                disabled={generatingPdf}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-900 text-white text-xs font-black shadow-md hover:bg-blue-800 transition disabled:opacity-50 active:scale-95"
+              >
+                <Download className="h-3.5 w-3.5 text-orange-400" />
+                <span>{generatingPdf ? 'Rendering PDF...' : 'Download PDF'}</span>
+              </button>
 
-              <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                  Select Supplier / Vendor *
-                </label>
-                <select
-                  value={selectedSupplierId}
-                  onChange={e => setSelectedSupplierId(e.target.value)}
-                  className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.company_name} ({s.city || 'City N/A'})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <button
+                type="button"
+                onClick={handlePrintDocument}
+                className="p-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100"
+                title="Print Document"
+              >
+                <Printer className="h-4 w-4" />
+              </button>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                    Agreement Reference #
-                  </label>
-                  <input
-                    type="text"
-                    value={agreementNumber}
-                    onChange={e => setAgreementNumber(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold font-mono text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  />
-                </div>
+              <button
+                type="button"
+                onClick={handleCopyText}
+                className="p-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100"
+                title="Copy Plain Text"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
 
-                <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                    Agreement Date
-                  </label>
-                  <input
-                    type="text"
-                    value={agreementDate}
-                    onChange={e => setAgreementDate(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Panel 2: Logistics & Shipment Clauses */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Package className="h-3.5 w-3.5 text-blue-900" />
-                  <span>2. Shipment, Ports & Incoterms</span>
-                </span>
-                <span className="text-[10px] font-bold text-slate-400">Step 2 of 4</span>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                  Target Shipment Date / Window *
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. 15 November 2026 - 30 November 2026"
-                  value={shipmentTargetDate}
-                  onChange={e => setShipmentTargetDate(e.target.value)}
-                  className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                    Port of Loading
-                  </label>
-                  <input
-                    type="text"
-                    value={loadingPort}
-                    onChange={e => setLoadingPort(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                    Destination Port
-                  </label>
-                  <input
-                    type="text"
-                    value={destinationPort}
-                    onChange={e => setDestinationPort(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                    Incoterms 2020
-                  </label>
-                  <select
-                    value={incoterm}
-                    onChange={e => setIncoterm(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="FOB (Free On Board)">FOB (Free On Board)</option>
-                    <option value="CIF (Cost, Insurance & Freight)">CIF (Cost, Insurance & Freight)</option>
-                    <option value="CFR (Cost & Freight)">CFR (Cost & Freight)</option>
-                    <option value="EXW (Ex Works / Mill Gate)">EXW (Ex Works / Mill Gate)</option>
-                    <option value="FCA (Free Carrier)">FCA (Free Carrier)</option>
-                    <option value="CIP (Carriage & Insurance Paid)">CIP (Carriage & Insurance Paid)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                    Currency
-                  </label>
-                  <select
-                    value={currency}
-                    onChange={e => setCurrency(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="INR">INR (₹ - Indian Rupee)</option>
-                    <option value="USD">USD ($ - US Dollar)</option>
-                    <option value="EUR">EUR (€ - Euro)</option>
-                    <option value="AED">AED (د.إ - UAE Dirham)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                  Packaging & Labeling Details
-                </label>
-                <input
-                  type="text"
-                  value={packagingDetails}
-                  onChange={e => setPackagingDetails(e.target.value)}
-                  className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                  Payment Milestones & Terms
-                </label>
-                <input
-                  type="text"
-                  value={paymentTerms}
-                  onChange={e => setPaymentTerms(e.target.value)}
-                  className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-            </div>
-
-            {/* Panel 3: Products to Supply (Schedule A) */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Layers className="h-3.5 w-3.5 text-blue-900" />
-                  <span>3. Products & Specifications</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleAddItem}
-                  className="inline-flex items-center gap-1 text-[11px] font-black text-blue-900 hover:text-blue-700"
-                >
-                  <Plus className="h-3 w-3" />
-                  <span>Add Line Item</span>
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {productItems.map((item, idx) => (
-                  <div key={item.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-slate-700 text-[11px] uppercase">Item #{idx + 1}</span>
-                      {productItems.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(item.id)}
-                          className="text-slate-400 hover:text-rose-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    <div>
-                      <input
-                        type="text"
-                        placeholder="Product Name / Commodity (e.g. 1121 Steam Basmati Rice)"
-                        value={item.product_name}
-                        onChange={e => handleUpdateItem(item.id, 'product_name', e.target.value)}
-                        className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      />
-                    </div>
-
-                    <div>
-                      <input
-                        type="text"
-                        placeholder="Specifications (e.g. Moisture max 12.5%, Broken max 1%, Length 8.35mm)"
-                        value={item.specification}
-                        onChange={e => handleUpdateItem(item.id, 'specification', e.target.value)}
-                        className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block">Quantity</label>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={e => handleUpdateItem(item.id, 'quantity', e.target.value)}
-                          className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block">Unit</label>
-                        <input
-                          type="text"
-                          value={item.unit}
-                          onChange={e => handleUpdateItem(item.id, 'unit', e.target.value)}
-                          className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block">Unit Price</label>
-                        <input
-                          type="number"
-                          value={item.unit_price}
-                          onChange={e => handleUpdateItem(item.id, 'unit_price', e.target.value)}
-                          className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="text-right pt-1 font-bold text-slate-900 text-xs">
-                      Line Total: {formatCurrency(item.total_price, currency)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-center justify-between">
-                <span className="text-xs font-black text-blue-950 uppercase tracking-wide">Total Contract Value:</span>
-                <span className="text-base font-black text-blue-900">{formatCurrency(agreementGrandTotal, currency)}</span>
-              </div>
-            </div>
-
-            {/* Panel 4: Customizable Agreement Body & Clauses */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3.5">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <FileText className="h-3.5 w-3.5 text-blue-900" />
-                  <span>4. Customizable Clauses & Signatures</span>
-                </span>
-                <span className="text-[10px] font-bold text-slate-400">Step 4 of 4</span>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1.5">
-                  Select Base Legal Template
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectTemplate('standard_export')}
-                    className={`p-2 rounded-lg text-[10px] font-bold text-center border transition ${
-                      selectedTemplateKey === 'standard_export'
-                        ? 'bg-blue-900 text-white border-blue-900'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    Standard Export Supply
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectTemplate('consignment_spot')}
-                    className={`p-2 rounded-lg text-[10px] font-bold text-center border transition ${
-                      selectedTemplateKey === 'consignment_spot'
-                        ? 'bg-blue-900 text-white border-blue-900'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    Spot Consignment
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectTemplate('annual_framework')}
-                    className={`p-2 rounded-lg text-[10px] font-bold text-center border transition ${
-                      selectedTemplateKey === 'annual_framework'
-                        ? 'bg-blue-900 text-white border-blue-900'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    Annual Sourcing
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide mb-1">
-                  Agreement Title
-                </label>
-                <input
-                  type="text"
-                  value={agreementTitle}
-                  onChange={e => setAgreementTitle(e.target.value)}
-                  className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wide">
-                    Custom Agreement Body & Legal Clauses
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-semibold">Editable Text</span>
-                </div>
-                <textarea
-                  rows={10}
-                  value={agreementBody}
-                  onChange={e => setAgreementBody(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800 font-mono focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-
-              {/* Attestation & Signature Options */}
-              <div className="pt-2 border-t border-slate-100 space-y-3">
-                <span className="text-[11px] font-black text-slate-700 uppercase tracking-wide block">
-                  Attestation, Stamp & Signature Settings
-                </span>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={includeStamp}
-                      onChange={e => setIncludeStamp(e.target.checked)}
-                      className="rounded text-blue-900 focus:ring-blue-900 h-4 w-4"
-                    />
-                    <span className="text-xs font-bold text-slate-800">Include Official Stamp</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={includeSignature}
-                      onChange={e => setIncludeSignature(e.target.checked)}
-                      className="rounded text-blue-900 focus:ring-blue-900 h-4 w-4"
-                    />
-                    <span className="text-xs font-bold text-slate-800">Include CEO Signature</span>
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Buyer Signatory</label>
-                    <input
-                      type="text"
-                      value={signatoryName}
-                      onChange={e => setSignatoryName(e.target.value)}
-                      className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-800"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-0.5">Supplier Signatory</label>
-                    <input
-                      type="text"
-                      value={supplierSignatoryName}
-                      onChange={e => setSupplierSignatoryName(e.target.value)}
-                      className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-800"
-                    />
-                  </div>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={handleSaveAgreementRecord}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition"
+                title="Save to Records"
+              >
+                <FileCheck2 className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Save Record</span>
+              </button>
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Live Print-Ready A4 Document Preview (7 cols) */}
-          <div className="lg:col-span-7 space-y-3 sticky top-4">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-400">
-                A4 Live Agreement Document Preview
-              </span>
-              <span className="text-[11px] font-bold text-blue-900 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
-                Print-Ready 794px × 1123px Format
-              </span>
-            </div>
-
-            {/* Scrollable Container with realistic paper shadow */}
-            <div className="w-full overflow-x-auto border border-slate-200 rounded-2xl p-4 bg-slate-100/70 shadow-inner flex justify-center max-h-[85vh]">
-              {/* THE A4 DOCUMENT CANVAS */}
-              <div
-                ref={previewRef}
-                id="supplier-agreement-a4"
-                className="w-[794px] bg-white shadow-2xl relative flex flex-col shrink-0 text-slate-800 text-left font-serif"
-                style={{ minWidth: '794px', minHeight: '1123px' }}
-              >
-                {/* TOP BRAND ACCENT BAND */}
-                <div className="relative top-0 left-0 right-0 h-[14px] bg-blue-900 z-10 flex-none">
-                  <div
-                    className="absolute right-0 top-0 h-full w-[45%] bg-orange-500"
-                    style={{ clipPath: 'polygon(15px 0, 100% 0, 100% 100%, 0 100%)' }}
-                  />
+          {/* STUDIO MAIN WORKSPACE */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* EDITOR COLUMN */}
+            {(studioLayoutMode === 'split' || studioLayoutMode === 'editor') && (
+              <div className={`${studioLayoutMode === 'editor' ? 'lg:col-span-12 max-w-4xl mx-auto' : 'lg:col-span-6'} space-y-4`}>
+                {/* Step Tabs */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm text-xs font-bold overflow-x-auto">
+                  <button
+                    onClick={() => setStudioStep('parties')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg transition whitespace-nowrap ${
+                      studioStep === 'parties' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    1. Supplier & Logistics
+                  </button>
+                  <button
+                    onClick={() => setStudioStep('products')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg transition whitespace-nowrap ${
+                      studioStep === 'products' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    2. Commodities ({productItems.length})
+                  </button>
+                  <button
+                    onClick={() => setStudioStep('clauses')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg transition whitespace-nowrap ${
+                      studioStep === 'clauses' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    3. Clauses & Body
+                  </button>
+                  <button
+                    onClick={() => setStudioStep('sign')}
+                    className={`flex-1 py-1.5 px-3 rounded-lg transition whitespace-nowrap ${
+                      studioStep === 'sign' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    4. Attestation & Sign
+                  </button>
                 </div>
 
-                {/* HEADER SECTION */}
-                <div className="px-10 pt-8 pb-4 flex justify-between items-start flex-none relative z-10">
-                  {/* Brand & Logo */}
-                  <div className="flex items-center gap-3.5">
-                    <img
-                      src="/logo.jpg"
-                      alt="Sheshaan Global Logo"
-                      className="h-16 w-auto object-contain select-none"
-                    />
-                    <div className="flex flex-col items-start select-none" style={{ fontFamily: 'sans-serif' }}>
-                      <h1 className="text-[24px] font-black tracking-tight text-blue-900 leading-none">
-                        SHESHAAN
-                      </h1>
-                      <div className="flex items-center w-full justify-between gap-1 mt-0.5">
-                        <div className="h-[2px] bg-orange-500 flex-grow" />
-                        <span className="text-[12px] font-black tracking-[0.24em] text-orange-500 uppercase leading-none">
-                          GLOBAL
-                        </span>
-                        <div className="h-[2px] bg-orange-500 flex-grow" />
-                      </div>
-                      <p className="text-[6.5px] font-black text-slate-500 tracking-[0.16em] mt-1">
-                        CONNECTING MARKETS, DELIVERING TRUST
-                      </p>
-                    </div>
-                  </div>
+                {/* STEP 1: PARTIES & LOGISTICS */}
+                {studioStep === 'parties' && (
+                  <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2">
+                      Supplier Selection & Shipping Logistics
+                    </h3>
 
-                  {/* Company Contact Details */}
-                  <div className="flex items-center gap-3 select-none" style={{ fontFamily: 'sans-serif' }}>
-                    <div className="w-[1px] h-12 bg-slate-200" />
-                    <div className="flex flex-col text-[8.5px] text-slate-600 space-y-0.5">
-                      <span className="font-extrabold text-slate-900 text-[9px]">Sheshaan Global Merchant Exporter</span>
-                      <span>Plot 1459, Aasinagar, Nagpur, MH, India</span>
-                      <span>GSTIN: <strong className="text-slate-900">27DCTPB6192N1ZS</strong></span>
-                      <span>Email: info@sheshaanglobal.com | +91 81499 09546</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Header Divider Line */}
-                <div className="px-10 flex-none select-none relative z-10">
-                  <div className="relative w-full h-[2.5px] bg-blue-900">
-                    <div className="absolute right-0 top-0 h-full w-[28%] bg-orange-500" />
-                  </div>
-                </div>
-
-                {/* AGREEMENT TITLE & METADATA */}
-                <div className="px-10 pt-5 pb-3 flex-none relative z-10" style={{ fontFamily: 'sans-serif' }}>
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                     <div>
-                      <h2 className="text-[15px] font-black tracking-wide text-blue-950 uppercase">
-                        {agreementTitle}
-                      </h2>
-                      <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mt-0.5">
-                        Bilateral Commercial Commodity Purchase & Shipment Undertaking
-                      </p>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        Select Contracting Supplier *
+                      </label>
+                      <select
+                        value={selectedSupplierId}
+                        onChange={e => setSelectedSupplierId(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      >
+                        {suppliers.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.company_name} ({s.city || 'City N/A'})
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <div className="text-right">
-                      <div className="inline-block bg-blue-900 text-white text-[9.5px] font-black font-mono px-2.5 py-1 rounded">
-                        REF: {agreementNumber}
-                      </div>
-                      <div className="text-[9px] font-bold text-slate-600 mt-1">
-                        Date: {agreementDate}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* CONTRACTING PARTIES GRID */}
-                <div className="px-10 py-3 flex-none" style={{ fontFamily: 'sans-serif' }}>
-                  <div className="grid grid-cols-2 gap-4 bg-slate-50/80 p-3.5 rounded-lg border border-slate-200 text-[9px] leading-relaxed">
-                    {/* Buyer Party */}
-                    <div className="border-r border-slate-200 pr-3">
-                      <span className="block text-[8px] font-black uppercase text-blue-900 tracking-wider mb-1">
-                        THE BUYER / MERCHANT EXPORTER
-                      </span>
-                      <strong className="text-[11px] text-slate-900 block font-black">SHESHAAN GLOBAL</strong>
-                      <p className="text-slate-600 mt-0.5">
-                        Office: Plot no. 1459, Opp. M.A.K Azad Urdu School, Aasinagar, Nagpur, Maharashtra, India - 440017
-                      </p>
-                      <p className="text-slate-600 mt-0.5 font-medium">
-                        GSTIN: <strong>27DCTPB6192N1ZS</strong> | IEC: Registered
-                      </p>
-                      <p className="text-slate-600 mt-0.5">
-                        Rep by: <strong>Sana Zeba Bakshi</strong>, Chief Executive Officer
-                      </p>
-                    </div>
-
-                    {/* Supplier Party */}
-                    <div className="pl-1">
-                      <span className="block text-[8px] font-black uppercase text-orange-600 tracking-wider mb-1">
-                        THE SUPPLIER / VENDOR
-                      </span>
-                      <strong className="text-[11px] text-slate-900 block font-black">
-                        {activeSupplier?.company_name || 'Supplier / Vendor Company'}
-                      </strong>
-                      <p className="text-slate-600 mt-0.5">
-                        Address: {activeSupplier?.address || ''}, {activeSupplier?.city || ''}, {activeSupplier?.state ? `${activeSupplier.state}, ` : ''}{activeSupplier?.country || 'India'}{activeSupplier?.postal_code ? ` - ${activeSupplier.postal_code}` : ''}
-                      </p>
-                      {activeSupplier?.tax_id && (
-                        <p className="text-slate-600 mt-0.5 font-medium">
-                          GSTIN / Tax ID: <strong>{activeSupplier.tax_id}</strong>
-                        </p>
-                      )}
-                      <p className="text-slate-600 mt-0.5">
-                        Contact: {activeSupplier?.contact_name || supplierSignatoryName} ({activeSupplier?.phone || 'Phone N/A'})
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SCHEDULE A: PRODUCTS & SPECIFICATIONS TABLE */}
-                <div className="px-10 py-2.5 flex-none" style={{ fontFamily: 'sans-serif' }}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-black uppercase text-blue-950 tracking-wider">
-                      Schedule A: Commodity & Price Specifications
-                    </span>
-                  </div>
-
-                  <table className="w-full text-left text-[9px] border-collapse border border-slate-300">
-                    <thead>
-                      <tr className="bg-blue-900 text-white font-black text-[8.5px] uppercase">
-                        <th className="py-1.5 px-2.5 border border-slate-400 w-8 text-center">#</th>
-                        <th className="py-1.5 px-2.5 border border-slate-400">Commodity / Item Description</th>
-                        <th className="py-1.5 px-2.5 border border-slate-400">Quality Specifications</th>
-                        <th className="py-1.5 px-2.5 border border-slate-400 text-center">Quantity</th>
-                        <th className="py-1.5 px-2.5 border border-slate-400 text-right">Unit Price</th>
-                        <th className="py-1.5 px-2.5 border border-slate-400 text-right">Total ({currency})</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {productItems.map((item, idx) => (
-                        <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                          <td className="py-1.5 px-2.5 border border-slate-300 text-center font-bold">{idx + 1}</td>
-                          <td className="py-1.5 px-2.5 border border-slate-300 font-extrabold text-slate-900">
-                            {item.product_name || 'Commodity item'}
-                          </td>
-                          <td className="py-1.5 px-2.5 border border-slate-300 text-[8px] text-slate-600">
-                            {item.specification || 'Standard export quality'}
-                          </td>
-                          <td className="py-1.5 px-2.5 border border-slate-300 text-center font-bold">
-                            {item.quantity} {item.unit}
-                          </td>
-                          <td className="py-1.5 px-2.5 border border-slate-300 text-right font-semibold">
-                            {formatCurrency(item.unit_price, currency)}
-                          </td>
-                          <td className="py-1.5 px-2.5 border border-slate-300 text-right font-black text-slate-900">
-                            {formatCurrency(item.total_price, currency)}
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className="bg-slate-100 font-black text-[9.5px]">
-                        <td colSpan={5} className="py-1.5 px-2.5 border border-slate-300 text-right uppercase text-slate-700">
-                          Total Contract Value ({currency}):
-                        </td>
-                        <td className="py-1.5 px-2.5 border border-slate-300 text-right text-blue-900">
-                          {formatCurrency(agreementGrandTotal, currency)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* SCHEDULE B: SHIPMENT, PORTS & LOGISTICS TERMS */}
-                <div className="px-10 py-2.5 flex-none" style={{ fontFamily: 'sans-serif' }}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-black uppercase text-blue-950 tracking-wider">
-                      Schedule B: Shipment, Ports & Logistics Framework
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 bg-slate-50 p-2.5 rounded border border-slate-200 text-[8.5px]">
-                    <div className="flex justify-between">
-                      <span className="font-bold text-slate-500">Target Shipment Date / Cutoff:</span>
-                      <strong className="text-slate-900 font-black">{shipmentTargetDate}</strong>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span className="font-bold text-slate-500">Port of Loading:</span>
-                      <strong className="text-slate-900">{loadingPort}</strong>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span className="font-bold text-slate-500">Delivery Incoterms (2020):</span>
-                      <strong className="text-blue-900 font-black">{incoterm}</strong>
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span className="font-bold text-slate-500">Destination Port:</span>
-                      <strong className="text-slate-900">{destinationPort}</strong>
-                    </div>
-
-                    <div className="flex justify-between col-span-2 border-t border-slate-200 pt-1 mt-0.5">
-                      <span className="font-bold text-slate-500">Packaging Requirements:</span>
-                      <span className="text-slate-800 font-semibold">{packagingDetails}</span>
-                    </div>
-
-                    <div className="flex justify-between col-span-2">
-                      <span className="font-bold text-slate-500">Agreed Payment Terms:</span>
-                      <span className="text-slate-800 font-bold">{paymentTerms}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SCHEDULE C: TERMS & CONDITIONS BODY */}
-                <div className="px-10 py-2 flex-1 relative flex flex-col justify-start">
-                  <div className="mb-1.5" style={{ fontFamily: 'sans-serif' }}>
-                    <span className="text-[10px] font-black uppercase text-blue-950 tracking-wider">
-                      Schedule C: Legal Terms, Covenants & Dispute Resolution
-                    </span>
-                  </div>
-
-                  <div className="text-[8.5px] leading-relaxed text-slate-700 whitespace-pre-line text-justify space-y-2 pr-1">
-                    {agreementBody}
-                  </div>
-                </div>
-
-                {/* SCHEDULE D: ATTESTATION, STAMP & SIGNATURE EXECUTION BLOCK */}
-                <div className="px-10 pt-4 pb-6 flex-none relative z-10" style={{ fontFamily: 'sans-serif' }}>
-                  <div className="mb-2">
-                    <span className="text-[9.5px] font-black uppercase text-blue-950 tracking-wider">
-                      Schedule D: Execution, Signatures & Corporate Seal
-                    </span>
-                    <p className="text-[8px] text-slate-500">
-                      IN WITNESS WHEREOF, the authorized representatives of the parties hereto have executed this Agreement on the date first written above.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-6 mt-3">
-                    {/* Buyer Execution (Sheshaan Global) */}
-                    <div className="border border-blue-200 rounded-lg p-3 bg-blue-50/30 relative">
-                      <span className="block text-[8px] font-black uppercase text-blue-900 tracking-wider">
-                        FOR & ON BEHALF OF BUYER:
-                      </span>
-                      <strong className="text-[9.5px] font-black text-slate-900 block mt-0.5">
-                        SHESHAAN GLOBAL
-                      </strong>
-
-                      {/* Signature graphic */}
-                      <div className="h-10 my-1 relative select-none flex items-center">
-                        {includeSignature && (
-                          <img
-                            src="/signature.png"
-                            alt="CEO Signature"
-                            className="h-20 w-auto object-contain absolute left-0 -top-5 z-10"
-                          />
-                        )}
-                      </div>
-
-                      <div className="text-[8.5px] text-slate-700 leading-tight">
-                        <p className="font-black text-slate-900">{signatoryName}</p>
-                        <p className="text-slate-500 font-semibold">{signatoryTitle}</p>
-                        <p className="text-[8px] text-slate-400 mt-0.5">Date: {agreementDate}</p>
-                      </div>
-
-                      {/* Official Rubber Stamp */}
-                      {includeStamp && (
-                        <div className="absolute right-3 bottom-2 select-none">
-                          <img
-                            src="/stamp.png"
-                            alt="Official Sheshaan Stamp"
-                            className="h-14 w-auto object-contain opacity-95 -rotate-[2deg]"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Supplier Execution */}
-                    <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50 relative flex flex-col justify-between">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <span className="block text-[8px] font-black uppercase text-orange-600 tracking-wider">
-                          FOR & ON BEHALF OF SUPPLIER:
-                        </span>
-                        <strong className="text-[9.5px] font-black text-slate-900 block mt-0.5 truncate">
-                          {activeSupplier?.company_name || 'Supplier / Vendor'}
-                        </strong>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          Agreement Reference #
+                        </label>
+                        <input
+                          type="text"
+                          value={agreementNumber}
+                          onChange={e => setAgreementNumber(e.target.value)}
+                          className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-mono font-bold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          Agreement Date
+                        </label>
+                        <input
+                          type="text"
+                          value={agreementDate}
+                          onChange={e => setAgreementDate(e.target.value)}
+                          className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800"
+                        />
+                      </div>
+                    </div>
 
-                        {/* Signatory line */}
-                        <div className="h-10 my-1 border-b border-dashed border-slate-400 flex items-end">
-                          <span className="text-[7.5px] text-slate-400 font-sans italic pb-0.5">Authorized Signature</span>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        Target Shipment Date / Window *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 15 November 2026 - 30 November 2026"
+                        value={shipmentTargetDate}
+                        onChange={e => setShipmentTargetDate(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          Port of Loading
+                        </label>
+                        <input
+                          type="text"
+                          value={loadingPort}
+                          onChange={e => setLoadingPort(e.target.value)}
+                          className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          Destination Port
+                        </label>
+                        <input
+                          type="text"
+                          value={destinationPort}
+                          onChange={e => setDestinationPort(e.target.value)}
+                          className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          Incoterms (2020)
+                        </label>
+                        <select
+                          value={incoterm}
+                          onChange={e => setIncoterm(e.target.value)}
+                          className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800"
+                        >
+                          <option value="FOB (Free On Board)">FOB (Free On Board)</option>
+                          <option value="CIF (Cost, Insurance & Freight)">CIF (Cost, Insurance & Freight)</option>
+                          <option value="CFR (Cost & Freight)">CFR (Cost & Freight)</option>
+                          <option value="EXW (Ex Works / Mill Gate)">EXW (Ex Works / Mill Gate)</option>
+                          <option value="FCA (Free Carrier)">FCA (Free Carrier)</option>
+                          <option value="CIP (Carriage & Insurance Paid)">CIP (Carriage & Insurance Paid)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                          Currency
+                        </label>
+                        <select
+                          value={currency}
+                          onChange={e => setCurrency(e.target.value)}
+                          className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800"
+                        >
+                          <option value="INR">INR (₹)</option>
+                          <option value="USD">USD ($)</option>
+                          <option value="EUR">EUR (€)</option>
+                          <option value="AED">AED (د.إ)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        Packaging Requirements
+                      </label>
+                      <input
+                        type="text"
+                        value={packagingDetails}
+                        onChange={e => setPackagingDetails(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        Payment Milestones
+                      </label>
+                      <input
+                        type="text"
+                        value={paymentTerms}
+                        onChange={e => setPaymentTerms(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setStudioStep('products')}
+                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                      >
+                        Next: Commodity Schedule →
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 2: COMMODITY SCHEDULE */}
+                {studioStep === 'products' && (
+                  <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                        Schedule A: Commodity Items
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={handleAddItem}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-900 hover:text-blue-700"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Add Item</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {productItems.map((item, idx) => (
+                        <div key={item.id} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-700 text-[11px] uppercase">Commodity #{idx + 1}</span>
+                            {productItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(item.id)}
+                                className="text-slate-400 hover:text-rose-600"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div>
+                            <input
+                              type="text"
+                              placeholder="Product Name / Commodity"
+                              value={item.product_name}
+                              onChange={e => handleUpdateItem(item.id, 'product_name', e.target.value)}
+                              className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800"
+                            />
+                          </div>
+
+                          <div>
+                            <input
+                              type="text"
+                              placeholder="Quality Specifications & Parameters (Moisture, Broken, Purity, Length)"
+                              value={item.specification}
+                              onChange={e => handleUpdateItem(item.id, 'specification', e.target.value)}
+                              className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase block">Quantity</label>
+                              <input
+                                type="number"
+                                value={item.quantity}
+                                onChange={e => handleUpdateItem(item.id, 'quantity', e.target.value)}
+                                className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase block">Unit</label>
+                              <input
+                                type="text"
+                                value={item.unit}
+                                onChange={e => handleUpdateItem(item.id, 'unit', e.target.value)}
+                                className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase block">Unit Price</label>
+                              <input
+                                type="number"
+                                value={item.unit_price}
+                                onChange={e => handleUpdateItem(item.id, 'unit_price', e.target.value)}
+                                className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-800"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="text-right pt-1 font-bold text-slate-900 text-xs">
+                            Line Total: {formatCurrency(item.total_price, currency)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-center justify-between">
+                      <span className="text-xs font-black text-blue-950 uppercase">Grand Total Contract Value:</span>
+                      <span className="text-base font-black text-blue-900">{formatCurrency(agreementGrandTotal, currency)}</span>
+                    </div>
+
+                    <div className="pt-2 flex justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setStudioStep('parties')}
+                        className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold"
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudioStep('clauses')}
+                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                      >
+                        Next: Legal Clauses →
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 3: LEGAL CLAUSES & BODY */}
+                {studioStep === 'clauses' && (
+                  <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2">
+                      Schedule C: Agreement Clauses & Terms
+                    </h3>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        Select Template Preset
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectTemplate('standard_export')}
+                          className={`p-2 rounded-lg text-[10px] font-bold border transition ${
+                            selectedTemplateKey === 'standard_export' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          Standard Export
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectTemplate('consignment_spot')}
+                          className={`p-2 rounded-lg text-[10px] font-bold border transition ${
+                            selectedTemplateKey === 'consignment_spot' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          Spot Consignment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectTemplate('annual_framework')}
+                          className={`p-2 rounded-lg text-[10px] font-bold border transition ${
+                            selectedTemplateKey === 'annual_framework' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          Annual Framework
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        Agreement Document Title
+                      </label>
+                      <input
+                        type="text"
+                        value={agreementTitle}
+                        onChange={e => setAgreementTitle(e.target.value)}
+                        className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                        Custom Legal Body Clauses (Fully Editable)
+                      </label>
+                      <textarea
+                        rows={12}
+                        value={agreementBody}
+                        onChange={e => setAgreementBody(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800 font-mono focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setStudioStep('products')}
+                        className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold"
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudioStep('sign')}
+                        className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold"
+                      >
+                        Next: Attestation Block →
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 4: ATTESTATION & SIGNATURES */}
+                {studioStep === 'sign' && (
+                  <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-100 pb-2">
+                      Schedule D: Stamp, Signature & Attestation Block
+                    </h3>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={includeStamp}
+                          onChange={e => setIncludeStamp(e.target.checked)}
+                          className="rounded text-blue-900 focus:ring-blue-900 h-4 w-4"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">Sheshaan Rubber Stamp</span>
+                          <span className="text-[10px] text-slate-400">Render official seal</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={includeSignature}
+                          onChange={e => setIncludeSignature(e.target.checked)}
+                          className="rounded text-blue-900 focus:ring-blue-900 h-4 w-4"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">CEO Signature Graphic</span>
+                          <span className="text-[10px] text-slate-400">Authorized signature</span>
+                        </div>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Buyer Signatory Name</label>
+                        <input
+                          type="text"
+                          value={signatoryName}
+                          onChange={e => setSignatoryName(e.target.value)}
+                          className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Buyer Title</label>
+                        <input
+                          type="text"
+                          value={signatoryTitle}
+                          onChange={e => setSignatoryTitle(e.target.value)}
+                          className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Supplier Signatory</label>
+                        <input
+                          type="text"
+                          value={supplierSignatoryName}
+                          onChange={e => setSupplierSignatoryName(e.target.value)}
+                          className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-bold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Supplier Title</label>
+                        <input
+                          type="text"
+                          value={supplierSignatoryTitle}
+                          onChange={e => setSupplierSignatoryTitle(e.target.value)}
+                          className="w-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setStudioStep('clauses')}
+                        className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold"
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadPDF}
+                        disabled={generatingPdf}
+                        className="px-5 py-2 rounded-xl bg-blue-900 text-white text-xs font-black shadow-md hover:bg-blue-800 transition"
+                      >
+                        {generatingPdf ? 'Rendering...' : 'Download Contract PDF'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* PREVIEW COLUMN (794px Document Viewer with Zoom & Fit) */}
+            {(studioLayoutMode === 'split' || studioLayoutMode === 'preview') && (
+              <div className={`${studioLayoutMode === 'preview' ? 'lg:col-span-12' : 'lg:col-span-6'} space-y-3`}>
+                {/* Preview Toolbar */}
+                <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-600 font-bold">
+                    <span>A4 Document Preview</span>
+                    <span className="text-[10px] text-slate-400 font-normal hidden sm:inline">(Print-Ready)</span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPreviewZoom(z => Math.max(0.5, Math.round((z - 0.1) * 10) / 10))}
+                      className="p-1 rounded hover:bg-slate-100 text-slate-600"
+                      title="Zoom Out"
+                    >
+                      <ZoomOut className="h-4 w-4" />
+                    </button>
+                    <span className="font-mono text-[11px] font-bold text-slate-700 min-w-[40px] text-center">
+                      {Math.round(previewZoom * 100)}%
+                    </span>
+                    <button
+                      onClick={() => setPreviewZoom(z => Math.min(1.2, Math.round((z + 0.1) * 10) / 10))}
+                      className="p-1 rounded hover:bg-slate-100 text-slate-600"
+                      title="Zoom In"
+                    >
+                      <ZoomIn className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setPreviewZoom(0.85)}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 ml-1"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+
+                {/* SCALED VIEWER CANVAS */}
+                <div className="w-full overflow-auto border border-slate-200 rounded-2xl p-4 bg-slate-200/50 shadow-inner flex justify-center max-h-[82vh]">
+                  <div
+                    style={{
+                      transform: `scale(${previewZoom})`,
+                      transformOrigin: 'top center',
+                      marginBottom: `${(previewZoom - 1) * 1123}px`
+                    }}
+                    className="transition-transform duration-150"
+                  >
+                    {/* A4 PAPER ELEMENT */}
+                    <div
+                      ref={previewRef}
+                      id="supplier-agreement-a4"
+                      className="w-[794px] bg-white shadow-2xl relative flex flex-col shrink-0 text-slate-800 text-left font-serif"
+                      style={{ minWidth: '794px', minHeight: '1123px' }}
+                    >
+                      {/* TOP BRAND ACCENT BAND */}
+                      <div className="relative top-0 left-0 right-0 h-[14px] bg-blue-900 z-10 flex-none">
+                        <div
+                          className="absolute right-0 top-0 h-full w-[45%] bg-orange-500"
+                          style={{ clipPath: 'polygon(15px 0, 100% 0, 100% 100%, 0 100%)' }}
+                        />
+                      </div>
+
+                      {/* HEADER SECTION */}
+                      <div className="px-10 pt-8 pb-4 flex justify-between items-start flex-none relative z-10">
+                        {/* Brand & Logo */}
+                        <div className="flex items-center gap-3.5">
+                          <img
+                            src="/logo.jpg"
+                            alt="Sheshaan Global Logo"
+                            className="h-16 w-auto object-contain select-none"
+                          />
+                          <div className="flex flex-col items-start select-none" style={{ fontFamily: 'sans-serif' }}>
+                            <h1 className="text-[24px] font-black tracking-tight text-blue-900 leading-none">
+                              SHESHAAN
+                            </h1>
+                            <div className="flex items-center w-full justify-between gap-1 mt-0.5">
+                              <div className="h-[2px] bg-orange-500 flex-grow" />
+                              <span className="text-[12px] font-black tracking-[0.24em] text-orange-500 uppercase leading-none">
+                                GLOBAL
+                              </span>
+                              <div className="h-[2px] bg-orange-500 flex-grow" />
+                            </div>
+                            <p className="text-[6.5px] font-black text-slate-500 tracking-[0.16em] mt-1">
+                              CONNECTING MARKETS, DELIVERING TRUST
+                            </p>
+                          </div>
                         </div>
 
-                        <div className="text-[8.5px] text-slate-700 leading-tight">
-                          <p className="font-black text-slate-900">{supplierSignatoryName || 'Authorized Signatory'}</p>
-                          <p className="text-slate-500 font-semibold">{supplierSignatoryTitle}</p>
-                          <p className="text-[8px] text-slate-400 mt-0.5">Date: ____ / ____ / 2026</p>
+                        {/* Company Contact Details */}
+                        <div className="flex items-center gap-3 select-none" style={{ fontFamily: 'sans-serif' }}>
+                          <div className="w-[1px] h-12 bg-slate-200" />
+                          <div className="flex flex-col text-[8.5px] text-slate-600 space-y-0.5">
+                            <span className="font-extrabold text-slate-900 text-[9px]">Sheshaan Global Merchant Exporter</span>
+                            <span>Plot 1459, Aasinagar, Nagpur, MH, India</span>
+                            <span>GSTIN: <strong className="text-slate-900">27DCTPB6192N1ZS</strong></span>
+                            <span>Email: info@sheshaanglobal.com | +91 81499 09546</span>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Supplier Stamp Box */}
-                      <div className="absolute right-3 bottom-2 w-16 h-12 border border-dashed border-slate-400 rounded flex items-center justify-center text-center p-1">
-                        <span className="text-[6.5px] font-bold text-slate-400 uppercase leading-none">
-                          Supplier Corporate Stamp
-                        </span>
+                      {/* Header Divider Line */}
+                      <div className="px-10 flex-none select-none relative z-10">
+                        <div className="relative w-full h-[2.5px] bg-blue-900">
+                          <div className="absolute right-0 top-0 h-full w-[28%] bg-orange-500" />
+                        </div>
+                      </div>
+
+                      {/* AGREEMENT TITLE & METADATA */}
+                      <div className="px-10 pt-5 pb-3 flex-none relative z-10" style={{ fontFamily: 'sans-serif' }}>
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                          <div>
+                            <h2 className="text-[15px] font-black tracking-wide text-blue-950 uppercase">
+                              {agreementTitle}
+                            </h2>
+                            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mt-0.5">
+                              Bilateral Commercial Commodity Purchase & Shipment Undertaking
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <div className="inline-block bg-blue-900 text-white text-[9.5px] font-black font-mono px-2.5 py-1 rounded">
+                              REF: {agreementNumber}
+                            </div>
+                            <div className="text-[9px] font-bold text-slate-600 mt-1">
+                              Date: {agreementDate}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CONTRACTING PARTIES GRID */}
+                      <div className="px-10 py-3 flex-none" style={{ fontFamily: 'sans-serif' }}>
+                        <div className="grid grid-cols-2 gap-4 bg-slate-50/80 p-3.5 rounded-lg border border-slate-200 text-[9px] leading-relaxed">
+                          {/* Buyer Party */}
+                          <div className="border-r border-slate-200 pr-3">
+                            <span className="block text-[8px] font-black uppercase text-blue-900 tracking-wider mb-1">
+                              THE BUYER / MERCHANT EXPORTER
+                            </span>
+                            <strong className="text-[11px] text-slate-900 block font-black">SHESHAAN GLOBAL</strong>
+                            <p className="text-slate-600 mt-0.5">
+                              Office: Plot no. 1459, Opp. M.A.K Azad Urdu School, Aasinagar, Nagpur, Maharashtra, India - 440017
+                            </p>
+                            <p className="text-slate-600 mt-0.5 font-medium">
+                              GSTIN: <strong>27DCTPB6192N1ZS</strong> | IEC: Registered
+                            </p>
+                            <p className="text-slate-600 mt-0.5">
+                              Rep by: <strong>Sana Zeba Bakshi</strong>, Chief Executive Officer
+                            </p>
+                          </div>
+
+                          {/* Supplier Party */}
+                          <div className="pl-1">
+                            <span className="block text-[8px] font-black uppercase text-orange-600 tracking-wider mb-1">
+                              THE SUPPLIER / VENDOR
+                            </span>
+                            <strong className="text-[11px] text-slate-900 block font-black">
+                              {activeSupplier?.company_name || 'Supplier / Vendor Company'}
+                            </strong>
+                            <p className="text-slate-600 mt-0.5">
+                              Address: {activeSupplier?.address || ''}, {activeSupplier?.city || ''}, {activeSupplier?.state ? `${activeSupplier.state}, ` : ''}{activeSupplier?.country || 'India'}{activeSupplier?.postal_code ? ` - ${activeSupplier.postal_code}` : ''}
+                            </p>
+                            {activeSupplier?.tax_id && (
+                              <p className="text-slate-600 mt-0.5 font-medium">
+                                GSTIN / Tax ID: <strong>{activeSupplier.tax_id}</strong>
+                              </p>
+                            )}
+                            <p className="text-slate-600 mt-0.5">
+                              Contact: {activeSupplier?.contact_name || supplierSignatoryName} ({activeSupplier?.phone || 'Phone N/A'})
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* SCHEDULE A: COMMODITIES TABLE */}
+                      <div className="px-10 py-2.5 flex-none" style={{ fontFamily: 'sans-serif' }}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-black uppercase text-blue-950 tracking-wider">
+                            Schedule A: Commodity & Price Specifications
+                          </span>
+                        </div>
+
+                        <table className="w-full text-left text-[9px] border-collapse border border-slate-300">
+                          <thead>
+                            <tr className="bg-blue-900 text-white font-black text-[8.5px] uppercase">
+                              <th className="py-1.5 px-2.5 border border-slate-400 w-8 text-center">#</th>
+                              <th className="py-1.5 px-2.5 border border-slate-400">Commodity / Item Description</th>
+                              <th className="py-1.5 px-2.5 border border-slate-400">Quality Specifications</th>
+                              <th className="py-1.5 px-2.5 border border-slate-400 text-center">Quantity</th>
+                              <th className="py-1.5 px-2.5 border border-slate-400 text-right">Unit Price</th>
+                              <th className="py-1.5 px-2.5 border border-slate-400 text-right">Total ({currency})</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {productItems.map((item, idx) => (
+                              <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                                <td className="py-1.5 px-2.5 border border-slate-300 text-center font-bold">{idx + 1}</td>
+                                <td className="py-1.5 px-2.5 border border-slate-300 font-extrabold text-slate-900">
+                                  {item.product_name || 'Commodity item'}
+                                </td>
+                                <td className="py-1.5 px-2.5 border border-slate-300 text-[8px] text-slate-600">
+                                  {item.specification || 'Standard export quality'}
+                                </td>
+                                <td className="py-1.5 px-2.5 border border-slate-300 text-center font-bold">
+                                  {item.quantity} {item.unit}
+                                </td>
+                                <td className="py-1.5 px-2.5 border border-slate-300 text-right font-semibold">
+                                  {formatCurrency(item.unit_price, currency)}
+                                </td>
+                                <td className="py-1.5 px-2.5 border border-slate-300 text-right font-black text-slate-900">
+                                  {formatCurrency(item.total_price, currency)}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr className="bg-slate-100 font-black text-[9.5px]">
+                              <td colSpan={5} className="py-1.5 px-2.5 border border-slate-300 text-right uppercase text-slate-700">
+                                Total Contract Value ({currency}):
+                              </td>
+                              <td className="py-1.5 px-2.5 border border-slate-300 text-right text-blue-900">
+                                {formatCurrency(agreementGrandTotal, currency)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* SCHEDULE B: SHIPMENT & LOGISTICS */}
+                      <div className="px-10 py-2.5 flex-none" style={{ fontFamily: 'sans-serif' }}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-black uppercase text-blue-950 tracking-wider">
+                            Schedule B: Shipment, Ports & Logistics Framework
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 bg-slate-50 p-2.5 rounded border border-slate-200 text-[8.5px]">
+                          <div className="flex justify-between">
+                            <span className="font-bold text-slate-500">Target Shipment Date / Cutoff:</span>
+                            <strong className="text-slate-900 font-black">{shipmentTargetDate}</strong>
+                          </div>
+
+                          <div className="flex justify-between">
+                            <span className="font-bold text-slate-500">Port of Loading:</span>
+                            <strong className="text-slate-900">{loadingPort}</strong>
+                          </div>
+
+                          <div className="flex justify-between">
+                            <span className="font-bold text-slate-500">Delivery Incoterms (2020):</span>
+                            <strong className="text-blue-900 font-black">{incoterm}</strong>
+                          </div>
+
+                          <div className="flex justify-between">
+                            <span className="font-bold text-slate-500">Destination Port:</span>
+                            <strong className="text-slate-900">{destinationPort}</strong>
+                          </div>
+
+                          <div className="flex justify-between col-span-2 border-t border-slate-200 pt-1 mt-0.5">
+                            <span className="font-bold text-slate-500">Packaging Requirements:</span>
+                            <span className="text-slate-800 font-semibold">{packagingDetails}</span>
+                          </div>
+
+                          <div className="flex justify-between col-span-2">
+                            <span className="font-bold text-slate-500">Agreed Payment Terms:</span>
+                            <span className="text-slate-800 font-bold">{paymentTerms}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* SCHEDULE C: TERMS & CONDITIONS */}
+                      <div className="px-10 py-2 flex-1 relative flex flex-col justify-start">
+                        <div className="mb-1.5" style={{ fontFamily: 'sans-serif' }}>
+                          <span className="text-[10px] font-black uppercase text-blue-950 tracking-wider">
+                            Schedule C: Legal Terms, Covenants & Dispute Resolution
+                          </span>
+                        </div>
+
+                        <div className="text-[8.5px] leading-relaxed text-slate-700 whitespace-pre-line text-justify space-y-2 pr-1">
+                          {agreementBody}
+                        </div>
+                      </div>
+
+                      {/* SCHEDULE D: ATTESTATION BLOCK */}
+                      <div className="px-10 pt-4 pb-6 flex-none relative z-10" style={{ fontFamily: 'sans-serif' }}>
+                        <div className="mb-2">
+                          <span className="text-[9.5px] font-black uppercase text-blue-950 tracking-wider">
+                            Schedule D: Execution, Signatures & Corporate Seal
+                          </span>
+                          <p className="text-[8px] text-slate-500">
+                            IN WITNESS WHEREOF, the authorized representatives of the parties hereto have executed this Agreement on the date first written above.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-6 mt-3">
+                          {/* Buyer Execution */}
+                          <div className="border border-blue-200 rounded-lg p-3 bg-blue-50/30 relative">
+                            <span className="block text-[8px] font-black uppercase text-blue-900 tracking-wider">
+                              FOR & ON BEHALF OF BUYER:
+                            </span>
+                            <strong className="text-[9.5px] font-black text-slate-900 block mt-0.5">
+                              SHESHAAN GLOBAL
+                            </strong>
+
+                            <div className="h-10 my-1 relative select-none flex items-center">
+                              {includeSignature && (
+                                <img
+                                  src="/signature.png"
+                                  alt="CEO Signature"
+                                  className="h-20 w-auto object-contain absolute left-0 -top-5 z-10"
+                                />
+                              )}
+                            </div>
+
+                            <div className="text-[8.5px] text-slate-700 leading-tight">
+                              <p className="font-black text-slate-900">{signatoryName}</p>
+                              <p className="text-slate-500 font-semibold">{signatoryTitle}</p>
+                              <p className="text-[8px] text-slate-400 mt-0.5">Date: {agreementDate}</p>
+                            </div>
+
+                            {includeStamp && (
+                              <div className="absolute right-3 bottom-2 select-none">
+                                <img
+                                  src="/stamp.png"
+                                  alt="Official Sheshaan Stamp"
+                                  className="h-14 w-auto object-contain opacity-95 -rotate-[2deg]"
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Supplier Execution */}
+                          <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50 relative flex flex-col justify-between">
+                            <div>
+                              <span className="block text-[8px] font-black uppercase text-orange-600 tracking-wider">
+                                FOR & ON BEHALF OF SUPPLIER:
+                              </span>
+                              <strong className="text-[9.5px] font-black text-slate-900 block mt-0.5 truncate">
+                                {activeSupplier?.company_name || 'Supplier / Vendor'}
+                              </strong>
+
+                              <div className="h-10 my-1 border-b border-dashed border-slate-400 flex items-end">
+                                <span className="text-[7.5px] text-slate-400 font-sans italic pb-0.5">Authorized Signature</span>
+                              </div>
+
+                              <div className="text-[8.5px] text-slate-700 leading-tight">
+                                <p className="font-black text-slate-900">{supplierSignatoryName || 'Authorized Signatory'}</p>
+                                <p className="text-slate-500 font-semibold">{supplierSignatoryTitle}</p>
+                                <p className="text-[8px] text-slate-400 mt-0.5">Date: ____ / ____ / 2026</p>
+                              </div>
+                            </div>
+
+                            <div className="absolute right-3 bottom-2 w-16 h-12 border border-dashed border-slate-400 rounded flex items-center justify-center text-center p-1">
+                              <span className="text-[6.5px] font-bold text-slate-400 uppercase leading-none">
+                                Supplier Stamp
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* FOOTER DIVIDER LINE */}
+                      <div className="px-10 flex-none select-none relative z-10">
+                        <div className="relative w-full h-[2px] bg-blue-900">
+                          <div className="absolute right-0 top-0 h-full w-[35%] bg-orange-500" />
+                        </div>
+                      </div>
+
+                      {/* FOOTER DETAILS */}
+                      <div
+                        className="px-10 py-2.5 flex items-center justify-between flex-none z-10 relative select-none text-[7.5px] text-slate-500"
+                        style={{ fontFamily: 'sans-serif' }}
+                      >
+                        <div>
+                          <span className="font-bold text-slate-800">SHESHAAN GLOBAL</span> | Plot 1459, Aasinagar, Nagpur, MH, India | GSTIN: 27DCTPB6192N1ZS
+                        </div>
+                        <div>
+                          Ref: <strong className="font-mono text-slate-700">{agreementNumber}</strong> | Confidential Trade Document
+                        </div>
+                      </div>
+
+                      {/* BOTTOM BAND */}
+                      <div className="relative w-full h-5 bg-blue-900 flex-none overflow-hidden select-none z-10">
+                        <div className="absolute left-0 top-0 h-full w-9 bg-orange-500 -skew-x-[28deg] -translate-x-3.5" />
+                        <div className="absolute left-9 top-0 h-full w-[3px] bg-white -skew-x-[28deg] -translate-x-2" />
+                        <div className="absolute left-11 top-0 h-full w-[5px] bg-blue-900 -skew-x-[28deg] -translate-x-2" />
+                        <div className="absolute right-0 top-0 h-full w-24 bg-orange-500 -skew-x-[28deg] translate-x-5" />
                       </div>
                     </div>
                   </div>
-                </div>
-
-                {/* FOOTER DIVIDER LINE */}
-                <div className="px-10 flex-none select-none relative z-10">
-                  <div className="relative w-full h-[2px] bg-blue-900">
-                    <div className="absolute right-0 top-0 h-full w-[35%] bg-orange-500" />
-                  </div>
-                </div>
-
-                {/* FOOTER DETAILS */}
-                <div
-                  className="px-10 py-2.5 flex items-center justify-between flex-none z-10 relative select-none text-[7.5px] text-slate-500"
-                  style={{ fontFamily: 'sans-serif' }}
-                >
-                  <div>
-                    <span className="font-bold text-slate-800">SHESHAAN GLOBAL</span> | Plot 1459, Aasinagar, Nagpur, MH, India | GSTIN: 27DCTPB6192N1ZS
-                  </div>
-                  <div>
-                    Ref: <strong className="font-mono text-slate-700">{agreementNumber}</strong> | Confidential Trade Document
-                  </div>
-                </div>
-
-                {/* BOTTOM BAND WITH CORNER ANGLED STRIPES */}
-                <div className="relative w-full h-5 bg-blue-900 flex-none overflow-hidden select-none z-10">
-                  <div className="absolute left-0 top-0 h-full w-9 bg-orange-500 -skew-x-[28deg] -translate-x-3.5" />
-                  <div className="absolute left-9 top-0 h-full w-[3px] bg-white -skew-x-[28deg] -translate-x-2" />
-                  <div className="absolute left-11 top-0 h-full w-[5px] bg-blue-900 -skew-x-[28deg] -translate-x-2" />
-                  <div className="absolute right-0 top-0 h-full w-24 bg-orange-500 -skew-x-[28deg] translate-x-5" />
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -1932,7 +2217,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
 
             <form onSubmit={handleSaveSupplier} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Company Name *
                 </label>
                 <input
@@ -1947,7 +2232,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                     Contact Person & Title
                   </label>
                   <input
@@ -1960,7 +2245,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                     GSTIN / Tax ID
                   </label>
                   <input
@@ -1975,7 +2260,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                     Email Address
                   </label>
                   <input
@@ -1988,7 +2273,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                     Phone / WhatsApp
                   </label>
                   <input
@@ -2002,7 +2287,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
               </div>
 
               <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Street Address
                 </label>
                 <input
@@ -2016,7 +2301,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">City</label>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">City</label>
                   <input
                     type="text"
                     placeholder="e.g. Unjha / Karnal"
@@ -2027,7 +2312,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">State</label>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">State</label>
                   <input
                     type="text"
                     placeholder="e.g. Gujarat"
@@ -2038,7 +2323,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">Postal Code</label>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Postal Code</label>
                   <input
                     type="text"
                     placeholder="e.g. 384170"
@@ -2050,7 +2335,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
               </div>
 
               <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Product Categories Dealing (Comma Separated)
                 </label>
                 <input
@@ -2064,7 +2349,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                     Standard Payment Terms
                   </label>
                   <input
@@ -2077,7 +2362,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                     Partner Status
                   </label>
                   <select
@@ -2093,7 +2378,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
               </div>
 
               <div>
-                <label className="block text-[11px] font-black text-slate-700 uppercase mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Internal Notes & Certifications
                 </label>
                 <textarea
@@ -2115,7 +2400,7 @@ Signatory: ${supplierSignatoryName} (${supplierSignatoryTitle})
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-900 text-white font-black hover:bg-blue-800 shadow-md"
+                  className="px-5 py-2 rounded-xl bg-blue-900 text-white font-bold hover:bg-blue-800 shadow-sm"
                 >
                   {editingSupplier ? 'Update Supplier' : 'Register Supplier'}
                 </button>
