@@ -5176,17 +5176,9 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
       { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
       { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" /> },
       { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" /> },
-      { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, count: invoices.length },
-      { key: 'shipments', label: 'Shipment Operations', icon: <Ship className="h-4 w-4" />, count: shipments.length },
-      { key: 'documents', label: 'Document Packet Generator', icon: <CheckSquare className="h-4 w-4" />, count: checklists.length },
       { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, count: products.length },
       { key: 'vendors', label: 'Suppliers / Vendors', icon: <Building2 className="h-4 w-4" />, count: vendors.length },
-      { key: 'freight', label: 'Freight Presets', icon: <Anchor className="h-4 w-4" />, count: freightPresets.length },
-      { key: 'rates', label: 'Rate History', icon: <History className="h-4 w-4" />, count: freightRates.length },
-      { key: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-4 w-4" /> },
-      { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, count: users.length },
-      { key: 'auditLog', label: 'Activity Log', icon: <History className="h-4 w-4" />, count: activityLogs.length },
-      { key: 'manager', label: 'Manager Dashboard', icon: <LineChart className="h-4 w-4" /> }
+      { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, count: users.length }
     ];
     return allNavItems.filter((item) => canAccessTab(currentRole, item.key));
   }, [
@@ -5222,8 +5214,8 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'quotes'].includes(item.key)).slice(0, 4), [navItems]);
   const navGroups = useMemo(() => [
     { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
-    { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
-    { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'auditLog', 'manager'].includes(item.key)) }
+    { label: 'Operations', items: navItems.filter((item) => ['products', 'vendors'].includes(item.key)) },
+    { label: 'Admin', items: navItems.filter((item) => ['users'].includes(item.key)) }
   ], [navItems]);
 
   const hasAccessToActiveTab = useMemo(() => {
@@ -5238,16 +5230,8 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
       router.push('/quotes');
       return;
     }
-    if (tab === 'shipments') {
-      router.push('/shipments');
-      return;
-    }
     if (tab === 'overview') {
       router.push('/overview');
-      return;
-    }
-    if (tab === 'accounts') {
-      router.push('/accounts');
       return;
     }
     setActiveTab(tab);
@@ -10081,7 +10065,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               <Search className="h-5 w-5 text-slate-400" />
               <SmoothInput
                 type="text"
-                placeholder="Search console (e.g. /crm, /quotes, /manager, or type record name)..."
+                placeholder="Search console (e.g. /crm, /quotes, or type record name)..."
                 value={commandSearch}
                 onChange={setCommandSearch}
                 className="w-full text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none"
@@ -10102,11 +10086,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                       { cmd: '/overview', label: 'Command Center', tab: 'overview' as TabKey },
                       { cmd: '/actionQueue', label: 'Action Queue', tab: 'actionQueue' as TabKey },
                       { cmd: '/crm', label: 'CRM Pipeline', tab: 'crm' as TabKey },
-                      { cmd: '/quotes', label: 'Quote Automation', tab: 'quotes' as TabKey },
-                      { cmd: '/tasks', label: 'Tasks & Reminders', tab: 'tasks' as TabKey },
-                      { cmd: '/accounts', label: 'Accounts / Receipts', tab: 'accounts' as TabKey },
-                      { cmd: '/shipments', label: 'Shipment Ops', tab: 'shipments' as TabKey },
-                      { cmd: '/manager', label: 'Manager Dashboard', tab: 'manager' as TabKey }
+                      { cmd: '/quotes', label: 'Quote Automation', tab: 'quotes' as TabKey }
                     ].filter(item => item.cmd.includes(commandSearch)).map(item => (
                       <button
                         key={item.cmd}

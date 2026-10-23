@@ -16,16 +16,9 @@ import {
   Send,
   FileText,
   ClipboardList,
-  CalendarCheck,
-  Ship,
-  CheckSquare,
   Package,
   Building2,
-  Anchor,
-  History,
-  BarChart3,
   Lock,
-  LineChart,
   Plus,
   RefreshCw,
   Edit2,
@@ -63,17 +56,9 @@ export const TAB_ROUTES: Record<string, string> = {
   templates: '/templates',
   generateResponses: '/generate-responses',
   letterhead: '/letterhead',
-  accounts: '/accounts',
-  shipments: '/shipments',
-  documents: '/documents',
   products: '/products',
   vendors: '/vendors',
-  freight: '/freight',
-  rates: '/rates',
-  analytics: '/analytics',
-  users: '/users',
-  auditLog: '/audit-log',
-  manager: '/manager'
+  users: '/users'
 };
 
 interface PortalLayoutProps {
@@ -120,7 +105,6 @@ export function PortalLayoutContent({
     inquiries: number;
     leads: number;
     quotes: number;
-    shipments: number;
   }>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -131,7 +115,7 @@ export function PortalLayoutContent({
         }
       } catch {}
     }
-    return { buyers: 0, inquiries: 0, leads: 0, quotes: 0, shipments: 0 };
+    return { buyers: 0, inquiries: 0, leads: 0, quotes: 0 };
   });
 
   // USD / INR FX State
@@ -169,20 +153,17 @@ export function PortalLayoutContent({
         const [
           { data: lData },
           { data: cData },
-          { data: qData },
-          { data: sData }
+          { data: qData }
         ] = await Promise.all([
           supabase.from('leads').select('*'),
           supabase.from('clients').select('*'),
-          supabase.from('quotes').select('*'),
-          supabase.from('shipments').select('*')
+          supabase.from('quotes').select('*')
         ]);
         if (isMounted) {
           const counts = {
             leads: lData?.length || 0,
             buyers: cData?.length || 0,
             quotes: qData?.length || 0,
-            shipments: sData?.length || 0,
             inquiries: 0
           };
           setQuickCounts(counts);
@@ -254,17 +235,9 @@ export function PortalLayoutContent({
     { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, href: '/templates', count: badgeCounts.templates },
     { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" />, href: '/generate-responses' },
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
-    { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, href: '/accounts', count: badgeCounts.accounts },
-    { key: 'shipments', label: 'Shipment Operations', icon: <Ship className="h-4 w-4" />, href: '/shipments', count: badgeCounts.shipments ?? quickCounts.shipments },
-    { key: 'documents', label: 'Document Packet Generator', icon: <CheckSquare className="h-4 w-4" />, href: '/documents', count: badgeCounts.documents },
     { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, href: '/products', count: badgeCounts.products },
     { key: 'vendors', label: 'Suppliers / Vendors', icon: <Building2 className="h-4 w-4" />, href: '/vendors', count: badgeCounts.vendors },
-    { key: 'freight', label: 'Freight Presets', icon: <Anchor className="h-4 w-4" />, href: '/freight', count: badgeCounts.freight },
-    { key: 'rates', label: 'Rate History', icon: <History className="h-4 w-4" />, href: '/rates', count: badgeCounts.rates },
-    { key: 'analytics', label: 'Analytics', icon: <BarChart3 className="h-4 w-4" />, href: '/analytics' },
-    { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, href: '/users', count: badgeCounts.users },
-    { key: 'auditLog', label: 'Activity Log', icon: <History className="h-4 w-4" />, href: '/audit-log', count: badgeCounts.auditLog },
-    { key: 'manager', label: 'Manager Dashboard', icon: <LineChart className="h-4 w-4" />, href: '/manager' }
+    { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, href: '/users', count: badgeCounts.users }
   ], [badgeCounts, quickCounts]);
 
   const authorizedNavItems = useMemo(() => {
@@ -283,13 +256,13 @@ export function PortalLayoutContent({
     {
       label: 'Operations',
       items: authorizedNavItems.filter((item) =>
-        ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)
+        ['products', 'vendors'].includes(item.key)
       )
     },
     {
       label: 'Admin',
       items: authorizedNavItems.filter((item) =>
-        ['analytics', 'users', 'auditLog', 'manager'].includes(item.key)
+        ['users'].includes(item.key)
       )
     }
   ], [authorizedNavItems]);
@@ -635,7 +608,7 @@ export function PortalLayoutContent({
                     type="text"
                     value={globalSearch}
                     onChange={(e) => setGlobalSearch(e.target.value)}
-                    placeholder="Search buyers, leads, quotes, invoices, shipments..."
+                    placeholder="Search buyers, leads, quotes..."
                     className="w-full h-10 rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                 </div>
@@ -649,7 +622,6 @@ export function PortalLayoutContent({
                 <span className="portal-chip"><Users className="h-3.5 w-3.5 text-sky-600" /> {quickCounts.buyers.toLocaleString()} buyers</span>
                 <span className="portal-chip"><Target className="h-3.5 w-3.5 text-emerald-600" /> {quickCounts.leads.toLocaleString()} leads</span>
                 <span className="portal-chip"><FileCheck2 className="h-3.5 w-3.5 text-amber-600" /> {quickCounts.quotes.toLocaleString()} quotes</span>
-                <span className="portal-chip"><Ship className="h-3.5 w-3.5 text-indigo-600" /> {quickCounts.shipments.toLocaleString()} shipments</span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="portal-chip"><RefreshCw className="h-3.5 w-3.5 text-emerald-600" /> Ready</span>

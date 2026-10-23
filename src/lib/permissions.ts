@@ -3,10 +3,10 @@ import type { AppUser } from './types';
 export type PortalRole = AppUser['role'];
 
 export const roleTabs: Record<PortalRole, readonly string[]> = {
-  Admin: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'users', 'auditLog', 'manager', 'letterhead'],
-  Sales: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'products', 'analytics', 'letterhead'],
-  Accounts: ['overview', 'quotes', 'accounts', 'analytics', 'letterhead'],
-  Operations: ['overview', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'letterhead']
+  Admin: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead', 'products', 'vendors', 'users'],
+  Sales: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead', 'products'],
+  Accounts: ['overview', 'quotes', 'letterhead'],
+  Operations: ['overview', 'products', 'vendors', 'letterhead']
 };
 
 const tableArea: Record<string, string> = {
