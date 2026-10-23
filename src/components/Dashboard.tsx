@@ -5171,17 +5171,11 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
       { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
       { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, count: potentialBuyerLeads.length },
       { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, count: sourceFilteredLeads.length },
-      { key: 'dataCleanup', label: 'Need Email Fix', icon: <Mail className="h-4 w-4" />, count: cleanupRecords.length },
-      { key: 'phoneCleanup', label: 'Need Phone Fix', icon: <Phone className="h-4 w-4" />, count: phoneCleanupRecords.length },
-      { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, count: reachoutBuyers.length },
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
       { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
-      { key: 'teamChat', label: 'Team Chat', icon: <MessageSquare className="h-4 w-4" />, count: teamMessages.length },
       { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
       { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" /> },
-      { key: 'blogs', label: 'Blog Management', icon: <FileText className="h-4 w-4" />, count: blogs.length },
       { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" /> },
-      { key: 'tasks', label: 'Tasks & Reminders', icon: <ClipboardList className="h-4 w-4" />, count: tasks.filter((task) => task.status !== 'Done').length },
       { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, count: invoices.length },
       { key: 'shipments', label: 'Shipment Operations', icon: <Ship className="h-4 w-4" />, count: shipments.length },
       { key: 'documents', label: 'Document Packet Generator', icon: <CheckSquare className="h-4 w-4" />, count: checklists.length },
@@ -5225,9 +5219,9 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const isSyncing = loading || importingBuyers;
   const appBusy = (!initialDataLoaded && loading) || importingBuyers;
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
-  const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'dataCleanup', 'tasks'].includes(item.key)).slice(0, 5), [navItems]);
+  const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'quotes'].includes(item.key)).slice(0, 4), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'teamChat', 'templates', 'generateResponses', 'blogs', 'tasks', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['analytics', 'users', 'auditLog', 'manager'].includes(item.key)) }
   ], [navItems]);

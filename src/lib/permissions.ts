@@ -3,10 +3,10 @@ import type { AppUser } from './types';
 export type PortalRole = AppUser['role'];
 
 export const roleTabs: Record<PortalRole, readonly string[]> = {
-  Admin: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'teamChat', 'templates', 'generateResponses', 'blogs', 'tasks', 'accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'users', 'auditLog', 'manager', 'letterhead'],
-  Sales: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'teamChat', 'templates', 'generateResponses', 'blogs', 'tasks', 'products', 'analytics', 'letterhead'],
-  Accounts: ['overview', 'quotes', 'teamChat', 'tasks', 'accounts', 'analytics', 'letterhead'],
-  Operations: ['overview', 'teamChat', 'tasks', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'letterhead']
+  Admin: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'accounts', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'users', 'auditLog', 'manager', 'letterhead'],
+  Sales: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'products', 'analytics', 'letterhead'],
+  Accounts: ['overview', 'quotes', 'accounts', 'analytics', 'letterhead'],
+  Operations: ['overview', 'shipments', 'documents', 'products', 'vendors', 'freight', 'rates', 'analytics', 'letterhead']
 };
 
 const tableArea: Record<string, string> = {

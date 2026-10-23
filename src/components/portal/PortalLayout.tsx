@@ -58,17 +58,11 @@ export const TAB_ROUTES: Record<string, string> = {
   crm: '/crm',
   potentialBuyers: '/potential-buyers',
   dataSources: '/data-sources',
-  dataCleanup: '/data-cleanup',
-  phoneCleanup: '/phone-cleanup',
-  phoneReachout: '/phone-reachout',
   quotes: '/quotes',
   communications: '/communications',
-  teamChat: '/team-chat',
   templates: '/templates',
   generateResponses: '/generate-responses',
-  blogs: '/admin-blogs',
   letterhead: '/letterhead',
-  tasks: '/tasks',
   accounts: '/accounts',
   shipments: '/shipments',
   documents: '/documents',
@@ -255,17 +249,11 @@ export function PortalLayoutContent({
     { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, href: '/crm', count: badgeCounts.crm ?? quickCounts.leads },
     { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, href: '/potential-buyers', count: badgeCounts.potentialBuyers },
     { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, href: '/data-sources', count: badgeCounts.dataSources },
-    { key: 'dataCleanup', label: 'Need Email Fix', icon: <Mail className="h-4 w-4" />, href: '/data-cleanup', count: badgeCounts.dataCleanup },
-    { key: 'phoneCleanup', label: 'Need Phone Fix', icon: <Phone className="h-4 w-4" />, href: '/phone-cleanup', count: badgeCounts.phoneCleanup },
-    { key: 'phoneReachout', label: 'Number Reachout', icon: <Phone className="h-4 w-4" />, href: '/phone-reachout', count: badgeCounts.phoneReachout },
     { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, href: '/quotes', count: badgeCounts.quotes ?? quickCounts.quotes },
     { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, href: '/communications', count: badgeCounts.communications },
-    { key: 'teamChat', label: 'Team Chat', icon: <MessageSquare className="h-4 w-4" />, href: '/team-chat', count: badgeCounts.teamChat },
     { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, href: '/templates', count: badgeCounts.templates },
     { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" />, href: '/generate-responses' },
-    { key: 'blogs', label: 'Blog Management', icon: <FileText className="h-4 w-4" />, href: '/admin-blogs', count: badgeCounts.blogs },
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
-    { key: 'tasks', label: 'Tasks & Reminders', icon: <ClipboardList className="h-4 w-4" />, href: '/tasks', count: badgeCounts.tasks },
     { key: 'accounts', label: 'Accounts & Payments', icon: <CalendarCheck className="h-4 w-4" />, href: '/accounts', count: badgeCounts.accounts },
     { key: 'shipments', label: 'Shipment Operations', icon: <Ship className="h-4 w-4" />, href: '/shipments', count: badgeCounts.shipments ?? quickCounts.shipments },
     { key: 'documents', label: 'Document Packet Generator', icon: <CheckSquare className="h-4 w-4" />, href: '/documents', count: badgeCounts.documents },
@@ -289,7 +277,7 @@ export function PortalLayoutContent({
     {
       label: 'Command',
       items: authorizedNavItems.filter((item) =>
-        ['overview', 'actionQueue', 'crm', 'dataSources', 'dataCleanup', 'phoneCleanup', 'phoneReachout', 'quotes', 'communications', 'teamChat', 'templates', 'generateResponses', 'blogs', 'tasks', 'letterhead'].includes(item.key)
+        ['overview', 'actionQueue', 'crm', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead'].includes(item.key)
       )
     },
     {
