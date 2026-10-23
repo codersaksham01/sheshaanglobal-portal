@@ -4325,12 +4325,27 @@ export const Dashboard: React.FC = () => {
       : countryFiltered;
   }, [leads, deferredCrmSearchQuery, crmCountryFilter]);
 
+  const clientsById = useMemo(() => {
+    const map = new Map<string, Client>();
+    clients.forEach((c) => map.set(c.id, c));
+    return map;
+  }, [clients]);
+
+  const clientsByNameKey = useMemo(() => {
+    const map = new Map<string, Client>();
+    clients.forEach((c) => {
+      const k = companyKey(c);
+      if (k) map.set(k, c);
+    });
+    return map;
+  }, [clients]);
+
   const filteredCrmLeads = useMemo(() => {
     let finalLeads = searchedCrmLeads;
     if (crmQueueFilter) {
       finalLeads = searchedCrmLeads.filter((lead) => {
         const category = getLeadActionCategory(lead);
-        if (crmQueueFilter === 'Need Reach Out') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Need Reach Out';
+        if (crmQueueFilter === 'Need Reach Out') return lead.stage !== 'Won' && lead.stage !== 'Lost' && (category === 'Need Reach Out' || category === 'Email Sent');
         if (crmQueueFilter === 'Follow-up Due') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Follow-up Due';
         if (crmQueueFilter === 'Next Follow-up') return lead.stage !== 'Won' && lead.stage !== 'Lost' && category === 'Next Follow-up';
         if (crmQueueFilter === 'Waiting Reply') return lead.stage !== 'Won' && lead.stage !== 'Lost' && (category === 'Waiting Reply' || category === 'Email Sent' || category === 'Follow-up Sent');
@@ -4338,24 +4353,37 @@ export const Dashboard: React.FC = () => {
       });
     }
 
+    // Pre-extract metadata once per lead (O(N)) so the sort comparator runs in nanoseconds
+    const metaMap = new Map<string, { cat: string; velocity: number; key: string }>();
+    for (let i = 0; i < finalLeads.length; i++) {
+      const l = finalLeads[i];
+      metaMap.set(l.id, {
+        cat: getLeadActionCategory(l),
+        velocity: leadVelocityScore[l.id] || 0,
+        key: companyKey(l)
+      });
+    }
+
     return [...finalLeads].sort((a, b) => {
+      const metaA = metaMap.get(a.id);
+      const metaB = metaMap.get(b.id);
+      const catA = metaA?.cat || 'Review';
+      const catB = metaB?.cat || 'Review';
+
       if (crmSortKey === 'reachout') {
-        const catA = getLeadActionCategory(a);
-        const catB = getLeadActionCategory(b);
-        if (catA === 'Need Reach Out' && catB !== 'Need Reach Out') return -1;
-        if (catA !== 'Need Reach Out' && catB === 'Need Reach Out') return 1;
+        const isReachA = (catA === 'Need Reach Out' || catA === 'Email Sent' || catA === 'Follow-up Sent') ? 0 : 1;
+        const isReachB = (catB === 'Need Reach Out' || catB === 'Email Sent' || catB === 'Follow-up Sent') ? 0 : 1;
+        if (isReachA !== isReachB) return isReachA - isReachB;
       }
       if (crmSortKey === 'followup') {
-        const catA = getLeadActionCategory(a);
-        const catB = getLeadActionCategory(b);
-        if (catA === 'Follow-up Due' && catB !== 'Follow-up Due') return -1;
-        if (catA !== 'Follow-up Due' && catB === 'Follow-up Due') return 1;
+        const isFollowA = catA === 'Follow-up Due' ? 0 : 1;
+        const isFollowB = catB === 'Follow-up Due' ? 0 : 1;
+        if (isFollowA !== isFollowB) return isFollowA - isFollowB;
       }
       if (crmSortKey === 'emailfix') {
-        const catA = getLeadActionCategory(a);
-        const catB = getLeadActionCategory(b);
-        if (catA === 'Needs Email Fix' && catB !== 'Needs Email Fix') return -1;
-        if (catA !== 'Needs Email Fix' && catB === 'Needs Email Fix') return 1;
+        const isFixA = catA === 'Needs Email Fix' ? 0 : 1;
+        const isFixB = catB === 'Needs Email Fix' ? 0 : 1;
+        if (isFixA !== isFixB) return isFixA - isFixB;
       }
       if (crmSortKey === 'stage_new') {
         if (a.stage === 'New Lead' && b.stage !== 'New Lead') return -1;
@@ -4382,41 +4410,39 @@ export const Dashboard: React.FC = () => {
         if (a.stage !== 'Lost' && b.stage === 'Lost') return 1;
       }
       if (crmSortKey === 'velocity') {
-        return (leadVelocityScore[b.id] || 0) - (leadVelocityScore[a.id] || 0);
+        return (metaB?.velocity || 0) - (metaA?.velocity || 0);
       }
       if (crmSortKey === 'action') {
-        const categoryA = getLeadActionCategory(a);
-        const categoryB = getLeadActionCategory(b);
         const scoreA = 
-          categoryA === 'Needs Email Fix' ? 10 :
-          categoryA === 'Need Reach Out' ? 9 :
-          categoryA === 'Follow-up Due' ? 8 :
-          categoryA === 'Responded / Qualify' ? 7 :
-          categoryA === 'Next Follow-up' ? 6 :
-          categoryA === 'Waiting Reply' ? 5 :
-          categoryA === 'Review' ? 4 : 1;
+          catA === 'Needs Email Fix' ? 10 :
+          catA === 'Need Reach Out' ? 9 :
+          catA === 'Follow-up Due' ? 8 :
+          catA === 'Responded / Qualify' ? 7 :
+          catA === 'Next Follow-up' ? 6 :
+          catA === 'Waiting Reply' ? 5 :
+          catA === 'Review' ? 4 : 1;
         const scoreB = 
-          categoryB === 'Needs Email Fix' ? 10 :
-          categoryB === 'Need Reach Out' ? 9 :
-          categoryB === 'Follow-up Due' ? 8 :
-          categoryB === 'Responded / Qualify' ? 7 :
-          categoryB === 'Next Follow-up' ? 6 :
-          categoryB === 'Waiting Reply' ? 5 :
-          categoryB === 'Review' ? 4 : 1;
+          catB === 'Needs Email Fix' ? 10 :
+          catB === 'Need Reach Out' ? 9 :
+          catB === 'Follow-up Due' ? 8 :
+          catB === 'Responded / Qualify' ? 7 :
+          catB === 'Next Follow-up' ? 6 :
+          catB === 'Waiting Reply' ? 5 :
+          catB === 'Review' ? 4 : 1;
         if (scoreB !== scoreA) return scoreB - scoreA;
       }
       if (crmSortKey === 'country') {
         const countryCompare = (a.country || 'Uncategorized').localeCompare(b.country || 'Uncategorized');
         if (countryCompare !== 0) return countryCompare;
       }
-      return companyKey(a).localeCompare(companyKey(b));
+      return (metaA?.key || '').localeCompare(metaB?.key || '');
     });
   }, [searchedCrmLeads, crmSortKey, crmQueueFilter, getLeadActionCategory, leadVelocityScore]);
 
   const buyerExportRecords = useMemo<BuyerExportRecord[]>(() => (
     filteredCrmLeads.map((lead) => {
       const leadCompanyKey = companyKey(lead);
-      const linkedClient = clients.find((client) => client.id === lead.client_id || (leadCompanyKey && companyKey(client) === leadCompanyKey));
+      const linkedClient = lead.client_id ? clientsById.get(lead.client_id) : (leadCompanyKey ? clientsByNameKey.get(leadCompanyKey) : undefined);
       return {
         company: lead.company_name || linkedClient?.company_name || 'Unnamed Buyer',
         contact: lead.contact_name || linkedClient?.contact_name || 'Procurement Team',
@@ -4434,7 +4460,7 @@ export const Dashboard: React.FC = () => {
         notes: (lead.notes || '').replace(/\r?\n/g, ' | ')
       };
     })
-  ), [clients, filteredCrmLeads, getLeadActionCategory, leadScoreValue]);
+  ), [clientsById, clientsByNameKey, filteredCrmLeads, getLeadActionCategory, leadScoreValue]);
 
   const buyerExportFilterSummary = useMemo(() => {
     const parts = [
@@ -4575,7 +4601,7 @@ export const Dashboard: React.FC = () => {
     const coveredClientIds = new Set<string>();
 
     leads.forEach((lead) => {
-      const linkedClient = lead.client_id ? clients.find((client) => client.id === lead.client_id) : undefined;
+      const linkedClient = lead.client_id ? clientsById.get(lead.client_id) : undefined;
       const email = lead.contact_email || linkedClient?.contact_email || '';
       const contact = lead.contact_name || linkedClient?.contact_name || '';
       const phone = lead.phone || linkedClient?.phone || '';
@@ -4641,7 +4667,7 @@ export const Dashboard: React.FC = () => {
     const coveredClientIds = new Set<string>();
 
     leads.forEach((lead) => {
-      const linkedClient = lead.client_id ? clients.find((client) => client.id === lead.client_id) : undefined;
+      const linkedClient = lead.client_id ? clientsById.get(lead.client_id) : undefined;
       const phone = lead.phone || linkedClient?.phone || '';
       if (!hasPhoneQualityIssue(phone)) return;
       if (linkedClient?.id) coveredClientIds.add(linkedClient.id);
