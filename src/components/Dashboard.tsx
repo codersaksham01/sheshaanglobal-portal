@@ -1790,16 +1790,17 @@ export const Dashboard: React.FC = () => {
     );
   };
   const leadActionCategory = useCallback((lead: Lead) => {
-    const nextAction = leadNextAction(lead).toLowerCase();
     if (lead.stage === 'Won' || lead.stage === 'Lost') return 'Closed';
     if (leadMissingEmail(lead)) return 'Needs Email Fix';
-    if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
-    if (leadResponded(lead)) return 'Responded / Qualify';
-    if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
 
     const emailStatus = leadEmailStatus(lead);
     if (emailStatus === 'Email Sent') return 'Email Sent';
     if (emailStatus === 'Follow-up Sent') return 'Follow-up Sent';
+
+    const nextAction = leadNextAction(lead).toLowerCase();
+    if (leadNeedsFirstReach(lead) || nextAction.includes('send first') || nextAction.includes('first email')) return 'Need Reach Out';
+    if (leadResponded(lead)) return 'Responded / Qualify';
+    if (leadFollowUpDue(lead) || leadNextActionRequiresFollowUp(lead)) return 'Follow-up Due';
 
     if (leadNextFollowUpScheduled(lead)) return 'Next Follow-up';
     if (leadHasOutreach(lead)) return 'Waiting Reply';
@@ -3094,44 +3095,28 @@ export const Dashboard: React.FC = () => {
         : prev
     );
 
-    // Optimistically update activities immediately so timeline & category counters update in 0ms
-    const optimisticActivity: TimelineActivity = {
-      id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      client_id: lead.client_id,
-      lead_id: lead.id,
-      type: 'Email',
-      title: `${mode} email prepared for ${lead.company_name}`,
-      details: `Template: ${template?.name || 'Default message'}\nTo: ${cleanEmails.join(', ')}`,
-      activity_date: today,
-      owner: lead.owner || 'Sana Zeba'
-    };
-    setActivities((prev) => [optimisticActivity, ...prev]);
-    showToast(`✓ Email prepared for ${lead.company_name} • Sent status marked`, 'success');
-
-    // 2. Launch email client asynchronously without blocking the UI thread or suspending the portal tab
+    // 2. Launch email client directly in an external tab without iframe and without freezing the portal tab
     const mailtoUrl = `mailto:${cleanEmails.join(',')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    setTimeout(() => {
-      try {
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.top = '-9999px';
-        iframe.style.left = '-9999px';
-        iframe.style.width = '1px';
-        iframe.style.height = '1px';
-        iframe.style.opacity = '0.001';
-        iframe.style.pointerEvents = 'none';
-        iframe.setAttribute('aria-hidden', 'true');
-        iframe.src = mailtoUrl;
-        document.body.appendChild(iframe);
-        setTimeout(() => {
-          try {
-            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-          } catch {}
-        }, 3000);
-      } catch {
-        window.open(mailtoUrl, '_blank', 'noopener,noreferrer');
+    try {
+      const win = window.open(mailtoUrl, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        const a = document.createElement('a');
+        a.href = mailtoUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
       }
-    }, 10);
+    } catch {
+      const a = document.createElement('a');
+      a.href = mailtoUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
 
     // 3. Perform database actions in the background concurrently without page reload
     (async () => {
@@ -3163,11 +3148,7 @@ export const Dashboard: React.FC = () => {
           .select()
           .single();
 
-        if (!activityError && insertedActivity) {
-          setActivities((prev) => [insertedActivity as TimelineActivity, ...prev]);
-        }
-
-        if (!isMock) {
+        if (!isMock && insertedActivity) {
           await logPortalAction({
             action: 'Created',
             table_name: 'activities',
