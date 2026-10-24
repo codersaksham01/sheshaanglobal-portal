@@ -92,7 +92,15 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
       firebaseAuth,
       (user) => {
         setIsAuthenticated(Boolean(user));
-        setAuthenticatedEmail(user?.email || '');
+        const userEmail = user?.email || '';
+        setAuthenticatedEmail(userEmail);
+        if (typeof window !== 'undefined') {
+          if (userEmail) {
+            localStorage.setItem('crixy_actor_email', userEmail);
+          } else {
+            localStorage.removeItem('crixy_actor_email');
+          }
+        }
         setChecking(false);
       },
       (authError) => {
@@ -134,6 +142,15 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
         try {
           await setPersistence(firebaseAuth, browserLocalPersistence);
           await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('crixy_actor_email', email.trim());
+          }
+          // Sync server-side session cookie in background
+          fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+          }).catch(() => {});
           setIsAuthenticated(true);
           return;
         } catch (firebaseError) {
@@ -153,6 +170,9 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('crixy_actor_email', email.trim());
+      }
       setAuthenticatedEmail(email.trim());
       setIsAuthenticated(true);
     } catch (err) {
@@ -199,9 +219,13 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
 
   const handleLogout = async () => {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('crixy_actor_email');
+        localStorage.removeItem('crixy_actor_name');
+      }
       if (isSupabaseConfigured) await supabase.auth.signOut();
       else if (firebaseAuth) await signOut(firebaseAuth);
-      else await fetch('/api/login', { method: 'DELETE' });
+      await fetch('/api/login', { method: 'DELETE' }).catch(() => {});
     } catch (err) {
       console.warn('Logout error:', err);
     } finally {

@@ -9,6 +9,16 @@ const nextConfig = {
   turbopack: {
     root: __dirname
   },
+  experimental: {
+    optimizePackageImports: ['lucide-react']
+  },
+  async redirects() {
+    return [
+      { source: '/action-queue', destination: '/crm', permanent: false },
+      { source: '/data-sources', destination: '/crm', permanent: false },
+      { source: '/communications', destination: '/crm', permanent: false }
+    ];
+  },
   async headers() {
     return [{
       source: '/(.*)',

@@ -3,8 +3,8 @@ import type { AppUser } from './types';
 export type PortalRole = AppUser['role'];
 
 export const roleTabs: Record<PortalRole, readonly string[]> = {
-  Admin: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead', 'products', 'vendors', 'users'],
-  Sales: ['overview', 'actionQueue', 'crm', 'potentialBuyers', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead', 'products'],
+  Admin: ['overview', 'crm', 'potentialBuyers', 'quotes', 'templates', 'generateResponses', 'letterhead', 'products', 'vendors', 'users'],
+  Sales: ['overview', 'crm', 'potentialBuyers', 'quotes', 'templates', 'generateResponses', 'letterhead', 'products'],
   Accounts: ['overview', 'quotes', 'letterhead'],
   Operations: ['overview', 'products', 'vendors', 'letterhead']
 };
@@ -12,7 +12,7 @@ export const roleTabs: Record<PortalRole, readonly string[]> = {
 const tableArea: Record<string, string> = {
   clients: 'crm',
   leads: 'crm',
-  activities: 'communications',
+  activities: 'crm',
   quotes: 'quotes',
   quote_items: 'quotes',
   blogs: 'blogs',
@@ -30,5 +30,8 @@ const tableArea: Record<string, string> = {
   team_messages: 'teamChat'
 };
 
-export const canAccessTab = (role: PortalRole, tab: string) => roleTabs[role].includes(tab);
+export const canAccessTab = (role: PortalRole, tab: string) => {
+  const allowed = (role && roleTabs[role]) || roleTabs.Admin;
+  return allowed.includes(tab);
+};
 export const canManageTable = (role: PortalRole, table: string) => canAccessTab(role, tableArea[table] || 'users');

@@ -12,7 +12,6 @@ import {
   Mail,
   Phone,
   FileCheck2,
-  MessageSquare,
   Send,
   FileText,
   ClipboardList,
@@ -31,11 +30,47 @@ import {
   Sparkles,
   Users
 } from 'lucide-react';
+
+const PanelLeftClose = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M9 3v18" />
+    <path d="m14 9-3 3 3 3" />
+  </svg>
+);
+
+const PanelLeftOpen = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M9 3v18" />
+    <path d="m13 15 3-3-3-3" />
+  </svg>
+);
 import { AuthGate, usePortalIdentity } from '../AuthGate';
 import { AppErrorBoundary } from '../AppErrorBoundary';
+import { PortalSidebar } from './PortalSidebar';
 import { canAccessTab, PortalRole } from '../../lib/permissions';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
 import { isFirebaseConfigured } from '../../lib/firebaseClient';
+import { getPortalCache, TAB_ROUTES } from '../../lib/portalDataStore';
 
 export type NavItemDef = {
   key: string;
@@ -45,21 +80,7 @@ export type NavItemDef = {
   count?: number;
 };
 
-export const TAB_ROUTES: Record<string, string> = {
-  overview: '/overview',
-  actionQueue: '/action-queue',
-  crm: '/crm',
-  potentialBuyers: '/potential-buyers',
-  dataSources: '/data-sources',
-  quotes: '/quotes',
-  communications: '/communications',
-  templates: '/templates',
-  generateResponses: '/generate-responses',
-  letterhead: '/letterhead',
-  products: '/products',
-  vendors: '/vendors',
-  users: '/users'
-};
+export { TAB_ROUTES };
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -93,6 +114,50 @@ export function PortalLayoutContent({
   }, [pathname, propActiveTab]);
 
   const [currentRole, setCurrentRole] = useState<PortalRole>('Admin');
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const val = localStorage.getItem('portal_sidebar_minimized') === 'true';
+      if (val) setIsSidebarMinimized(true);
+    }
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarMinimized((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('portal_sidebar_minimized', String(next));
+        window.dispatchEvent(new Event('portal_sidebar_toggle'));
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const val = localStorage.getItem('portal_sidebar_minimized') === 'true';
+      setIsSidebarMinimized(val);
+    };
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('portal_sidebar_toggle', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('portal_sidebar_toggle', handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleSidebar]);
+
   const [crmMenuOpen, setCrmMenuOpen] = useState(true);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -100,6 +165,7 @@ export function PortalLayoutContent({
   const [globalSearch, setGlobalSearch] = useState('');
 
   // Quick stats state with 0ms cached initial render
+  const [isInitialSyncing, setIsInitialSyncing] = useState<boolean>(() => !getPortalCache());
   const [quickCounts, setQuickCounts] = useState<{
     buyers: number;
     inquiries: number;
@@ -148,22 +214,33 @@ export function PortalLayoutContent({
   // Load quick counters in background and cache
   useEffect(() => {
     let isMounted = true;
+    const cached = getPortalCache();
+    if (cached) {
+      setQuickCounts({
+        leads: cached.leads.length,
+        buyers: cached.clients.length,
+        quotes: cached.quotes.length,
+        inquiries: cached.inquiries.length
+      });
+      setIsInitialSyncing(false);
+      return;
+    }
     (async () => {
       try {
         const [
-          { data: lData },
-          { data: cData },
-          { data: qData }
+          { count: leadsCount },
+          { count: clientsCount },
+          { count: quotesCount }
         ] = await Promise.all([
-          supabase.from('leads').select('*'),
-          supabase.from('clients').select('*'),
-          supabase.from('quotes').select('*')
+          supabase.from('leads').select('id', { count: 'exact', head: true }),
+          supabase.from('clients').select('id', { count: 'exact', head: true }),
+          supabase.from('quotes').select('id', { count: 'exact', head: true })
         ]);
         if (isMounted) {
           const counts = {
-            leads: lData?.length || 0,
-            buyers: cData?.length || 0,
-            quotes: qData?.length || 0,
+            leads: leadsCount || 0,
+            buyers: clientsCount || 0,
+            quotes: quotesCount || 0,
             inquiries: 0
           };
           setQuickCounts(counts);
@@ -171,6 +248,8 @@ export function PortalLayoutContent({
         }
       } catch {
         // Silent
+      } finally {
+        if (isMounted) setIsInitialSyncing(false);
       }
     })();
     return () => { isMounted = false; };
@@ -226,12 +305,9 @@ export function PortalLayoutContent({
 
   const navItems: NavItemDef[] = useMemo(() => [
     { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" />, href: '/overview' },
-    { key: 'actionQueue', label: 'Action Queue', icon: <Target className="h-4 w-4" />, href: '/action-queue', count: badgeCounts.actionQueue },
     { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, href: '/crm', count: badgeCounts.crm ?? quickCounts.leads },
     { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, href: '/potential-buyers', count: badgeCounts.potentialBuyers },
-    { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, href: '/data-sources', count: badgeCounts.dataSources },
     { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, href: '/quotes', count: badgeCounts.quotes ?? quickCounts.quotes },
-    { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, href: '/communications', count: badgeCounts.communications },
     { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, href: '/templates', count: badgeCounts.templates },
     { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" />, href: '/generate-responses' },
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
@@ -250,7 +326,7 @@ export function PortalLayoutContent({
     {
       label: 'Command',
       items: authorizedNavItems.filter((item) =>
-        ['overview', 'actionQueue', 'crm', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead'].includes(item.key)
+        ['overview', 'crm', 'quotes', 'templates', 'generateResponses', 'letterhead'].includes(item.key)
       )
     },
     {
@@ -272,255 +348,43 @@ export function PortalLayoutContent({
 
   return (
     <div className="portal-os relative min-h-screen pb-28 lg:pb-0">
+      {/* Top Global Sync Progress Bar */}
+      {isInitialSyncing && (
+        <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-400 via-indigo-500 to-emerald-400 z-50 animate-pulse shadow-[0_0_12px_rgba(14,165,233,0.8)]" />
+      )}
       <div className="portal-shell">
         <div className="flex flex-col lg:flex-row">
           {/* Desktop Fixed Sidebar */}
-          <aside
-            data-sidebar="true"
-            className="portal-sidebar hidden lg:flex flex-col w-[304px] h-screen fixed top-0 left-0 overflow-hidden z-40 animate-fade-up"
-          >
-            {/* Brand Header */}
-            <div className="portal-brand-block flex items-center gap-3 px-5 py-5 shrink-0">
-              <div className="h-11 w-11 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-[0_16px_36px_rgba(14,165,233,0.22)] shrink-0 ring-1 ring-white/15">
-                <Image src="/logo.png" alt="Sheshaan Global" width={40} height={40} className="h-full w-full object-contain" priority />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-sm font-black text-white tracking-tight leading-none truncate">Sheshaan Global</h1>
-                <p className="text-[10px] text-sky-200/75 font-bold mt-1 uppercase tracking-wider">Export Operations Portal</p>
-              </div>
-            </div>
-
-            {/* New Quote CTA */}
-            <div className="px-4 pt-4 pb-2 shrink-0">
-              <Link
-                href="/quotes?new=true"
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-white text-slate-950 hover:bg-sky-50 active:bg-sky-100 text-[11px] font-black rounded-lg shadow-[0_14px_34px_rgba(255,255,255,0.12)] transition-all duration-150"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                New Quote
-              </Link>
-            </div>
-
-            {/* Navigation Groups */}
-            <nav className="flex-1 overflow-y-auto px-3.5 pb-4 pt-2 space-y-5">
-              {navGroups.map((group) => (
-                <div key={group.label}>
-                  <p className="portal-nav-heading px-2 pb-1.5 pt-1">{group.label}</p>
-                  <div className="space-y-1">
-                    {group.items.map((item) => {
-                      const isCrmParent = item.key === 'crm';
-                      const isTemplateParent = item.key === 'templates';
-                      if (item.key === 'generateResponses') return null;
-                      const isActive = isCrmParent
-                        ? currentTab === 'crm' || currentTab === 'potentialBuyers'
-                        : currentTab === item.key;
-
-                      if (isCrmParent) {
-                        return (
-                          <div key={item.key} className="space-y-1">
-                            <button
-                              type="button"
-                              onClick={() => setCrmMenuOpen((open) => !open)}
-                              className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                                isActive
-                                  ? 'portal-nav-item-active text-white'
-                                  : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                              }`}
-                            >
-                              {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
-                              <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                              <span className="flex-1 truncate">Smart CRM</span>
-                              {typeof item.count === 'number' && item.count > 0 && (
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                                  isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
-                                }`}>
-                                  {item.count}
-                                </span>
-                              )}
-                              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${crmMenuOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            {crmMenuOpen && (
-                              <div className="ml-6 space-y-1 border-l border-white/10 pl-2">
-                                <Link
-                                  href="/crm"
-                                  className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                                    currentTab === 'crm' ? 'bg-sky-500/15 text-sky-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  Normal Smart CRM
-                                </Link>
-                                <Link
-                                  href="/potential-buyers"
-                                  className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                                    currentTab === 'potentialBuyers' ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  Potential Buyers
-                                </Link>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      if (isTemplateParent) {
-                        const templatesActive = currentTab === 'templates' || currentTab === 'generateResponses';
-                        return (
-                          <div key={item.key} className="space-y-1">
-                            <button
-                              type="button"
-                              onClick={() => setTemplateMenuOpen((open) => !open)}
-                              className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                                templatesActive
-                                  ? 'portal-nav-item-active text-white'
-                                  : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                              }`}
-                            >
-                              {templatesActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
-                              <span className={`shrink-0 ${templatesActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                              <span className="flex-1 truncate">Mail & Messages</span>
-                              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${templateMenuOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            {templateMenuOpen && (
-                              <div className="ml-6 space-y-1 border-l border-white/10 pl-2">
-                                <Link
-                                  href="/templates"
-                                  className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                                    currentTab === 'templates' ? 'bg-sky-500/15 text-sky-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  Template Library
-                                </Link>
-                                <Link
-                                  href="/generate-responses"
-                                  className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                                    currentTab === 'generateResponses' ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  Generate Responses
-                                </Link>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <Link
-                          key={item.key}
-                          href={item.href}
-                          className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                            isActive
-                              ? 'portal-nav-item-active text-white'
-                              : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                          }`}
-                        >
-                          {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
-                          <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                          <span className="flex-1 truncate">{item.label}</span>
-                          {typeof item.count === 'number' && item.count > 0 && (
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                              isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
-                            }`}>
-                              {item.count}
-                            </span>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </nav>
-
-            {/* Sidebar Footer: Role Badge + FX Rate */}
-            <div className="border-t border-zinc-800 px-4 py-3 shrink-0 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="h-6 w-6 rounded-full bg-sky-500/20 border border-sky-500/30 flex items-center justify-center shrink-0">
-                    <span className="text-[9px] font-black text-sky-400">{(authEmail || 'A')[0].toUpperCase()}</span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold text-zinc-300 truncate">{authEmail || 'Admin'}</p>
-                    <p className="text-[9px] text-zinc-600 font-semibold">{currentRole}</p>
-                  </div>
-                </div>
-                <span className="sbadge sbadge-sky text-[8px] shrink-0">{currentRole}</span>
-              </div>
-
-              {/* FX Box */}
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="block text-[9px] text-zinc-500 font-semibold">USD/INR</span>
-                    <span className={`block text-[11px] font-black ${fxRateLoading ? 'text-zinc-500 animate-pulse' : 'text-emerald-400'}`}>
-                      ₹{fxRate.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setFxRateEditing((value) => !value)}
-                      className="h-7 w-7 rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white flex items-center justify-center"
-                      title="Edit USD/INR rate"
-                      aria-label="Edit USD INR rate"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={fetchMarketFxRate}
-                      disabled={fxRateLoading}
-                      className="h-7 w-7 rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white disabled:opacity-50 flex items-center justify-center"
-                      title="Refresh market USD/INR rate"
-                      aria-label="Refresh market USD INR rate"
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 ${fxRateLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[8px] font-bold uppercase tracking-wide text-zinc-600">
-                  <span>{fxRateSource} Rate</span>
-                  <span>{fxRateFetchedAt ? new Date(fxRateFetchedAt).toLocaleDateString('en-IN') : 'Not synced'}</span>
-                </div>
-                {fxRateEditing && (
-                  <div className="mt-2 flex items-center gap-1">
-                    <input
-                      type="number"
-                      min="1"
-                      step="0.0001"
-                      value={fxRateDraft}
-                      onChange={(event) => setFxRateDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') saveManualFxRate();
-                        if (event.key === 'Escape') {
-                          setFxRateDraft(fxRate.toString());
-                          setFxRateEditing(false);
-                        }
-                      }}
-                      className="h-8 min-h-8 w-full rounded-md border border-white/10 bg-zinc-950 px-2 text-[11px] font-black text-white outline-none focus:border-sky-400"
-                      aria-label="Manual USD INR rate"
-                    />
-                    <button
-                      type="button"
-                      onClick={saveManualFxRate}
-                      className="h-8 w-8 rounded-md bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center"
-                      title="Save manual rate"
-                      aria-label="Save manual USD INR rate"
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-sky-200/80">
-                {portalBuildLabel}
-              </div>
-            </div>
-          </aside>
+          <PortalSidebar
+            currentTab={currentTab}
+            isMinimized={isSidebarMinimized}
+            onToggleMinimized={toggleSidebar}
+            onNavigate={(_key, href) => router.push(href)}
+            badgeCounts={{
+              ...badgeCounts,
+              crm: badgeCounts.crm ?? quickCounts.leads,
+              quotes: badgeCounts.quotes ?? quickCounts.quotes
+            }}
+            authEmail={authEmail}
+            currentRole={currentRole}
+            onNewQuote={() => router.push('/quotes?new=true')}
+            fxRate={fxRate}
+            fxRateLoading={fxRateLoading}
+            fxRateFetchedAt={fxRateFetchedAt}
+            fxRateSource={fxRateSource}
+            onRefreshFxRate={fetchMarketFxRate}
+            onSaveManualFxRate={(rate) => {
+              setFxRate(rate);
+              setFxRateSource('Manual');
+              setFxRateFetchedAt(new Date().toISOString());
+              localStorage.setItem('portal_fx_rate', rate.toString());
+            }}
+          />
 
           {/* Main Content Workspace Column */}
-          <section className="relative z-10 flex-1 lg:ml-[304px] space-y-4 min-w-0 p-3 lg:p-5 xl:p-6">
+          <section className={`relative z-10 flex-1 ${
+            isSidebarMinimized ? 'lg:ml-[76px]' : 'lg:ml-[304px]'
+          } space-y-4 min-w-0 p-3 lg:p-5 xl:p-6 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
             {/* Mobile Header Bar */}
             <div className="lg:hidden sticky top-2 z-30 portal-glass overflow-hidden animate-fade-up">
               <div className="px-3 py-2 flex items-center justify-between gap-3">
@@ -571,6 +435,7 @@ export function PortalLayoutContent({
                   <nav className="mt-4 space-y-1 flex-1">
                     {authorizedNavItems.map((item) => (
                       <Link
+                        prefetch={true}
                         key={item.key}
                         href={item.href}
                         onClick={() => setShowMobileMenu(false)}
@@ -589,45 +454,6 @@ export function PortalLayoutContent({
                 </div>
               </div>
             )}
-
-            {/* Desktop Topbar */}
-            <div className="hidden lg:block sticky top-4 z-20 portal-topbar overflow-visible animate-fade-up">
-              <div className="min-h-16 px-4 py-3 grid gap-3 border-b border-slate-200 xl:grid-cols-[minmax(240px,0.42fr)_minmax(360px,1fr)] xl:items-center">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-11 w-11 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-[0_14px_30px_rgba(15,23,42,0.22)]">
-                    {propPageIcon || activeNavItem?.icon || <LayoutDashboard className="h-4 w-4" />}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sheshaan Global Admin</div>
-                    <div className="portal-section-title text-base truncate">{propPageTitle || activeNavItem?.label || 'Workspace'}</div>
-                  </div>
-                </div>
-                <div className="relative w-full min-w-0">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    value={globalSearch}
-                    onChange={(e) => setGlobalSearch(e.target.value)}
-                    placeholder="Search buyers, leads, quotes..."
-                    className="w-full h-10 rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Command Strip */}
-            <div className="hidden lg:flex portal-command-strip items-center justify-between gap-3 px-4 py-3 animate-fade-up">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="portal-chip portal-chip-strong"><Database className="h-3.5 w-3.5" /> {dbType}</span>
-                <span className="portal-chip"><Users className="h-3.5 w-3.5 text-sky-600" /> {quickCounts.buyers.toLocaleString()} buyers</span>
-                <span className="portal-chip"><Target className="h-3.5 w-3.5 text-emerald-600" /> {quickCounts.leads.toLocaleString()} leads</span>
-                <span className="portal-chip"><FileCheck2 className="h-3.5 w-3.5 text-amber-600" /> {quickCounts.quotes.toLocaleString()} quotes</span>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="portal-chip"><RefreshCw className="h-3.5 w-3.5 text-emerald-600" /> Ready</span>
-                <span className="portal-chip portal-chip-strong">USD/INR {fxRate.toFixed(2)}</span>
-              </div>
-            </div>
 
             {/* Workspace Main Area */}
             <main className="portal-workspace p-3 sm:p-5 lg:p-6 min-w-0 animate-panel-in">

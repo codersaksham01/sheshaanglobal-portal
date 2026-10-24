@@ -16,7 +16,7 @@ import {
   Zap
 } from 'lucide-react';
 
-export type SmartPortalTarget = 'actionQueue' | 'crm' | 'quotes' | 'accounts' | 'shipments' | 'documents' | 'tasks';
+export type SmartPortalTarget = 'crm' | 'quotes' | 'accounts' | 'shipments' | 'documents' | 'tasks';
 
 export interface SmartPortalInsight {
   id: string;
@@ -96,7 +96,7 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operat
       label: 'Now',
       value: pulse.urgentActions,
       detail: 'Priority records waiting',
-      target: 'actionQueue' as SmartPortalTarget,
+      target: 'crm' as SmartPortalTarget,
       tone: 'text-red-300'
     },
     {
@@ -132,8 +132,8 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operat
               Your export operating plan is ready: buyers, quotations, collections, freight, documents, and shipments are prioritized for today.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" onClick={() => onNavigate('actionQueue')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-center text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)]">
-                <Target className="h-4 w-4" /> Open priority queue
+              <button type="button" onClick={() => onNavigate('crm')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-center text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)]">
+                <Target className="h-4 w-4" /> Open CRM pipeline
               </button>
               <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-center text-xs font-extrabold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50">
                 <Sparkles className="h-4 w-4" /> {busy ? 'Automation running' : 'Run automation'}

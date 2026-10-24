@@ -38,8 +38,16 @@ import { LetterheadGenerator } from './LetterheadGenerator';
 import { SuppliersWorkspace } from './suppliers/SuppliersWorkspace';
 import { CrmLead, CrmStage } from '../lib/types/crm';
 import { useCallback } from 'react';
+import {
+  getPortalCache,
+  setPortalCache,
+  hasCachedData,
+  fetchAllPortalData,
+  TAB_ROUTES
+} from '../lib/portalDataStore';
 import { SmartCommandCenter, SmartCommandMetric, SmartPortalInsight, SmartPortalPulse } from './SmartCommandCenter';
 import { usePortalIdentity } from './AuthGate';
+import { PortalSidebar } from './portal/PortalSidebar';
 import { canAccessTab, canManageTable } from '../lib/permissions';
 import {
   Anchor,
@@ -82,6 +90,40 @@ import {
   Users,
   X
 } from 'lucide-react';
+
+const PanelLeftClose = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M9 3v18" />
+    <path d="m14 9-3 3 3 3" />
+  </svg>
+);
+
+const PanelLeftOpen = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="M9 3v18" />
+    <path d="m13 15 3-3-3-3" />
+  </svg>
+);
 
 const PDFDownloadLink = dynamic(
   () => import('@react-pdf/renderer').then((mod) => mod.PDFDownloadLink),
@@ -145,7 +187,7 @@ const getQuoteItemQuantityLabel = (item: QuoteItem) => (
     : `${Number(item.quantity || 0).toLocaleString()} kg`
 );
 
-type TabKey = 'overview' | 'actionQueue' | 'crm' | 'potentialBuyers' | 'dataSources' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'communications' | 'teamChat' | 'templates' | 'generateResponses' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'auditLog' | 'manager' | 'letterhead';
+type TabKey = 'overview' | 'crm' | 'potentialBuyers' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'teamChat' | 'templates' | 'generateResponses' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'auditLog' | 'manager' | 'letterhead';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
@@ -957,31 +999,32 @@ const LogisticsCompletionGauge = ({ completionRate, totalCount }: { completionRa
 };
 
 export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'overview' }) => {
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [freightPresets, setFreightPresets] = useState<FreightPreset[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
-  const [inquiryQuotations, setInquiryQuotations] = useState<InquiryQuotationRecord[]>([]);
-  const [inquiryFollowUps, setInquiryFollowUps] = useState<InquiryFollowUpRecord[]>([]);
-  const [activities, setActivities] = useState<TimelineActivity[]>([]);
-  const [freightRates, setFreightRates] = useState<FreightRateHistory[]>([]);
-  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
-  const [shipments, setShipments] = useState<ShipmentRecord[]>([]);
-  const [checklists, setChecklists] = useState<DocumentChecklist[]>([]);
-  const [tasks, setTasks] = useState<TaskRecord[]>([]);
-  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
-  const [blogs, setBlogs] = useState<BlogPost[]>([]);
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
-  const [teamMessages, setTeamMessages] = useState<TeamMessage[]>([]);
+  const cachedData = getPortalCache();
+  const [quotes, setQuotes] = useState<Quote[]>(() => cachedData?.quotes || []);
+  const [clients, setClients] = useState<Client[]>(() => cachedData?.clients || []);
+  const [vendors, setVendors] = useState<Vendor[]>(() => cachedData?.vendors || []);
+  const [products, setProducts] = useState<Product[]>(() => cachedData?.products || []);
+  const [freightPresets, setFreightPresets] = useState<FreightPreset[]>(() => cachedData?.freightPresets || []);
+  const [leads, setLeads] = useState<Lead[]>(() => cachedData?.leads || []);
+  const [inquiries, setInquiries] = useState<InquiryRecord[]>(() => cachedData?.inquiries || []);
+  const [inquiryQuotations, setInquiryQuotations] = useState<InquiryQuotationRecord[]>(() => cachedData?.inquiryQuotations || []);
+  const [inquiryFollowUps, setInquiryFollowUps] = useState<InquiryFollowUpRecord[]>(() => cachedData?.inquiryFollowUps || []);
+  const [activities, setActivities] = useState<TimelineActivity[]>(() => cachedData?.activities || []);
+  const [freightRates, setFreightRates] = useState<FreightRateHistory[]>(() => cachedData?.freightRates || []);
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>(() => cachedData?.invoices || []);
+  const [shipments, setShipments] = useState<ShipmentRecord[]>(() => cachedData?.shipments || []);
+  const [checklists, setChecklists] = useState<DocumentChecklist[]>(() => cachedData?.checklists || []);
+  const [tasks, setTasks] = useState<TaskRecord[]>(() => cachedData?.tasks || []);
+  const [templates, setTemplates] = useState<MessageTemplate[]>(() => cachedData?.templates || []);
+  const [blogs, setBlogs] = useState<BlogPost[]>(() => cachedData?.blogs || []);
+  const [users, setUsers] = useState<AppUser[]>(() => cachedData?.users || []);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => cachedData?.activityLogs || []);
+  const [teamMessages, setTeamMessages] = useState<TeamMessage[]>(() => cachedData?.teamMessages || []);
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const router = useRouter();
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(undefined);
-  const [loading, setLoading] = useState(false);
-  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
+  const [loading, setLoading] = useState<boolean>(() => !cachedData || (cachedData.quotes.length === 0 && cachedData.products.length === 0 && cachedData.leads.length === 0));
+  const [initialDataLoaded, setInitialDataLoaded] = useState<boolean>(() => Boolean(cachedData));
   const [globalSearch, setGlobalSearch] = useState('');
   const [reachoutSearchQuery, setReachoutSearchQuery] = useState('');
   const [reachoutCountryFilter, setReachoutCountryFilter] = useState('All');
@@ -990,6 +1033,38 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const [missingPhoneVisibleCount, setMissingPhoneVisibleCount] = useState(missingPhonePageSize);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const val = localStorage.getItem('portal_sidebar_minimized') === 'true';
+      if (val) setIsSidebarMinimized(true);
+    }
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarMinimized((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('portal_sidebar_minimized', String(next));
+        window.dispatchEvent(new Event('portal_sidebar_toggle'));
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const val = localStorage.getItem('portal_sidebar_minimized') === 'true';
+      setIsSidebarMinimized(val);
+    };
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('portal_sidebar_toggle', handleStorageChange);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('portal_sidebar_toggle', handleStorageChange);
+    };
+  }, []);
   const [selectedBuyerId, setSelectedBuyerId] = useState<string | null>(null);
   const [importingBuyers, setImportingBuyers] = useState(false);
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
@@ -1066,10 +1141,14 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
         e.preventDefault();
         setCommandOpen((prev) => !prev);
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [toggleSidebar]);
 
   // ── FX Rate State & Fetcher ──────────────────────────────────────────
   const [fxRate, setFxRate] = useState<number>(84); // fallback: ₹84 per $1
@@ -1393,7 +1472,8 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
         window.localStorage.setItem(cacheVersionKey, portalDataCacheVersion);
       }
     }
-    fetchData();
+    const hasData = hasCachedData();
+    fetchData({ silent: hasData });
   }, []);
 
   useEffect(() => {
@@ -1427,100 +1507,34 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
     const isSilent = typeof options === 'object' && options !== null && 'silent' in options ? Boolean((options as { silent?: boolean }).silent) : false;
     if (!isSilent) setLoading(true);
     try {
-      const [
-        { data: qData },
-        { data: cData },
-        { data: vData },
-        { data: pData },
-        { data: fData },
-        { data: lData },
-        { data: inquiryData },
-        { data: inquiryQuotationData },
-        { data: inquiryFollowUpData },
-        { data: aData },
-        { data: rData },
-        { data: iData },
-        { data: sData },
-        { data: dData },
-        { data: tData },
-        { data: mtData },
-        { data: bData },
-        { data: uData },
-        { data: logData },
-        { data: chatData }
-      ] = await Promise.all([
-        supabase.from('quotes').select('*, client:clients(*), items:quote_items(*)').order('created_at', { ascending: false }),
-        supabase.from('clients').select('*').order('company_name'),
-        supabase.from('vendors').select('*').order('company_name'),
-        supabase.from('products').select('*').order('sku'),
-        supabase.from('freight_presets').select('*').order('name'),
-        supabase.from('leads').select('*').order('updated_at', { ascending: false }),
-        supabase.from('inquiries').select('*').order('updated_at', { ascending: false }),
-        supabase.from('inquiry_quotations').select('*').order('created_at', { ascending: false }),
-        supabase.from('inquiry_follow_ups').select('*').order('follow_up_date', { ascending: true }),
-        supabase.from('activities').select('*').order('activity_date', { ascending: false }),
-        supabase.from('freight_rate_history').select('*').order('effective_date', { ascending: false }),
-        supabase.from('invoices').select('*').order('created_at', { ascending: false }),
-        supabase.from('shipments').select('*').order('updated_at', { ascending: false }),
-        supabase.from('document_checklists').select('*').order('updated_at', { ascending: false }),
-        supabase.from('tasks').select('*').order('due_date', { ascending: true }),
-        supabase.from('message_templates').select('*').order('name'),
-        supabase.from('blogs').select('*').order('updated_at', { ascending: false }),
-        supabase.from('app_users').select('*').order('name'),
-        supabase.from('activity_logs').select('*').order('created_at', { ascending: false }),
-        supabase.from('team_messages').select('*').order('created_at', { ascending: false })
-      ]);
-
-      setQuotes(qData || []);
-      setClients(cData || []);
-      setVendors(vData || []);
-      setProducts(pData || []);
-      setFreightPresets(fData || []);
-      const activityLeadIds = new Set((aData || []).map((act: any) => act.lead_id).filter(Boolean));
-      const quotedClientIds = new Set((qData || []).map((q: any) => q.client_id).filter(Boolean));
-      const alignedLeads = (lData || []).map((lead: any) => {
-        const notesStr = lead.notes || '';
-        const statusMatch = notesStr.match(/Email Status:\s*([^\n]+)/i);
-        const emailStatus = statusMatch ? statusMatch[1].trim().toLowerCase() : '';
-        const hasOutreach = activityLeadIds.has(lead.id) || 
-                            emailStatus.includes('sent') || 
-                            emailStatus.includes('delivered') || 
-                            emailStatus.includes('opened') || 
-                            emailStatus.includes('replied');
-                            
-        let finalStage = lead.stage;
-        if (lead.stage === 'New Lead' && hasOutreach) {
-          finalStage = 'Contacted';
-        } else if (lead.stage === 'Quoted' && lead.client_id && !quotedClientIds.has(lead.client_id)) {
-          // If in Quoted stage but has no quotes created in the portal, downgrade to Contacted
-          finalStage = 'Contacted';
-        }
-        
-        if (finalStage !== lead.stage) {
-          return { ...lead, stage: finalStage };
-        }
-        return lead;
-      });
-      setLeads(alignedLeads);
-      setInquiries(inquiryData || []);
-      setInquiryQuotations(inquiryQuotationData || []);
-      setInquiryFollowUps(inquiryFollowUpData || []);
-      setActivities(aData || []);
-      setFreightRates(rData || []);
-      setInvoices(iData || []);
-      setShipments(sData || []);
-      setChecklists(dData || []);
-      setTasks(tData || []);
-      setTemplates(mtData || []);
-      setBlogs(bData || []);
-      setUsers(uData || []);
-      setActivityLogs(logData || []);
-      setTeamMessages(chatData || []);
+      const data = await fetchAllPortalData({ force: true });
+      setQuotes(data.quotes);
+      setClients(data.clients);
+      setVendors(data.vendors);
+      setProducts(data.products);
+      setFreightPresets(data.freightPresets);
+      setLeads(data.leads);
+      setInquiries(data.inquiries);
+      setInquiryQuotations(data.inquiryQuotations);
+      setInquiryFollowUps(data.inquiryFollowUps);
+      setActivities(data.activities);
+      setFreightRates(data.freightRates);
+      setInvoices(data.invoices);
+      setShipments(data.shipments);
+      setChecklists(data.checklists);
+      setTasks(data.tasks);
+      setTemplates(data.templates);
+      setBlogs(data.blogs);
+      setUsers(data.users);
+      setActivityLogs(data.activityLogs);
+      setTeamMessages(data.teamMessages);
     } catch (err: any) {
       console.warn('Error fetching dashboard data:', err);
-      alert(err?.message || 'Failed to sync dashboard data with database.');
+      if (!initialDataLoaded) {
+        alert(err?.message || 'Failed to sync dashboard data with database.');
+      }
     } finally {
-      if (!isSilent) setLoading(false);
+      setLoading(false);
       setInitialDataLoaded(true);
     }
   };
@@ -5168,12 +5182,9 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const navItems = useMemo(() => {
     const allNavItems: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
       { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
-      { key: 'actionQueue', label: 'Action Queue', icon: <Target className="h-4 w-4" />, count: actionQueueItems.length },
       { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
       { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, count: potentialBuyerLeads.length },
-      { key: 'dataSources', label: 'Source Data', icon: <Database className="h-4 w-4" />, count: sourceFilteredLeads.length },
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
-      { key: 'communications', label: 'Communication Center', icon: <MessageSquare className="h-4 w-4" />, count: activities.length },
       { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
       { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" /> },
       { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" /> },
@@ -5184,10 +5195,8 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
     return allNavItems.filter((item) => canAccessTab(currentRole, item.key));
   }, [
     currentRole,
-    actionQueueItems,
     leads,
     potentialBuyerLeads,
-    sourceFilteredLeads,
     cleanupRecords,
     phoneCleanupRecords,
     reachoutBuyers,
@@ -5214,7 +5223,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
   const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'quotes'].includes(item.key)).slice(0, 4), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'actionQueue', 'crm', 'dataSources', 'quotes', 'communications', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['products', 'vendors'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['users'].includes(item.key)) }
   ], [navItems]);
@@ -5227,14 +5236,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
       router.push('/crm');
       return;
     }
-    if (tab === 'quotes') {
-      router.push('/quotes');
-      return;
-    }
-    if (tab === 'overview') {
-      router.push('/overview');
-      return;
-    }
     if (tab === 'vendors') {
       router.push('/vendors');
       return;
@@ -5242,7 +5243,32 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
     setActiveTab(tab);
     setShowMobileMenu(false);
     setShowNotifications(false);
+    const targetUrl = TAB_ROUTES[tab];
+    if (targetUrl && typeof window !== 'undefined' && window.location.pathname !== targetUrl) {
+      window.history.pushState(null, '', targetUrl);
+    }
   };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window === 'undefined') return;
+      const currentPath = window.location.pathname;
+      for (const [key, path] of Object.entries(TAB_ROUTES)) {
+        if (currentPath === path) {
+          setActiveTab(key as TabKey);
+          break;
+        }
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (initialTab && initialTab !== activeTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const selectedBuyer = clients.find((client) => client.id === selectedBuyerId);
   const selectedCrmLeadRelatedSummary = useMemo(() => {
     if (!selectedCrmLead) return undefined;
@@ -5741,259 +5767,64 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
     <div className="portal-os relative min-h-screen pb-28 lg:pb-0">
       <div className="portal-shell">
         <div className="flex flex-col lg:flex-row">
-          <aside
-            data-sidebar="true"
-            className="portal-sidebar hidden lg:flex flex-col w-[304px] h-screen fixed top-0 left-0 overflow-hidden z-40 animate-fade-up"
-          >
-            {/* Brand Header */}
-            <div className="portal-brand-block flex items-center gap-3 px-5 py-5 shrink-0">
-              <div className="h-11 w-11 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-[0_16px_36px_rgba(14,165,233,0.22)] shrink-0 ring-1 ring-white/15">
-                <Image src="/logo.png" alt="Sheshaan Global" width={40} height={40} className="h-full w-full object-contain" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-sm font-black text-white tracking-tight leading-none truncate">Sheshaan Global</h1>
-                <p className="text-[10px] text-sky-200/75 font-bold mt-1 uppercase tracking-wider">Export Operations Portal</p>
-              </div>
-            </div>
+          {/* Desktop Fixed Sidebar */}
+          <PortalSidebar
+            currentTab={activeTab}
+            isMinimized={isSidebarMinimized}
+            onToggleMinimized={toggleSidebar}
+            onNavigate={(tabKey) => navigateToTab(tabKey as TabKey)}
+            badgeCounts={{
+              crm: leads.length,
+              potentialBuyers: potentialBuyerLeads.length,
+              quotes: quotes.length,
+              templates: templates.length,
+              products: products.length,
+              vendors: vendors.length,
+              users: users.length
+            }}
+            authEmail={authEmail}
+            currentRole={currentRole}
+            onNewQuote={() => {
+              setEditingQuoteId(null);
+              setShowMobileMenu(false);
+              navigateToTab('quotes');
+            }}
+            fxRate={fxRate}
+            fxRateLoading={fxRateLoading}
+            fxRateFetchedAt={fxRateFetchedAt}
+            fxRateSource={fxRateSource}
+            onRefreshFxRate={fetchMarketFxRate}
+            onSaveManualFxRate={(rate) => {
+              const now = new Date().toISOString();
+              applyFxRate(rate, 'Manual', now);
+              localStorage.setItem('fx_manual_usd_inr', JSON.stringify({ rate, base: 'USD', target: 'INR', fetched_at: now }));
+            }}
+          />
 
-            {/* New Quote CTA */}
-            <div className="px-4 pt-4 pb-2 shrink-0">
-              <button
-                onClick={() => { setEditingQuoteId(null); setShowMobileMenu(false); navigateToTab('quotes'); }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-white text-slate-950 hover:bg-sky-50 active:bg-sky-100 text-[11px] font-black rounded-lg shadow-[0_14px_34px_rgba(255,255,255,0.12)] transition-all duration-150"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                New Quote
-              </button>
-            </div>
+          <section className={`relative z-10 flex-1 ${
+            isSidebarMinimized ? 'lg:ml-[76px]' : 'lg:ml-[304px]'
+          } space-y-4 min-w-0 p-3 lg:p-5 xl:p-6 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
+            {/* Top Global Sync Progress Bar */}
+            {loading && (
+              <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-400 via-indigo-500 to-emerald-400 z-50 animate-pulse shadow-[0_0_12px_rgba(14,165,233,0.8)]" />
+            )}
 
-            {/* Nav Groups */}
-            <nav className="flex-1 overflow-y-auto px-3.5 pb-4 pt-2 space-y-5">
-              {navGroups.map((group) => (
-                <div key={group.label}>
-                  <p className="portal-nav-heading px-2 pb-1.5 pt-1">{group.label}</p>
-                  <div className="space-y-1">
-                    {group.items.map((item) => {
-                      const isCrmParent = item.key === 'crm';
-                      const isTemplateParent = item.key === 'templates';
-                      if (item.key === 'generateResponses') return null;
-                      const isActive = isCrmParent ? activeTab === 'crm' || activeTab === 'potentialBuyers' : activeTab === item.key;
-                      if (isCrmParent) {
-                        return (
-                          <div key={item.key} className="space-y-1">
-                            <button
-                              type="button"
-                              onClick={() => setCrmMenuOpen((open) => !open)}
-                              className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                                isActive
-                                  ? 'portal-nav-item-active text-white'
-                                  : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                              }`}
-                            >
-                              {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
-                              <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                              <span className="flex-1 truncate">Smart CRM</span>
-                              {typeof item.count === 'number' && item.count > 0 && (
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                                  isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
-                                }`}>
-                                  {item.count}
-                                </span>
-                              )}
-                              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${crmMenuOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            {crmMenuOpen && (
-                              <div className="ml-6 space-y-1 border-l border-white/10 pl-2">
-                                <button
-                                  type="button"
-                                  onClick={() => navigateToTab('crm')}
-                                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                                    activeTab === 'crm' ? 'bg-sky-500/15 text-sky-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  Normal Smart CRM
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => navigateToTab('potentialBuyers')}
-                                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                                    activeTab === 'potentialBuyers' ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  Potential Buyers
-                                  {potentialBuyerLeads.length > 0 && (
-                                    <span className="ml-2 rounded-full bg-zinc-700 px-1.5 py-0.5 text-[9px] text-zinc-300">{potentialBuyerLeads.length}</span>
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      if (isTemplateParent) {
-                        const templatesActive = activeTab === 'templates' || activeTab === 'generateResponses';
-                        return (
-                          <div key={item.key} className="space-y-1">
-                            <button
-                              type="button"
-                              onClick={() => setTemplateMenuOpen((open) => !open)}
-                              className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                                templatesActive
-                                  ? 'portal-nav-item-active text-white'
-                                  : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                              }`}
-                            >
-                              {templatesActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
-                              <span className={`shrink-0 ${templatesActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                              <span className="flex-1 truncate">Mail & Messages</span>
-                              {typeof item.count === 'number' && item.count > 0 && (
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                                  templatesActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
-                                }`}>
-                                  {item.count}
-                                </span>
-                              )}
-                              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${templateMenuOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            {templateMenuOpen && (
-                              <div className="ml-6 space-y-1 border-l border-white/10 pl-2">
-                                <button
-                                  type="button"
-                                  onClick={() => navigateToTab('templates')}
-                                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                                    activeTab === 'templates' ? 'bg-sky-500/15 text-sky-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  Template Library
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => navigateToTab('generateResponses')}
-                                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                                    activeTab === 'generateResponses' ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                                  }`}
-                                >
-                                  Generate Responses
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                      return (
-                        <button
-                          key={item.key}
-                          onClick={() => navigateToTab(item.key)}
-                          className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                            isActive
-                              ? 'portal-nav-item-active text-white'
-                              : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                          }`}
-                        >
-                          {/* Active accent bar */}
-                          {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
-                          <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                          <span className="flex-1 truncate">{item.label}</span>
-                          {typeof item.count === 'number' && item.count > 0 && (
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                              isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
-                            }`}>
-                              {item.count}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </nav>
-
-            {/* Sidebar Footer: Role Badge + FX Rate */}
-            <div className="border-t border-zinc-800 px-4 py-3 shrink-0 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="h-6 w-6 rounded-full bg-sky-500/20 border border-sky-500/30 flex items-center justify-center shrink-0">
-                    <span className="text-[9px] font-black text-sky-400">{(authEmail || 'A')[0].toUpperCase()}</span>
-                  </div>
+            {/* In-Workspace Sync Banner */}
+            {loading && initialDataLoaded && (
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-900 border border-sky-500/30 text-white shadow-lg shadow-sky-950/20 animate-fade-up">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <RefreshCw className="h-4 w-4 animate-spin text-sky-400 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-[10px] font-bold text-zinc-300 truncate">{authEmail || 'Admin'}</p>
-                    <p className="text-[9px] text-zinc-600 font-semibold">{currentRole}</p>
+                    <p className="text-xs font-bold text-white leading-none truncate">Syncing database assets & trade records...</p>
+                    <p className="text-[10px] text-sky-200/70 font-semibold mt-0.5 truncate">Updating latest records from cloud database</p>
                   </div>
                 </div>
-                <span className="sbadge sbadge-sky text-[8px] shrink-0">{currentRole}</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-sky-300 bg-sky-500/20 px-2 py-0.5 rounded-full border border-sky-400/30">
+                  Live Sync
+                </span>
               </div>
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="block text-[9px] text-zinc-500 font-semibold">USD/INR</span>
-                    <span className={`block text-[11px] font-black ${fxRateLoading ? 'text-zinc-500 animate-pulse' : 'text-emerald-400'}`}>
-                      ₹{fxRate.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setFxRateEditing((value) => !value)}
-                      className="h-7 w-7 rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white flex items-center justify-center"
-                      title="Edit USD/INR rate"
-                      aria-label="Edit USD INR rate"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={fetchMarketFxRate}
-                      disabled={fxRateLoading}
-                      className="h-7 w-7 rounded-md border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white disabled:opacity-50 flex items-center justify-center"
-                      title="Refresh market USD/INR rate"
-                      aria-label="Refresh market USD INR rate"
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 ${fxRateLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[8px] font-bold uppercase tracking-wide text-zinc-600">
-                  <span>{fxRateSource} Rate</span>
-                  <span>{fxRateFetchedAt ? new Date(fxRateFetchedAt).toLocaleDateString('en-IN') : 'Not synced'}</span>
-                </div>
-                {fxRateEditing && (
-                  <div className="mt-2 flex items-center gap-1">
-                    <input
-                      type="number"
-                      min="1"
-                      step="0.0001"
-                      value={fxRateDraft}
-                      onChange={(event) => setFxRateDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') saveManualFxRate();
-                        if (event.key === 'Escape') {
-                          setFxRateDraft(fxRate.toString());
-                          setFxRateEditing(false);
-                        }
-                      }}
-                      className="h-8 min-h-8 w-full rounded-md border border-white/10 bg-zinc-950 px-2 text-[11px] font-black text-white outline-none focus:border-sky-400"
-                      aria-label="Manual USD INR rate"
-                    />
-                    <button
-                      type="button"
-                      onClick={saveManualFxRate}
-                      className="h-8 w-8 rounded-md bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center"
-                      title="Save manual rate"
-                      aria-label="Save manual USD INR rate"
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-sky-200/80">
-                {portalBuildLabel}
-              </div>
-            </div>
-          </aside>
+            )}
 
-          <section className="relative z-10 flex-1 lg:ml-[304px] space-y-4 min-w-0 p-3 lg:p-5 xl:p-6">
             <div className="lg:hidden sticky top-2 z-30 portal-glass overflow-hidden animate-fade-up">
               <div className="px-3 py-2 flex items-center justify-between gap-3">
                 <button
@@ -6073,7 +5904,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-4 gap-2 mt-2">
+              <div className="grid grid-cols-3 gap-2 mt-2">
                 <button type="button" onClick={runFollowUpAutomation} className="h-10 rounded-md bg-slate-50 text-slate-700 text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
                   <Sparkles className="h-4 w-4" />
                   Auto
@@ -6082,10 +5913,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                   <Edit2 className="h-4 w-4" />
                   Templates
                 </button>
-                <button type="button" onClick={() => navigateToTab('communications')} className="h-10 rounded-md bg-slate-50 text-slate-700 text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
-                  <Mail className="h-4 w-4" />
-                  Mail
-                </button>
                 <button type="button" onClick={() => setEditingQuoteId(null)} className="h-10 rounded-md bg-slate-900 text-white text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
                   <Plus className="h-4 w-4" />
                   Quote
@@ -6093,61 +5920,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               </div>
             </div>
 
-            <div className="hidden lg:block sticky top-4 z-20 portal-topbar overflow-visible animate-fade-up">
-              <div className="min-h-16 px-4 py-3 grid gap-3 border-b border-slate-200 xl:grid-cols-[minmax(240px,0.42fr)_minmax(360px,1fr)] xl:items-center">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-11 w-11 rounded-xl bg-slate-950 text-white flex items-center justify-center shrink-0 shadow-[0_14px_30px_rgba(15,23,42,0.22)]">
-                    {activeNavItem?.icon || <LayoutDashboard className="h-4 w-4" />}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sheshaan Global Admin</div>
-                    <div className="portal-section-title text-base truncate">{activeNavItem?.label || 'Overview'}</div>
-                  </div>
-                </div>
-                <div className="relative w-full min-w-0">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <SmoothInput
-                    value={globalSearch}
-                    onChange={setGlobalSearch}
-                    placeholder="Search buyers, leads, quotes, invoices, shipments..."
-                    className="w-full h-10 rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  />
-                  {globalResults.length > 0 && (
-                    <div className="absolute left-0 right-0 top-10 z-30 rounded-lg border border-slate-200 bg-white shadow-lg p-2">
-                      {globalResults.map((result) => (
-                        <button
-                          key={result.key}
-                          type="button"
-                          onClick={() => {
-                            navigateToTab(result.tab);
-                            if (result.buyerId) setSelectedBuyerId(result.buyerId);
-                            setGlobalSearch('');
-                          }}
-                          className="w-full text-left px-3 py-2 rounded hover:bg-slate-50 text-xs"
-                        >
-                          <span className="block font-bold text-slate-900">{result.label}</span>
-                          <span className="block text-[10px] text-slate-500">{result.meta}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="hidden lg:flex portal-command-strip items-center justify-between gap-3 px-4 py-3 animate-fade-up">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="portal-chip portal-chip-strong"><Database className="h-3.5 w-3.5" /> {dbType}</span>
-                <span className="portal-chip"><Users className="h-3.5 w-3.5 text-sky-600" /> {clients.length.toLocaleString()} buyers</span>
-                <span className="portal-chip"><ClipboardList className="h-3.5 w-3.5 text-emerald-700" /> {inquiries.length.toLocaleString()} inquiries</span>
-                <span className="portal-chip"><Target className="h-3.5 w-3.5 text-emerald-600" /> {leads.length.toLocaleString()} leads</span>
-                <span className="portal-chip"><FileCheck2 className="h-3.5 w-3.5 text-amber-600" /> {quotes.length.toLocaleString()} quotes</span>
-                <span className="portal-chip"><Ship className="h-3.5 w-3.5 text-indigo-600" /> {shipments.length.toLocaleString()} shipments</span>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="portal-chip"><RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin text-sky-600' : 'text-slate-400'}`} /> {lastSyncedLabel || 'Ready'}</span>
-                <span className="portal-chip portal-chip-strong">USD/INR {fxRate.toFixed(2)}</span>
-              </div>
-            </div>
             <div key={activeTab} className="portal-workspace p-3 sm:p-5 lg:p-6 min-w-0 animate-panel-in">
               {!hasAccessToActiveTab ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center bg-slate-50 rounded-xl border border-slate-200/60 shadow-inner animate-fade-in my-6">
@@ -6363,114 +6135,13 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                     </div>
                   )}
 
-                  {activeTab === 'actionQueue' && (
-                    <div className="space-y-4">
-                      <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
-                        <div>
-                          <h2 className="text-lg font-black text-slate-900">Unified Daily Work Queue</h2>
-                          <p className="text-xs text-slate-500">One operating list for reach-outs, follow-ups, payments, documents, and overdue tasks.</p>
-                        </div>
-                        <div className="text-xs bg-slate-100 text-slate-700 font-extrabold px-3 py-1 rounded-full">
-                          {unifiedDailyWorkQueue.total} Today | {actionQueueItems.length} Signals
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-                        <DailyWorkTile
-                          label="Need Reach Out"
-                          value={unifiedDailyWorkQueue.needsReachOut.length.toString()}
-                          detail="Highest-score uncontacted buyers"
-                          tone="sky"
-                          onClick={() => {
-                            setActiveTab('crm');
-                            setCrmQueueFilter('Need Reach Out');
-                          }}
-                        />
-                        <DailyWorkTile
-                          label="Follow-up Due"
-                          value={unifiedDailyWorkQueue.followUpsDue.length.toString()}
-                          detail="Buyers waiting for next touch"
-                          tone="amber"
-                          onClick={() => {
-                            setActiveTab('crm');
-                            setCrmQueueFilter('Follow-up Due');
-                          }}
-                        />
-                        <DailyWorkTile
-                          label="Payments"
-                          value={unifiedDailyWorkQueue.paymentFollowUps.length.toString()}
-                          detail="Pending receivables to chase"
-                          tone="red"
-                          onClick={() => navigateToTab('accounts')}
-                        />
-                        <DailyWorkTile
-                          label="Documents"
-                          value={unifiedDailyWorkQueue.documentBlockers.length.toString()}
-                          detail="Export packet blockers"
-                          tone="emerald"
-                          onClick={() => navigateToTab('documents')}
-                        />
-                        <DailyWorkTile
-                          label="Due Tasks"
-                          value={unifiedDailyWorkQueue.dueTasks.length.toString()}
-                          detail="Operational tasks due today"
-                          tone="slate"
-                          onClick={() => navigateToTab('tasks')}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                        <DashboardList title="Top Follow-ups Due" empty="No due follow-ups." rows={unifiedDailyWorkQueue.followUpsDue.slice(0, 5).map((lead) => ({
-                          title: lead.company_name,
-                          meta: `${lead.country || 'Country not set'} | Score ${leadScoreValue[lead.id] || 0} | Next ${lead.next_follow_up || 'today'}`
-                        }))} />
-                        <DashboardList title="Top First Reach-outs" empty="No first reach-outs pending." rows={unifiedDailyWorkQueue.needsReachOut.slice(0, 5).map((lead) => ({
-                          title: lead.company_name,
-                          meta: `${lead.country || 'Country not set'} | Score ${leadScoreValue[lead.id] || 0} | ${lead.product_interest || 'General export'}`
-                        }))} />
-                      </div>
-
-                      <div className="space-y-3">
-                        {actionQueueItems.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center p-12 text-center bg-slate-50 border border-slate-100 rounded-xl">
-                            <CheckCircle2 className="h-8 w-8 text-emerald-500 mb-2" />
-                            <p className="text-xs font-bold text-slate-800">Operational Plan Healthy</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">No critical issues or exceptions detected in database.</p>
-                          </div>
-                        ) : (
-                          actionQueueItems.map((item) => (
-                            <div key={item.id} className={`p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-3 transition hover:shadow-sm ${
-                              item.tone === 'critical' ? 'bg-red-50/60 border-red-200/60 text-red-950' :
-                              item.tone === 'warning' ? 'bg-amber-50/60 border-amber-200/60 text-amber-950' :
-                              'bg-sky-50/60 border-sky-200/60 text-sky-950'
-                            }`}>
-                              <div className="min-w-0 space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
-                                    item.tone === 'critical' ? 'bg-red-200 text-red-900' :
-                                    item.tone === 'warning' ? 'bg-amber-200 text-amber-900' :
-                                    'bg-sky-200 text-sky-900'
-                                  }`}>{item.tone}</span>
-                                  <span className="font-extrabold text-xs text-slate-900">{item.title}</span>
-                                </div>
-                                <p className="text-xs text-slate-700 leading-relaxed font-semibold">{item.detail}</p>
-                                <p className="text-[10px] text-slate-400 font-bold">Signal: {item.evidence}</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => navigateToTab(item.target)}
-                                className="shrink-0 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-lg shadow-sm active:scale-98 transition"
-                              >
-                                {item.action}
-                              </button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-
                   {activeTab === 'overview' && (
+            loading && quotes.length === 0 && leads.length === 0 ? (
+              <DatabaseLoadingState
+                title="Loading Trade Command Center..."
+                subtitle="Calculating live analytics, revenue trends, and operational deal flow from database..."
+              />
+            ) : (
             <div className="space-y-5">
               <SmartCommandCenter
                 pulse={smartPortalPulse}
@@ -6518,6 +6189,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                 }))} />
               </div>
             </div>
+            )
           )}
 
           {activeTab === 'quotes' && (
@@ -7216,14 +6888,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               <div className="mt-4">
                 {crmViewMode === 'table' ? (
                   <>
-                    <div className="grid gap-3 md:hidden">
-                      {visibleCrmLeads.length === 0 ? (
-                        <EmptyState text="No active leads found matching current CRM filters." />
-                      ) : (
-                        visibleCrmLeads.map((lead) => renderLeadCard(lead, true))
-                      )}
-                    </div>
-                    <div className="hidden md:block">
                     <CrmTable
                       leads={visibleCrmLeads}
                       selectedLeadIds={selectedLeadIds}
@@ -7240,7 +6904,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                       leadCategoryClass={leadCategoryClass}
                       leadActionCategory={getLeadActionCategory}
                     />
-                    </div>
                     {filteredCrmLeads.length > crmVisibleCount && (
                       <div className="mt-3 flex justify-center">
                         <button
@@ -7415,7 +7078,12 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                   </div>
                 </div>
 
-                {potentialBuyerLeads.length === 0 ? (
+                {loading && potentialBuyerLeads.length === 0 ? (
+                  <DatabaseLoadingState
+                    title="Loading Potential Buyer Database..."
+                    subtitle="Fetching focused international buyer companies, requirements, and outreach history..."
+                  />
+                ) : potentialBuyerLeads.length === 0 ? (
                   <EmptyState text="No focused potential buyers yet. Add company name, phone, country, and product requirement from the form." />
                 ) : (
                   <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
@@ -7497,178 +7165,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                 )}
               </div>
             </TwoColumnManager>
-          )}
-
-          {activeTab === 'dataSources' && (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-950 p-4 text-white shadow-sm">
-                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">Imported Source Data</p>
-                    <h3 className="text-xl font-black">Embassy and custom researched buyers</h3>
-                    <p className="mt-1 max-w-3xl text-xs text-slate-300">Imported buyers are separated by source and stay synced with CRM status, follow-up date, response status, and outreach actions.</p>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-950">
-                    <CrmMetric label="Embassy" value={sourceStats.embassy.toString()} helper="Tagged imports" />
-                    <CrmMetric label="Research" value={sourceStats.custom.toString()} helper="Custom data" />
-                    <CrmMetric label="Reach Out" value={sourceStats.reachout.toString()} helper="Needs first contact" />
-                    <CrmMetric label="Follow-up" value={sourceStats.followup.toString()} helper="Due now" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_180px_180px_180px_160px] gap-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <SmoothInput
-                      type="text"
-                      placeholder="Search source data by company, country, email, product, status..."
-                      value={sourceSearchQuery}
-                      onChange={setSourceSearchQuery}
-                      className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-9 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none transition focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/20"
-                    />
-                    {sourceSearchQuery && (
-                      <button type="button" onClick={() => setSourceSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" title="Clear search">
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <select
-                      aria-label="Source Type"
-                      value={sourceTypeFilter}
-                      onChange={(event) => setSourceTypeFilter(event.target.value as typeof sourceTypeFilter)}
-                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                    >
-                      <option value="All">All Sources</option>
-                      <option value="Embassy Data">Embassy Data</option>
-                      <option value="Custom Researched Data">Custom Researched</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
-                  <div className="relative">
-                    <select
-                      aria-label="Source Country Filter"
-                      value={sourceCountryFilter}
-                      onChange={(event) => setSourceCountryFilter(event.target.value)}
-                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                    >
-                      {['All', ...sourceCountries].map((country) => (
-                        <option key={country} value={country}>{country === 'All' ? 'All Countries' : country}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
-                  <div className="relative">
-                    <select
-                      aria-label="Source Action Filter"
-                      value={sourceActionFilter}
-                      onChange={(event) => setSourceActionFilter(event.target.value)}
-                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                    >
-                      <option value="All">All Statuses</option>
-                      <option value="Need Reach Out">Need Reach Out</option>
-                      <option value="Follow-up Due">Follow-up Due</option>
-                      <option value="Next Follow-up">Next Follow-up</option>
-                      <option value="Waiting Reply">Waiting Reply</option>
-                      <option value="Responded / Qualify">Responded</option>
-                      <option value="Needs Email Fix">Needs Email Fix</option>
-                      <option value="Review">Needs Review</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
-                  <div className="relative">
-                    <select
-                      aria-label="Source Sort"
-                      value={sourceSortKey}
-                      onChange={(event) => setSourceSortKey(event.target.value as typeof sourceSortKey)}
-                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pr-9 text-xs font-bold text-slate-800 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                    >
-                      <option value="source">Sort by Source</option>
-                      <option value="action">Sort by Status</option>
-                      <option value="followup">Next Follow-up</option>
-                      <option value="country">Sort Country A-Z</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
-                  <span>Showing <strong className="text-slate-900">{sourceFilteredLeads.length}</strong> source-tagged CRM record{sourceFilteredLeads.length === 1 ? '' : 's'}{sourceCountryFilter !== 'All' ? ` in ${sourceCountryFilter}` : ''}</span>
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => setSourceActionFilter('Need Reach Out')} className="rounded-lg bg-sky-50 px-3 py-2 font-black text-sky-700 hover:bg-sky-100">Reach Out</button>
-                    <button type="button" onClick={() => setSourceActionFilter('Follow-up Due')} className="rounded-lg bg-amber-50 px-3 py-2 font-black text-amber-700 hover:bg-amber-100">Follow-up Due</button>
-                    <button type="button" onClick={() => setSourceTypeFilter('Embassy Data')} className="rounded-lg bg-slate-100 px-3 py-2 font-black text-slate-700 hover:bg-slate-200">Embassy</button>
-                    <button type="button" onClick={() => setSourceTypeFilter('Custom Researched Data')} className="rounded-lg bg-slate-100 px-3 py-2 font-black text-slate-700 hover:bg-slate-200">Research</button>
-                  </div>
-                </div>
-                {sourceFilteredLeads.length === 0 ? (
-                  <EmptyState text="No source-tagged buyers match this filter." />
-                ) : (
-                  <>
-                  <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-3">
-                    {visibleSourceLeads.map((lead) => {
-                      const source = leadDataSource(lead);
-                      const action = leadActionCategory(lead);
-                      return (
-                        <div key={lead.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs shadow-sm">
-                          <div className="mb-3 flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-black text-slate-950 truncate">{lead.company_name}</div>
-                              <div className="mt-1 flex flex-wrap gap-1.5">
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${source === 'Embassy Data' ? 'bg-indigo-50 text-indigo-700' : source === 'Custom Researched Data' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{source}</span>
-                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${leadCategoryClass(action)}`}>{action}</span>
-                                {lead.country && <SmallBadge text={lead.country} />}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                editLeadFromCard(lead);
-                                navigateToTab('crm');
-                              }}
-                              className="rounded-lg bg-white px-2.5 py-1.5 text-[10px] font-black text-slate-700 border border-slate-200 hover:bg-slate-100"
-                            >
-                              Edit
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <SmallMetric label="Best Email Time" value={bestSendWindowIST(lead.country).replace('Best send: ', '')} />
-                            <SmallMetric label="Next Follow-up" value={lead.next_follow_up || 'Not set'} />
-                            <SmallMetric label="Email" value={lead.contact_email || 'Missing'} />
-                            <SmallMetric label="Phone" value={lead.phone || 'Missing'} />
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" onClick={(e) => { e.preventDefault(); handleLeadEmail(lead, 'First Reach'); }} className="flex-1 rounded-lg bg-slate-950 px-3 py-2 font-black text-white hover:bg-slate-800">Reach Out Email</button>
-                            <button type="button" onClick={(e) => { e.preventDefault(); handleLeadEmail(lead, 'Follow-up'); }} className="flex-1 rounded-lg bg-amber-500 px-3 py-2 font-black text-white hover:bg-amber-400">Follow-up Email</button>
-                          </div>
-                          <div className="mt-2 grid grid-cols-3 gap-1.5">
-                            <button type="button" onClick={() => updateLeadTracking(lead, 'email_sent')} className="rounded bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700 hover:bg-sky-100">Contacted</button>
-                            <button type="button" onClick={() => updateLeadTracking(lead, 'followup_due')} className="rounded bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-700 hover:bg-amber-100">Need Follow-up</button>
-                            <button type="button" onClick={() => updateLeadTracking(lead, 'responded')} className="rounded bg-teal-50 px-2 py-1 text-[10px] font-black text-teal-700 hover:bg-teal-100">Responded</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {sourceFilteredLeads.length > visibleSourceLeads.length && (
-                    <div className="mt-4 flex justify-center">
-                      <button
-                        type="button"
-                        onClick={() => setSourceVisibleCount((count) => Math.min(count + sourceListPageSize, sourceFilteredLeads.length))}
-                        className="rounded-lg bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800"
-                      >
-                        Load More Source Data ({sourceFilteredLeads.length - visibleSourceLeads.length})
-                      </button>
-                    </div>
-                  )}
-                  </>
-                )}
-              </div>
-            </div>
           )}
 
           {activeTab === 'dataCleanup' && (
@@ -8096,57 +7592,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
             </div>
           )}
 
-          {activeTab === 'communications' && (
-            <TwoColumnManager
-              formTitle={editingActivityId ? 'Edit Timeline Activity' : 'Add Timeline Activity'}
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!activityForm.title) return alert('Please enter activity title.');
-                saveRecord<TimelineActivity>('activities', editingActivityId, activityForm, resetActivityForm);
-              }}
-              onCancel={resetActivityForm}
-              isEditing={Boolean(editingActivityId)}
-              form={
-                <>
-                  <TextInput label="Title *" value={activityForm.title || ''} onChange={(value) => setActivityForm({ ...activityForm, title: value })} required />
-                  <SelectInput label="Type" value={activityForm.type || 'Note'} onChange={(value) => setActivityForm({ ...activityForm, type: value as TimelineActivity['type'] })} options={['Call', 'Email', 'Meeting', 'Quote', 'Invoice', 'Shipment', 'Note', 'Status']} />
-                  <TextInput label="Activity Date" type="date" value={activityForm.activity_date || ''} onChange={(value) => setActivityForm({ ...activityForm, activity_date: value })} />
-                  <SelectInput label="Buyer" value={activityForm.client_id || ''} onChange={(value) => setActivityForm({ ...activityForm, client_id: value })} options={['', ...clients.map((client) => client.id)]} labels={{ '': 'Unlinked', ...Object.fromEntries(clients.map((client) => [client.id, client.company_name])) }} />
-                  <TextArea label="Details" value={activityForm.details || ''} onChange={(value) => setActivityForm({ ...activityForm, details: value })} />
-                </>
-              }
-            >
-              <div className="space-y-3">
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs space-y-3">
-                  <div className="flex items-center gap-2 font-bold text-slate-900">
-                    <Send className="h-4 w-4 text-sky-600" />
-                    Buyer Message Composer
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <SelectInput label="Buyer" value={communicationClient?.id || ''} onChange={setSelectedCommunicationClientId} options={clients.map((client) => client.id)} labels={Object.fromEntries(clients.map((client) => [client.id, client.company_name]))} />
-                    <SelectInput label="Template" value={selectedTemplate?.id || ''} onChange={setSelectedTemplateId} options={templates.map((template) => template.id)} labels={Object.fromEntries(templates.map((template) => [template.id, template.name]))} />
-                  </div>
-                  <div className="bg-white rounded border border-slate-200 p-3">
-                    <div className="font-semibold text-slate-800">{replaceTemplateVars(selectedTemplate?.subject || '') || 'No subject'}</div>
-                    <p className="mt-2 text-slate-600 whitespace-pre-line">{replaceTemplateVars(selectedTemplate?.body || 'Create a template to generate filled email or WhatsApp messages here.')}</p>
-                  </div>
-                </div>
-                {activities.length === 0 ? <EmptyState text="No customer timeline activities yet." /> : activities.map((activity) => (
-                  <div key={activity.id} className="bg-white border border-slate-200 rounded-lg p-4 text-xs shadow-sm">
-                    <div className="flex justify-between gap-3">
-                      <div>
-                        <div className="font-bold text-slate-900">{activity.title}</div>
-                        <div className="text-[10px] text-slate-400">{activity.type} | {activity.activity_date} | {clients.find((client) => client.id === activity.client_id)?.company_name || 'Unlinked'}</div>
-                      </div>
-                      <RowActions currentRole={currentRole} onEdit={() => { setEditingActivityId(activity.id); setActivityForm(activity); }} onDelete={() => deleteRecord('activities', activity.id, 'activity')} />
-                    </div>
-                    {activity.details && <p className="mt-2 text-slate-600">{activity.details}</p>}
-                  </div>
-                ))}
-              </div>
-            </TwoColumnManager>
-          )}
-
           {activeTab === 'generateResponses' && (
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -8371,19 +7816,28 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
             >
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <div className="space-y-3">
-                  {templates.length === 0 ? <EmptyState text="No templates saved yet." /> : templates.map((template) => (
-                    <div key={template.id} className="bg-white border border-slate-200 rounded-lg p-4 text-xs shadow-sm">
-                      <div className="flex justify-between gap-3">
-                        <div>
-                          <div className="font-bold text-slate-900">{template.name}</div>
-                          <div className="text-[10px] text-slate-400">{template.channel} | {template.category} | {template.active ? 'Active' : 'Inactive'}</div>
+                  {loading && templates.length === 0 ? (
+                    <DatabaseLoadingState
+                      title="Loading Templates & Assets..."
+                      subtitle="Retrieving message templates, variables, and communication formats from database..."
+                    />
+                  ) : templates.length === 0 ? (
+                    <EmptyState text="No templates saved yet." />
+                  ) : (
+                    templates.map((template) => (
+                      <div key={template.id} className="bg-white border border-slate-200 rounded-lg p-4 text-xs shadow-sm">
+                        <div className="flex justify-between gap-3">
+                          <div>
+                            <div className="font-bold text-slate-900">{template.name}</div>
+                            <div className="text-[10px] text-slate-400">{template.channel} | {template.category} | {template.active ? 'Active' : 'Inactive'}</div>
+                          </div>
+                          <RowActions currentRole={currentRole} onEdit={() => { setEditingTemplateId(template.id); setTemplateForm(template); }} onDelete={() => deleteRecord('message_templates', template.id, 'template')} />
                         </div>
-                        <RowActions currentRole={currentRole} onEdit={() => { setEditingTemplateId(template.id); setTemplateForm(template); }} onDelete={() => deleteRecord('message_templates', template.id, 'template')} />
+                        {template.subject && <p className="mt-2 font-semibold text-slate-700">{template.subject}</p>}
+                        <p className="mt-2 text-slate-600 whitespace-pre-line line-clamp-4">{template.body}</p>
                       </div>
-                      {template.subject && <p className="mt-2 font-semibold text-slate-700">{template.subject}</p>}
-                      <p className="mt-2 text-slate-600 whitespace-pre-line line-clamp-4">{template.body}</p>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 h-fit text-xs space-y-3">
                   <h3 className="font-bold text-slate-900">Personalized Preview</h3>
@@ -8872,7 +8326,14 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                 </>
               }
             >
-              {products.length === 0 ? <EmptyState text="No product SKUs registered." /> : (
+              {loading && products.length === 0 ? (
+                <DatabaseLoadingState
+                  title="Loading Product Assets & Catalog..."
+                  subtitle="Connecting to product database, fetching SKUs, specifications, pricing, and weights..."
+                />
+              ) : products.length === 0 ? (
+                <EmptyState text="No product SKUs registered." />
+              ) : (
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
@@ -8929,7 +8390,14 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                 </>
               }
             >
-              {freightPresets.length === 0 ? <EmptyState text="No freight presets yet." /> : (
+              {loading && freightPresets.length === 0 ? (
+                <DatabaseLoadingState
+                  title="Loading Freight Presets..."
+                  subtitle="Retrieving shipping port routes, ocean freight benchmarks, and transit windows..."
+                />
+              ) : freightPresets.length === 0 ? (
+                <EmptyState text="No freight presets yet." />
+              ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {freightPresets.map((p) => (
                     <div key={p.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 text-xs">
@@ -9833,29 +9301,36 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                 <Lock className="h-4 w-4 mt-0.5" />
                 <span>Pending requests stay blocked until the main admin approves them and assigns a role.</span>
               </div>
-              <DataTable headers={['Name', 'Email', 'Role', 'Status', 'Approval', 'Actions']}>
-                {users.map((user) => (
-                  <tr key={user.id} className="border-b border-slate-100">
-                    <td className="p-3"><div className="font-bold">{user.name}</div><div className="text-[10px] text-slate-400">{user.title || user.phone || ''}</div></td>
-                    <td className="p-3">{user.email}</td>
-                    <td className="p-3">{user.role}</td>
-                    <td className="p-3"><SmallBadge text={user.status || (user.active ? 'Approved' : 'Pending')} /></td>
-                    <td className="p-3">
-                      {(user.status || (user.active ? 'Approved' : 'Pending')) === 'Pending' ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {(['Sales', 'Accounts', 'Operations', 'Admin'] as AppUser['role'][]).map((role) => (
-                            <button key={role} type="button" onClick={() => approveUser(user, role)} className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[10px] font-black hover:bg-emerald-100">{role}</button>
-                          ))}
-                          <button type="button" onClick={() => rejectUser(user)} className="px-2 py-1 rounded bg-red-50 text-red-700 text-[10px] font-black hover:bg-red-100">Reject</button>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] text-slate-500">{user.approved_by ? `By ${user.approved_by}` : 'No pending action'}</span>
-                      )}
-                    </td>
-                    <td className="p-3"><RowActions currentRole={currentRole} onEdit={() => { setEditingUserId(user.id); setUserForm(user); }} onDelete={() => deleteRecord('app_users', user.id, 'user')} /></td>
-                  </tr>
-                ))}
-              </DataTable>
+              {loading && users.length === 0 ? (
+                <DatabaseLoadingState
+                  title="Loading Users & Roles..."
+                  subtitle="Retrieving team directory, designations, and permissions from database..."
+                />
+              ) : (
+                <DataTable headers={['Name', 'Email', 'Role', 'Status', 'Approval', 'Actions']}>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b border-slate-100">
+                      <td className="p-3"><div className="font-bold">{user.name}</div><div className="text-[10px] text-slate-400">{user.title || user.phone || ''}</div></td>
+                      <td className="p-3">{user.email}</td>
+                      <td className="p-3">{user.role}</td>
+                      <td className="p-3"><SmallBadge text={user.status || (user.active ? 'Approved' : 'Pending')} /></td>
+                      <td className="p-3">
+                        {(user.status || (user.active ? 'Approved' : 'Pending')) === 'Pending' ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {(['Sales', 'Accounts', 'Operations', 'Admin'] as AppUser['role'][]).map((role) => (
+                              <button key={role} type="button" onClick={() => approveUser(user, role)} className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 text-[10px] font-black hover:bg-emerald-100">{role}</button>
+                            ))}
+                            <button type="button" onClick={() => rejectUser(user)} className="px-2 py-1 rounded bg-red-50 text-red-700 text-[10px] font-black hover:bg-red-100">Reject</button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-500">{user.approved_by ? `By ${user.approved_by}` : 'No pending action'}</span>
+                        )}
+                      </td>
+                      <td className="p-3"><RowActions currentRole={currentRole} onEdit={() => { setEditingUserId(user.id); setUserForm(user); }} onDelete={() => deleteRecord('app_users', user.id, 'user')} /></td>
+                    </tr>
+                  ))}
+                </DataTable>
+              )}
             </TwoColumnManager>
           )}
 
@@ -10043,7 +9518,6 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
                       { cmd: '/overview', label: 'Command Center', tab: 'overview' as TabKey },
-                      { cmd: '/actionQueue', label: 'Action Queue', tab: 'actionQueue' as TabKey },
                       { cmd: '/crm', label: 'CRM Pipeline', tab: 'crm' as TabKey },
                       { cmd: '/quotes', label: 'Quote Automation', tab: 'quotes' as TabKey }
                     ].filter(item => item.cmd.includes(commandSearch)).map(item => (
@@ -10263,6 +9737,31 @@ const StatusBadge = ({ status }: { status: Quote['status'] }) => {
 
   return <span className={`inline-block px-2.5 py-0.5 text-[10px] font-extrabold rounded-full border ${tone}`}>{status}</span>;
 };
+
+const DatabaseLoadingState = ({
+  title = 'Loading Database Records...',
+  subtitle = 'Connecting to server and retrieving records...'
+}: {
+  title?: string;
+  subtitle?: string;
+}) => (
+  <div className="flex flex-col items-center justify-center py-14 px-6 text-center rounded-2xl border border-sky-100 bg-white/95 shadow-sm backdrop-blur-sm animate-fade-up">
+    <div className="relative mb-3.5">
+      <div className="h-12 w-12 rounded-2xl bg-sky-500/10 border border-sky-400/20 flex items-center justify-center text-sky-600 shadow-sm">
+        <RefreshCw className="h-6 w-6 animate-spin text-sky-600" />
+      </div>
+      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span>
+      </span>
+    </div>
+    <h3 className="text-sm font-black text-slate-900 tracking-tight">{title}</h3>
+    <p className="mt-1 text-xs font-semibold text-slate-500 max-w-sm">{subtitle}</p>
+    <div className="mt-4 w-44 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 animate-[pulse_1.2s_infinite] w-full" />
+    </div>
+  </div>
+);
 
 const EmptyState = ({ text }: { text: string }) => (
   <div className="text-center py-12 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl bg-white/60 font-semibold px-4 shadow-inner">{text}</div>
@@ -10654,12 +10153,22 @@ const DataTable = ({ headers, children, pageSize = 8 }: { headers: string[]; chi
   );
 };
 
-const TableSkeleton = () => (
-  <div className="space-y-4 py-4 animate-pulse w-full">
-    <div className="h-10 bg-slate-100/60 rounded-xl w-full" />
-    <div className="h-14 bg-slate-50/60 rounded-xl w-full" />
-    <div className="h-14 bg-slate-50/60 rounded-xl w-full" />
-    <div className="h-14 bg-slate-50/60 rounded-xl w-full" />
+const TableSkeleton = ({ label = 'Loading Commercial Quotes & Database Records...' }: { label?: string }) => (
+  <div className="flex flex-col items-center justify-center p-14 bg-white/95 rounded-2xl border border-sky-100 text-center shadow-sm backdrop-blur-sm animate-fade-up">
+    <div className="relative mb-3.5">
+      <div className="h-12 w-12 rounded-2xl bg-sky-500/10 border border-sky-400/20 flex items-center justify-center text-sky-600 shadow-sm">
+        <RefreshCw className="h-6 w-6 animate-spin text-sky-600" />
+      </div>
+      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span>
+      </span>
+    </div>
+    <h3 className="text-sm font-black text-slate-900 tracking-tight">{label}</h3>
+    <p className="mt-1 text-xs font-semibold text-slate-500 max-w-sm">Retrieving verified trade data from database...</p>
+    <div className="mt-4 w-44 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 animate-[pulse_1.2s_infinite] w-full" />
+    </div>
   </div>
 );
 

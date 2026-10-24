@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Building2,
   Plus,
@@ -35,6 +35,7 @@ import {
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { supabase } from '../../lib/supabaseClient';
+import { getPortalCache, setPortalCache } from '../../lib/portalDataStore';
 import { Vendor, SupplierAgreement, AgreementProductItem } from '../../lib/types';
 
 // Default initial suppliers for onboarding
@@ -166,6 +167,8 @@ export function SuppliersWorkspace() {
 
   // Suppliers Data State
   const [suppliers, setSuppliers] = useState<Vendor[]>(() => {
+    const storeCache = getPortalCache();
+    if (storeCache?.vendors && storeCache.vendors.length > 0) return storeCache.vendors;
     if (typeof window !== 'undefined') {
       try {
         const cached = localStorage.getItem('sheshaan_portal_suppliers');
@@ -249,7 +252,7 @@ export function SuppliersWorkspace() {
 
   // Studio / Agreement Form State
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('supp-1');
-  const [agreementNumber, setAgreementNumber] = useState<string>('SG/SA/2026/' + Math.floor(100 + Math.random() * 900));
+  const [agreementNumber, setAgreementNumber] = useState<string>('SG/SA/2026/101');
   const [agreementDate, setAgreementDate] = useState<string>('24 October 2026');
   const [shipmentTargetDate, setShipmentTargetDate] = useState<string>('15 November 2026 - 30 November 2026');
   const [loadingPort, setLoadingPort] = useState<string>('Nhava Sheva (JNPT), Mumbai, India');
@@ -320,6 +323,7 @@ export function SuppliersWorkspace() {
         const { data: vData } = await supabase.from('vendors').select('*');
         if (vData && vData.length > 0) {
           setSuppliers(vData);
+          setPortalCache({ vendors: vData });
         }
       } catch {}
     }
@@ -482,7 +486,8 @@ export function SuppliersWorkspace() {
     setShowSupplierModal(true);
   };
 
-  const handleCreateAgreementForSupplier = (supplier: Vendor) => {
+  const handleCreateAgreementForSupplier = useCallback((supplier: Vendor) => {
+    if (!supplier) return;
     setSelectedSupplierId(supplier.id);
     if (supplier.payment_terms) {
       setPaymentTerms(supplier.payment_terms);
@@ -490,10 +495,11 @@ export function SuppliersWorkspace() {
     if (supplier.contact_name) {
       setSupplierSignatoryName(supplier.contact_name);
     }
-    setAgreementNumber('SG/SA/2026/' + Math.floor(100 + Math.random() * 900));
+    const rand = Math.floor(100 + ((Date.now() % 899)));
+    setAgreementNumber(`SG/SA/2026/${rand}`);
     setActiveView('studio');
     showToast(`Drafting agreement for ${supplier.company_name}`);
-  };
+  }, []);
 
   const handleSaveAgreementRecord = () => {
     if (!activeSupplier) {
@@ -703,7 +709,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
 
           <button
             onClick={() => {
-              setAgreementNumber('SG/SA/2026/' + Math.floor(100 + Math.random() * 900));
+              setAgreementNumber('SG/SA/2026/' + Math.floor(100 + ((Date.now() % 899))));
               setActiveView('studio');
             }}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-sm transition active:scale-95"
@@ -1186,7 +1192,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
 
             <button
               onClick={() => {
-                setAgreementNumber('SG/SA/2026/' + Math.floor(100 + Math.random() * 900));
+                setAgreementNumber('SG/SA/2026/' + Math.floor(100 + ((Date.now() % 899))));
                 setActiveView('studio');
               }}
               className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-900 text-white text-xs font-bold hover:bg-blue-800 transition"
@@ -1933,6 +1939,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                       <div className="px-10 pt-8 pb-4 flex justify-between items-start flex-none relative z-10">
                         {/* Brand & Logo */}
                         <div className="flex items-center gap-3.5">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src="/logo.jpg"
                             alt="Sheshaan Global Logo"
@@ -2169,6 +2176,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
 
                             <div className="h-10 my-1 relative select-none flex items-center">
                               {includeSignature && (
+                                // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                   src="/signature.png"
                                   alt="CEO Signature"
@@ -2185,6 +2193,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
 
                             {includeStamp && (
                               <div className="absolute right-3 bottom-2 select-none">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                   src="/stamp.png"
                                   alt="Official Sheshaan Stamp"
@@ -2544,7 +2553,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                   onClick={() => {
                     const supp = viewingSupplier;
                     setViewingSupplier(null);
-                    handleCreateAgreementForSupplier(supp);
+                    if (supp) handleCreateAgreementForSupplier(supp);
                   }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-sm transition active:scale-95"
                 >
@@ -2769,7 +2778,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                         onClick={() => {
                           const supp = viewingSupplier;
                           setViewingSupplier(null);
-                          handleCreateAgreementForSupplier(supp);
+                          if (supp) handleCreateAgreementForSupplier(supp);
                         }}
                         className="mt-2 text-xs font-bold text-blue-900 hover:underline"
                       >

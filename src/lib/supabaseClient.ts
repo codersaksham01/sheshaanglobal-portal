@@ -131,14 +131,19 @@ class ServerFileDB {
     if (typeof window === 'undefined') return [];
 
     try {
-      const response = await fetch(`/api/db?table=${encodeURIComponent(table)}`);
+      const response = await fetch(`/api/db?table=${encodeURIComponent(table)}`, {
+        headers: {
+          'x-portal-actor-email': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_email') || '' : '',
+          'x-portal-actor-name': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_name') || '' : ''
+        }
+      });
       if (response.ok) {
         const res = await response.json();
         return res.data || [];
       }
       if (response.status === 401) {
-        localStorage.removeItem(localDbStorageKey);
-        return [];
+        const localDB = this.getLocalDB() || {};
+        return localDB[table] || [];
       }
       if (process.env.NODE_ENV === 'production') {
         const result = await response.json().catch(() => ({}));

@@ -20,6 +20,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
+import { getPortalCache, setPortalCache } from '../../lib/portalDataStore';
 import { Lead, Client, MessageTemplate, TimelineActivity } from '../../lib/types';
 import { CrmLead, CrmStage, CrmPriority } from '../../lib/types/crm';
 import { CrmTable } from './CrmTable';
@@ -87,9 +88,11 @@ const CrmMetric = ({
 );
 
 export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps) {
-  // Fast hydration from sessionStorage if available for 0ms initial render
+  // Fast hydration from shared portal cache or sessionStorage for 0ms initial render
   const [leads, setLeads] = useState<Lead[]>(() => {
     if (initialLeads && initialLeads.length) return initialLeads;
+    const storeCache = getPortalCache();
+    if (storeCache?.leads && storeCache.leads.length > 0) return storeCache.leads;
     if (typeof window !== 'undefined') {
       try {
         const cached = sessionStorage.getItem('cached_crm_leads');
@@ -102,6 +105,8 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
     return [];
   });
   const [activities, setActivities] = useState<TimelineActivity[]>(() => {
+    const storeCache = getPortalCache();
+    if (storeCache?.activities && storeCache.activities.length > 0) return storeCache.activities;
     if (typeof window !== 'undefined') {
       try {
         const cached = sessionStorage.getItem('cached_crm_activities');
@@ -113,9 +118,15 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
     }
     return [];
   });
-  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [templates, setTemplates] = useState<MessageTemplate[]>(() => {
+    const storeCache = getPortalCache();
+    if (storeCache?.templates && storeCache.templates.length > 0) return storeCache.templates;
+    return [];
+  });
   const [loading, setLoading] = useState(() => {
     if (initialLeads && initialLeads.length) return false;
+    const storeCache = getPortalCache();
+    if (storeCache?.leads && storeCache.leads.length > 0) return false;
     if (typeof window !== 'undefined') {
       try {
         const cached = sessionStorage.getItem('cached_crm_leads');
@@ -129,6 +140,16 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
   });
   const [importingBuyers, setImportingBuyers] = useState(false);
   const [importDataSource, setImportDataSource] = useState<'Custom Researched Data' | 'Embassy Data'>('Custom Researched Data');
+  const [loadTimeout, setLoadTimeout] = useState(false);
+
+  useEffect(() => {
+    if (loading && leads.length === 0) {
+      const timer = setTimeout(() => setLoadTimeout(true), 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setLoadTimeout(false);
+    }
+  }, [loading, leads.length]);
 
   // CRM Workspace State
   const [crmSearchQuery, setCrmSearchQuery] = useState('');
@@ -163,6 +184,11 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
       setLeads(loadedLeads);
       setActivities(loadedActivities);
       setTemplates(mtData || []);
+      setPortalCache({
+        leads: loadedLeads,
+        activities: loadedActivities,
+        templates: mtData || []
+      });
       if (onLeadsChange) onLeadsChange(loadedLeads);
       if (typeof window !== 'undefined') {
         try {
@@ -669,18 +695,60 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
     }));
   }, [filteredCrmLeads, getLeadActionCategory, leadScoreValue]);
 
-  if (loading) {
+  if (loading && leads.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-16 text-center">
-        <RefreshCw className="h-8 w-8 animate-spin text-sky-500 mb-3" />
-        <p className="text-sm font-bold text-slate-700">Loading Smart CRM Pipeline...</p>
-        <p className="text-xs text-slate-400 mt-1">Connecting to live buyer database</p>
+      <div className="flex flex-col items-center justify-center py-20 px-6 text-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md shadow-2xl my-6 animate-fade-up">
+        <div className="relative mb-5">
+          <div className="h-16 w-16 rounded-2xl bg-sky-500/10 border border-sky-400/20 flex items-center justify-center text-sky-400 shadow-[0_0_30px_rgba(14,165,233,0.2)]">
+            <RefreshCw className="h-8 w-8 animate-spin text-sky-400" />
+          </div>
+          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-sky-500"></span>
+          </span>
+        </div>
+        <h3 className="text-base sm:text-lg font-black text-white tracking-tight">Loading Smart CRM Pipeline</h3>
+        <p className="mt-1.5 text-xs font-semibold text-slate-400 max-w-md leading-relaxed">
+          Retrieving buyer database records, pipeline stages, and outreach logs from server...
+        </p>
+        <div className="mt-6 w-56 h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-sky-400 via-indigo-400 to-emerald-400 animate-[pulse_1.2s_infinite] w-full" />
+        </div>
+        <div className="mt-4 flex items-center gap-2 text-[10px] font-bold text-sky-300 uppercase tracking-wider">
+          <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping" />
+          <span>Synchronizing database assets</span>
+        </div>
+        {loadTimeout && (
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <p className="text-xs text-amber-300 font-semibold">Database is taking longer than expected to respond.</p>
+            <button
+              type="button"
+              onClick={fetchCrmData}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold rounded-lg transition shadow-lg active:scale-95 cursor-pointer"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry Connection
+            </button>
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      {/* Background sync banner if leads are already displayed */}
+      {loading && leads.length > 0 && (
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-sky-500/15 border border-sky-400/25 text-white backdrop-blur-md text-xs font-bold animate-fade-up shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <RefreshCw className="h-3.5 w-3.5 animate-spin text-sky-400 shrink-0" />
+            <span>Updating buyer database in background...</span>
+          </div>
+          <span className="text-[10px] uppercase tracking-wider text-sky-300 font-black bg-sky-500/20 px-2 py-0.5 rounded-full border border-sky-400/30">
+            Syncing
+          </span>
+        </div>
+      )}
       {/* Dynamic Metric Grid */}
       <div className="rounded-xl border border-slate-200 bg-slate-950 p-4 text-white shadow-sm">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
