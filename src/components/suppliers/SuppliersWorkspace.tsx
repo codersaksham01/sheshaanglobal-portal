@@ -264,6 +264,7 @@ export function SuppliersWorkspace() {
   const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>('standard_export');
   const [agreementTitle, setAgreementTitle] = useState<string>(AGREEMENT_TEMPLATES.standard_export.title);
   const [agreementBody, setAgreementBody] = useState<string>(AGREEMENT_TEMPLATES.standard_export.body);
+  const [clauseFontSize, setClauseFontSize] = useState<'8px' | '8.5px' | '9px'>('8.5px');
 
   // Signatures State
   const [includeStamp, setIncludeStamp] = useState<boolean>(true);
@@ -1773,9 +1774,32 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
-                        Custom Legal Body Clauses (Fully Editable)
-                      </label>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-1.5">
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase">
+                          Schedule C Clauses & Terms
+                        </label>
+                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 self-start sm:self-auto">
+                          <span className="text-[9px] text-slate-500 font-bold px-1 uppercase tracking-wider">Body Size:</span>
+                          {[
+                            { label: '8px (Compact)', val: '8px' },
+                            { label: '8.5px (Default)', val: '8.5px' },
+                            { label: '9px (Readable)', val: '9px' }
+                          ].map(s => (
+                            <button
+                              key={s.val}
+                              type="button"
+                              onClick={() => setClauseFontSize(s.val as any)}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                                clauseFontSize === s.val
+                                  ? 'bg-blue-900 text-white shadow-sm'
+                                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                              }`}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <textarea
                         rows={12}
                         value={agreementBody}
@@ -2183,27 +2207,39 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                       {/* SCHEDULE C: TERMS & CONDITIONS */}
                       <div className="px-10 py-1.5 flex-1 min-h-0 flex flex-col justify-start">
                         <div className="mb-1" style={{ fontFamily: 'sans-serif' }}>
-                          <span className="text-[9.5px] font-black uppercase text-blue-950 tracking-wider">
+                          <span className="text-[10px] font-black uppercase text-blue-950 tracking-wider">
                             Schedule C: Legal Terms, Covenants & Dispute Resolution
                           </span>
                         </div>
 
-                        <div className="space-y-1 text-[7px] leading-[1.3] text-slate-700 font-serif">
+                        <div
+                          className="space-y-1.5 text-slate-700 font-serif"
+                          style={{ fontSize: clauseFontSize, lineHeight: 1.38 }}
+                        >
                           {parsedClauseList.length > 0 ? (
                             parsedClauseList.map((clause, idx) => (
                               <div key={idx} className="text-justify">
                                 {clause.title && (
-                                  <span className="font-bold text-slate-900 block uppercase leading-tight mb-0.5">
+                                  <span
+                                    className="font-bold text-slate-900 block uppercase mb-0.5 tracking-tight"
+                                    style={{ fontSize: clauseFontSize, lineHeight: 1.25 }}
+                                  >
                                     {clause.title}
                                   </span>
                                 )}
-                                <p className="leading-snug text-slate-700">
+                                <p
+                                  className="text-slate-700"
+                                  style={{ fontSize: clauseFontSize, lineHeight: 1.38 }}
+                                >
                                   {clause.text}
                                 </p>
                               </div>
                             ))
                           ) : (
-                            <div className="whitespace-pre-line text-justify leading-snug">
+                            <div
+                              className="whitespace-pre-line text-justify"
+                              style={{ fontSize: clauseFontSize, lineHeight: 1.38 }}
+                            >
                               {agreementBody}
                             </div>
                           )}
@@ -2216,7 +2252,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                           <span className="text-[9.5px] font-black uppercase text-blue-950 tracking-wider">
                             Schedule D: Execution, Signatures & Corporate Seal
                           </span>
-                          <p className="text-[7px] text-slate-500 italic">
+                          <p className="text-[7.5px] text-slate-500 italic">
                             IN WITNESS WHEREOF, the authorized representatives of the parties hereto have executed this Agreement on the date first written above.
                           </p>
                         </div>
