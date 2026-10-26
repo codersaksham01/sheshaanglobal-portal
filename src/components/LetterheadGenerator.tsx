@@ -64,7 +64,17 @@ export const LetterheadGenerator: React.FC = () => {
         scale: 3, // Ultra-high resolution capture for printing
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 1200,
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('letterhead-a4-page');
+          if (el) {
+            el.style.boxShadow = 'none';
+            el.style.margin = '0 auto';
+          }
+        }
       });
       const imgData = canvas.toDataURL('image/jpeg', 1.0);
       const pdf = new jsPDF({
@@ -91,7 +101,17 @@ export const LetterheadGenerator: React.FC = () => {
         scale: 3,
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 1200,
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('letterhead-a4-page');
+          if (el) {
+            el.style.boxShadow = 'none';
+            el.style.margin = '0 auto';
+          }
+        }
       });
       const link = document.createElement('a');
       link.download = `Sheshaan_Letterhead_${senderName.replace(/\s+/g, '_')}.png`;
@@ -114,7 +134,17 @@ export const LetterheadGenerator: React.FC = () => {
         scale: 3,
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 1200,
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('letterhead-a4-page');
+          if (el) {
+            el.style.boxShadow = 'none';
+            el.style.margin = '0 auto';
+          }
+        }
       });
       const link = document.createElement('a');
       link.download = `Sheshaan_Letterhead_${senderName.replace(/\s+/g, '_')}.jpg`;
@@ -337,7 +367,7 @@ export const LetterheadGenerator: React.FC = () => {
             <div 
               ref={previewRef}
               id="letterhead-a4-page" 
-              className="w-[794px] h-[1123px] bg-white shadow-2xl relative flex flex-col shrink-0 text-slate-800 text-left font-serif"
+              className="w-[794px] h-[1123px] bg-white shadow-2xl relative flex flex-col shrink-0 text-slate-800 text-left font-serif printable-document"
               style={{ minWidth: '794px', minHeight: '1123px' }}
             >
               {/* TOP HEADER ACCENT BAND */}
@@ -484,11 +514,11 @@ export const LetterheadGenerator: React.FC = () => {
                     
                     {/* CEO Signature Graphic */}
                     {showSignature ? (
-                      <div className="h-8 my-1 relative select-none flex items-center">
+                      <div className="h-12 my-1 relative select-none flex items-end">
                         <img 
                           src="/signature.png" 
                           alt="CEO Signature" 
-                          className="h-24 w-auto object-contain absolute left-0 -top-8 z-10"
+                          className="h-14 w-auto object-contain select-none -mb-1"
                         />
                       </div>
                     ) : (

@@ -8868,7 +8868,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
 
                   {/* Live Preview Panel */}
                   <div className="lg:col-span-2">
-                    <div className="border border-slate-300 rounded-xl bg-white shadow-md p-6 max-h-[500px] overflow-y-auto font-serif text-[10px] text-slate-900 leading-tight">
+                    <div id="autodoc-preview-print" className="border border-slate-300 rounded-xl bg-white shadow-md p-6 max-h-[500px] overflow-y-auto font-serif text-[10px] text-slate-900 leading-tight printable-document">
                       {(() => {
                         const selectedShipment = shipments.find((s) => s.id === autoDocShipmentId);
                         const relatedQuote = selectedShipment ? quotes.find((q) => q.id === selectedShipment.quote_id) : null;

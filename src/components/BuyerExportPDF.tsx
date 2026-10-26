@@ -270,7 +270,7 @@ export const BuyerExportPDF: React.FC<BuyerExportPDFProps> = ({
           </View>
         </View>
 
-        <View style={styles.metrics} fixed>
+        <View style={styles.metrics} wrap={false}>
           <View style={styles.metric}>
             <Text style={styles.metricLabel}>Total Buyers</Text>
             <Text style={styles.metricValue}>{records.length}</Text>

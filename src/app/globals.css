@@ -1034,14 +1034,35 @@ body.dark .skeleton {
   animation: trigger-pulse 1.2s ease-out 2;
 }
 
-/* ── Dossier Print Layout ────────────────────────────────────── */
+/* ── Document & Dossier Print Layout ────────────────────────── */
 @media print {
   body * { visibility: hidden; }
-  #cargo-dossier-print, #cargo-dossier-print * { visibility: visible; }
-  #cargo-dossier-print { position: absolute; top: 0; left: 0; width: 100%; }
+  #cargo-dossier-print, #cargo-dossier-print *,
+  #supplier-agreement-a4, #supplier-agreement-a4 *,
+  #letterhead-a4-page, #letterhead-a4-page *,
+  #autodoc-preview-print, #autodoc-preview-print *,
+  .printable-document, .printable-document * {
+    visibility: visible;
+  }
+  #cargo-dossier-print,
+  #supplier-agreement-a4,
+  #letterhead-a4-page,
+  #autodoc-preview-print,
+  .printable-document {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
   .doc-page-break { page-break-after: always; break-after: page; }
   .doc-no-print { display: none !important; }
-  @page { margin: 18mm 20mm; size: A4 portrait; }
+  @page { margin: 10mm 12mm; size: A4 portrait; }
 }
 
 /* ── Enterprise Data Grid ────────────────────────────────────── */
