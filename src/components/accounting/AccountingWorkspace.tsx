@@ -827,7 +827,7 @@ export function AccountingWorkspace() {
       )}
 
       {/* TOP HEADER: Clean Executive Design, Borderless, Natural Full Width */}
-      <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-white pb-3 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="space-y-1.5 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 font-bold text-[11px] uppercase tracking-wider">
@@ -918,7 +918,7 @@ export function AccountingWorkspace() {
       {/* KPI METRICS STRIP: Clean Borderless Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4">
         {/* Total Inflows (Income) */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-between gap-3">
+        <div className="bg-slate-50/80 p-4 sm:p-5 rounded-xl transition-all duration-200 flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-slate-400 block truncate">
               Total Inflows (Income)
@@ -931,13 +931,13 @@ export function AccountingWorkspace() {
               <span>Export Remittances & Advances</span>
             </span>
           </div>
-          <div className="h-11 w-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold shrink-0">
+          <div className="h-11 w-11 rounded-xl bg-emerald-100/70 text-emerald-700 flex items-center justify-center font-bold shrink-0">
             <ArrowDownLeft className="h-5 w-5" />
           </div>
         </div>
 
         {/* Total Expenses (Approved) */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-between gap-3">
+        <div className="bg-slate-50/80 p-4 sm:p-5 rounded-xl transition-all duration-200 flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-slate-400 block truncate">
               Total Expenses (Approved)
@@ -949,13 +949,13 @@ export function AccountingWorkspace() {
               Audited & Sanctioned Outflows
             </span>
           </div>
-          <div className="h-11 w-11 rounded-2xl bg-rose-50 text-rose-700 flex items-center justify-center font-bold shrink-0">
+          <div className="h-11 w-11 rounded-xl bg-rose-100/70 text-rose-700 flex items-center justify-center font-bold shrink-0">
             <ArrowUpRight className="h-5 w-5" />
           </div>
         </div>
 
         {/* Net Operating Balance */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-between gap-3">
+        <div className="bg-slate-50/80 p-4 sm:p-5 rounded-xl transition-all duration-200 flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-slate-400 block truncate">
               Net Operating Balance
@@ -971,13 +971,13 @@ export function AccountingWorkspace() {
               {summary.netProfit >= 0 ? 'Operating Surplus' : 'Operating Deficit'}
             </span>
           </div>
-          <div className="h-11 w-11 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center font-bold shrink-0">
+          <div className="h-11 w-11 rounded-xl bg-blue-100/70 text-blue-900 flex items-center justify-center font-bold shrink-0">
             <Wallet className="h-5 w-5" />
           </div>
         </div>
 
         {/* Disbursement Security & Threshold */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-between gap-3">
+        <div className="bg-slate-50/80 p-4 sm:p-5 rounded-xl transition-all duration-200 flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-slate-400 block truncate">
               Disbursement Security Gate
@@ -989,14 +989,14 @@ export function AccountingWorkspace() {
               OTP Mandated for &gt; ₹2,000 Outflows
             </span>
           </div>
-          <div className="h-11 w-11 rounded-2xl bg-indigo-50 text-indigo-900 flex items-center justify-center font-bold shrink-0">
+          <div className="h-11 w-11 rounded-xl bg-indigo-100/70 text-indigo-900 flex items-center justify-center font-bold shrink-0">
             <Lock className="h-5 w-5" />
           </div>
         </div>
       </div>
 
       {/* TABS NAVIGATION: Modern Borderless Segmented Strip */}
-      <div className="bg-white p-1.5 rounded-2xl shadow-sm flex items-center justify-between gap-2 overflow-x-auto scrollbar-none">
+      <div className="bg-slate-100/80 p-1.5 rounded-xl flex items-center justify-between gap-2 overflow-x-auto scrollbar-none">
         <div className="flex items-center gap-1.5 flex-nowrap min-w-max">
           <button
             type="button"
@@ -1082,7 +1082,7 @@ export function AccountingWorkspace() {
       {activeTab === 'ledger' && (
         <div className="space-y-4">
           {/* Search & Filter Toolbar: Clean Borderless Flow */}
-          <div className="bg-white p-3.5 sm:p-4 rounded-2xl shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <div className="bg-slate-50/70 p-3.5 sm:p-4 rounded-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
@@ -1141,7 +1141,7 @@ export function AccountingWorkspace() {
           </div>
 
           {/* DESKTOP/TABLET VIEW: Structured White Corporate Table, Borderless */}
-          <div className="hidden md:block bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="hidden md:block bg-white rounded-xl overflow-hidden border border-slate-100">
             <div className="overflow-x-auto min-w-full">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -1310,7 +1310,7 @@ export function AccountingWorkspace() {
                 return (
                   <div
                     key={item.id}
-                    className="bg-white rounded-2xl p-4 shadow-sm space-y-3"
+                    className="bg-slate-50/80 rounded-xl p-4 space-y-3"
                   >
                     {/* Top Row: Date & Status */}
                     <div className="flex items-center justify-between gap-2">
@@ -1430,7 +1430,7 @@ export function AccountingWorkspace() {
       {/* TAB 2: PENDING APPROVALS QUEUE */}
       {activeTab === 'pending' && (
         <div className="space-y-4">
-          <div className="bg-white p-5 rounded-2xl shadow-sm space-y-1">
+          <div className="bg-slate-50/80 p-5 rounded-xl space-y-1">
             <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-amber-600" />
               Sana Zeba Bakshi Executive Approval Queue
@@ -1442,7 +1442,7 @@ export function AccountingWorkspace() {
           </div>
 
           {pendingApprovalsList.length === 0 ? (
-            <div className="py-16 text-center bg-white rounded-2xl shadow-sm p-6">
+            <div className="py-16 text-center bg-slate-50/80 rounded-xl p-6">
               <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto mb-2 opacity-80" />
               <p className="text-sm font-black text-slate-900">No Pending Approvals</p>
               <p className="text-xs text-slate-500 mt-1">All internal expenses have been audited and authorized.</p>
@@ -1452,7 +1452,7 @@ export function AccountingWorkspace() {
               {pendingApprovalsList.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-white p-5 rounded-2xl shadow-sm hover:shadow-md transition flex flex-col justify-between space-y-4"
+                  className="bg-slate-50/80 p-5 rounded-xl transition flex flex-col justify-between space-y-4"
                 >
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1539,7 +1539,7 @@ export function AccountingWorkspace() {
       {activeTab === 'analytics' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm space-y-4">
+            <div className="bg-slate-50/80 p-5 sm:p-6 rounded-xl space-y-4">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-rose-600" />
                 Operational Expense Breakdown by Cost Center
@@ -1572,7 +1572,7 @@ export function AccountingWorkspace() {
               )}
             </div>
 
-            <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm flex flex-col justify-between space-y-4">
+            <div className="bg-slate-50/80 p-5 sm:p-6 rounded-xl flex flex-col justify-between space-y-4">
               <div className="space-y-4">
                 <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-blue-900" />
@@ -1611,7 +1611,7 @@ export function AccountingWorkspace() {
       {/* TAB 4: FINANCIAL STATEMENT PDF PREVIEW */}
       {activeTab === 'report' && (
         <div className="space-y-4">
-          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="bg-slate-50/80 p-4 sm:p-5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="min-w-0">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2 flex-wrap">
                 <Building2 className="h-4 w-4 text-blue-900 shrink-0" />
@@ -1636,7 +1636,7 @@ export function AccountingWorkspace() {
             </button>
           </div>
 
-          <div className="w-full h-[520px] sm:h-[680px] lg:h-[820px] bg-slate-100 rounded-2xl overflow-hidden shadow-xs">
+          <div className="w-full h-[520px] sm:h-[680px] lg:h-[820px] bg-slate-100 rounded-xl overflow-hidden">
             <PDFViewer width="100%" height="100%" className="border-0">
               <AccountingReportPDF
                 records={records}

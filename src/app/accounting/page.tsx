@@ -7,7 +7,7 @@ import { Dashboard } from '../../components/Dashboard';
 
 export default function AccountingPage() {
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-white">
       <AuthGate>
         <AppErrorBoundary>
           <Dashboard initialTab="accounting" />

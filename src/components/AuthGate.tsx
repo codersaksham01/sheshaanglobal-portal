@@ -252,7 +252,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
         <button
           type="button"
           onClick={handleLogout}
-          className="fixed bottom-24 right-4 z-50 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-lg hover:bg-slate-800 sm:bottom-4"
+          className="fixed bottom-20 right-4 z-20 inline-flex items-center gap-2 rounded-lg bg-slate-900/90 backdrop-blur-sm px-3 py-2 text-xs font-bold text-white shadow-md hover:bg-slate-900 transition sm:bottom-4"
           title="Logout"
         >
           <LogOut className="h-4 w-4" />

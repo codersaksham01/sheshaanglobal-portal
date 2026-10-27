@@ -5787,7 +5787,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
 
           <section className={`relative z-10 flex-1 ${
             isSidebarMinimized ? 'lg:ml-[76px]' : 'lg:ml-[304px]'
-          } min-w-0 p-3 sm:p-5 lg:p-6 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
+          } min-w-0 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
             {/* Top Global Sync Progress Bar */}
             {loading && (
               <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-400 via-indigo-500 to-emerald-400 z-50 animate-pulse shadow-[0_0_12px_rgba(14,165,233,0.8)]" />
@@ -5795,7 +5795,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
 
             {/* In-Workspace Sync Banner */}
             {loading && initialDataLoaded && (
-              <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl bg-slate-900 border border-sky-500/30 text-white shadow-lg shadow-sky-950/20 animate-fade-up">
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-slate-900 border-b border-sky-500/30 text-white shadow-lg shadow-sky-950/20 animate-fade-up">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <RefreshCw className="h-4 w-4 animate-spin text-sky-400 shrink-0" />
                   <div className="min-w-0">
@@ -5809,8 +5809,9 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               </div>
             )}
 
-            <div className="lg:hidden sticky top-2 z-30 bg-white/95 backdrop-blur-md rounded-2xl shadow-sm mb-3 overflow-hidden animate-fade-up">
-              <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
+            {/* Mobile Header Bar: Flush edge-to-edge, full width, 0 border gaps */}
+            <div className="lg:hidden sticky top-0 z-30 w-full bg-white border-b border-slate-200/80 shadow-xs mb-0 overflow-hidden">
+              <div className="px-4 py-3 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -5843,7 +5844,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
             </div>
 
             {showNotifications && (
-              <div className="lg:hidden fixed inset-x-3 top-20 z-50 rounded-lg border border-slate-200 bg-white shadow-2xl p-3 animate-panel-in">
+              <div className="lg:hidden fixed inset-x-3 top-16 z-50 rounded-xl border border-slate-200 bg-white shadow-2xl p-3 animate-panel-in">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-bold text-xs text-slate-900">Notification Center</span>
                   <button type="button" onClick={() => setShowNotifications(false)} className="h-8 w-8 rounded bg-slate-50 text-slate-500 flex items-center justify-center" aria-label="Close notifications"><X className="h-4 w-4" /></button>
@@ -5859,17 +5860,18 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               </div>
             )}
 
-            <div className="lg:hidden sticky top-[4.75rem] z-20 portal-glass p-3 animate-fade-up">
+            {/* Mobile Search: Seamless flush bar */}
+            <div className="lg:hidden border-b border-slate-200/70 bg-white px-4 py-2.5">
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <SmoothInput
                   value={globalSearch}
                   onChange={setGlobalSearch}
                   placeholder="Search portal..."
-                  className="w-full h-9 rounded-md border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="w-full h-9 rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 {globalResults.length > 0 && (
-                  <div className="absolute left-0 right-0 top-10 z-40 rounded-lg border border-slate-200 bg-white shadow-lg p-2">
+                  <div className="absolute left-0 right-0 top-10 z-40 rounded-xl border border-slate-200 bg-white shadow-lg p-2">
                     {globalResults.map((result) => (
                       <button
                         key={result.key}
@@ -5889,22 +5891,22 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                 )}
               </div>
               <div className="grid grid-cols-3 gap-2 mt-2">
-                <button type="button" onClick={runFollowUpAutomation} className="h-10 rounded-md bg-slate-50 text-slate-700 text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
-                  <Sparkles className="h-4 w-4" />
+                <button type="button" onClick={runFollowUpAutomation} className="h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                  <Sparkles className="h-3.5 w-3.5" />
                   Auto
                 </button>
-                <button type="button" onClick={() => navigateToTab('templates')} className="h-10 rounded-md bg-slate-50 text-slate-700 text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
-                  <Edit2 className="h-4 w-4" />
+                <button type="button" onClick={() => navigateToTab('templates')} className="h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                  <Edit2 className="h-3.5 w-3.5" />
                   Templates
                 </button>
-                <button type="button" onClick={() => setEditingQuoteId(null)} className="h-10 rounded-md bg-slate-900 text-white text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
-                  <Plus className="h-4 w-4" />
+                <button type="button" onClick={() => setEditingQuoteId(null)} className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                  <Plus className="h-3.5 w-3.5" />
                   Quote
                 </button>
               </div>
             </div>
 
-            <div key={activeTab} className="w-full min-w-0 animate-panel-in">
+            <div key={activeTab} className="w-full min-w-0 p-4 sm:p-6 lg:p-8 animate-panel-in">
               {!hasAccessToActiveTab ? (
                 <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl shadow-sm animate-fade-in my-6">
                   <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center border border-red-100 mb-4 animate-pulse">

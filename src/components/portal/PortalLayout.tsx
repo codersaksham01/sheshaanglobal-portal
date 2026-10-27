@@ -379,10 +379,10 @@ export function PortalLayoutContent({
           {/* Main Content Workspace Column: Full Page, Borderless, Natural Spacing */}
           <section className={`relative z-10 flex-1 ${
             isSidebarMinimized ? 'lg:ml-[76px]' : 'lg:ml-[304px]'
-          } min-w-0 p-3 sm:p-5 lg:p-6 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
-            {/* Mobile Header Bar */}
-            <div className="lg:hidden sticky top-2 z-30 bg-white/95 backdrop-blur-md rounded-2xl shadow-sm mb-3 overflow-hidden animate-fade-up">
-              <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
+          } min-w-0 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
+            {/* Mobile Header Bar: Flush edge-to-edge, full width, 0 border gaps */}
+            <div className="lg:hidden sticky top-0 z-30 w-full bg-white border-b border-slate-200/80 shadow-xs mb-0 overflow-hidden">
+              <div className="px-4 py-3 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -451,7 +451,7 @@ export function PortalLayoutContent({
             )}
 
             {/* Workspace Main Area: Full Width, Edge-to-Edge */}
-            <main className="w-full min-w-0 animate-panel-in">
+            <main className="w-full min-w-0 p-4 sm:p-6 lg:p-8 animate-panel-in">
               {children}
             </main>
           </section>
