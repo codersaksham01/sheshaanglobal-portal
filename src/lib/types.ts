@@ -422,9 +422,10 @@ export interface Quote {
   incoterm?: string;
   origin_country: string;
   loading_port: string;
+  destination_port?: string;
   shipment_mode: string;
   payment_terms: string;
-  validity_days: number;
+  validity_days?: number;
   
   // Detailed breakdown components
   packaging_cost: number;

@@ -67,10 +67,11 @@ const PanelLeftOpen = ({ className }: { className?: string }) => (
 import { AuthGate, usePortalIdentity } from '../AuthGate';
 import { AppErrorBoundary } from '../AppErrorBoundary';
 import { PortalSidebar } from './PortalSidebar';
+import { SystematicLoadingScreen } from '../SystematicLoadingScreen';
 import { canAccessTab, PortalRole } from '../../lib/permissions';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
 import { isFirebaseConfigured } from '../../lib/firebaseClient';
-import { getPortalCache, TAB_ROUTES } from '../../lib/portalDataStore';
+import { getPortalCache, fetchAllPortalData, TAB_ROUTES } from '../../lib/portalDataStore';
 
 export type NavItemDef = {
   key: string;
@@ -215,7 +216,7 @@ export function PortalLayoutContent({
   useEffect(() => {
     let isMounted = true;
     const cached = getPortalCache();
-    if (cached) {
+    if (cached && (cached.leads.length > 0 || cached.clients.length > 0 || cached.quotes.length > 0)) {
       setQuickCounts({
         leads: cached.leads.length,
         buyers: cached.clients.length,
@@ -227,21 +228,13 @@ export function PortalLayoutContent({
     }
     (async () => {
       try {
-        const [
-          { count: leadsCount },
-          { count: clientsCount },
-          { count: quotesCount }
-        ] = await Promise.all([
-          supabase.from('leads').select('id', { count: 'exact', head: true }),
-          supabase.from('clients').select('id', { count: 'exact', head: true }),
-          supabase.from('quotes').select('id', { count: 'exact', head: true })
-        ]);
+        const data = await fetchAllPortalData();
         if (isMounted) {
           const counts = {
-            leads: leadsCount || 0,
-            buyers: clientsCount || 0,
-            quotes: quotesCount || 0,
-            inquiries: 0
+            leads: data.leads.length,
+            buyers: data.clients.length,
+            quotes: data.quotes.length,
+            inquiries: data.inquiries.length
           };
           setQuickCounts(counts);
           sessionStorage.setItem('portal_quick_counts', JSON.stringify(counts));
@@ -348,9 +341,9 @@ export function PortalLayoutContent({
 
   return (
     <div className="portal-os relative min-h-screen pb-28 lg:pb-0">
-      {/* Top Global Sync Progress Bar */}
+      {/* Subtle Top Sync Indicator */}
       {isInitialSyncing && (
-        <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-400 via-indigo-500 to-emerald-400 z-50 animate-pulse shadow-[0_0_12px_rgba(14,165,233,0.8)]" />
+        <div className="fixed top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-sky-400 via-indigo-500 to-emerald-400 z-50 animate-pulse pointer-events-none" />
       )}
       <div className="portal-shell">
         <div className="flex flex-col lg:flex-row">

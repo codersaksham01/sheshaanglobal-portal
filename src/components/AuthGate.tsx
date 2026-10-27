@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { defaultFirebaseLoginEmail, firebaseAuth, isFirebaseConfigured } from '../lib/firebaseClient';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
+import { SystematicLoadingScreen } from './SystematicLoadingScreen';
 
 type PortalIdentity = { email: string; firebaseAuthenticated: boolean };
 const PortalIdentityContext = createContext<PortalIdentity>({ email: '', firebaseAuthenticated: false });
@@ -238,12 +239,10 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
 
   if (checking) {
     return (
-      <div className="auth-os min-h-screen text-white flex items-center justify-center">
-        <div className="portal-loader-card">
-          <Loader2 className="h-6 w-6 animate-spin text-sky-300" />
-          <span className="text-xs font-bold text-slate-300">Opening Sheshaan Trade OS</span>
-        </div>
-      </div>
+      <SystematicLoadingScreen
+        title="Opening Sheshaan Trade OS"
+        subtitle="Verifying secure cryptographic identity and enterprise credentials..."
+      />
     );
   }
 

@@ -20,9 +20,10 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
-import { getPortalCache, setPortalCache } from '../../lib/portalDataStore';
+import { getPortalCache, setPortalCache, fetchAllPortalData } from '../../lib/portalDataStore';
 import { Lead, Client, MessageTemplate, TimelineActivity } from '../../lib/types';
 import { CrmLead, CrmStage, CrmPriority } from '../../lib/types/crm';
+import { SystematicLoadingScreen } from '../SystematicLoadingScreen';
 import { CrmTable } from './CrmTable';
 import { CrmKanban } from './CrmKanban';
 import { LeadInspectorDrawer } from './LeadInspectorDrawer';
@@ -166,7 +167,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
   const [selectedCrmLead, setSelectedCrmLead] = useState<CrmLead | null>(null);
   const [buyerPdfExportReady, setBuyerPdfExportReady] = useState(false);
 
-  // Load CRM Data (only leads, activities, message_templates)
+  // Load CRM Data directly from database
   const fetchCrmData = useCallback(async () => {
     try {
       const [
@@ -697,41 +698,11 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
 
   if (loading && leads.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 px-6 text-center rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md shadow-2xl my-6 animate-fade-up">
-        <div className="relative mb-5">
-          <div className="h-16 w-16 rounded-2xl bg-sky-500/10 border border-sky-400/20 flex items-center justify-center text-sky-400 shadow-[0_0_30px_rgba(14,165,233,0.2)]">
-            <RefreshCw className="h-8 w-8 animate-spin text-sky-400" />
-          </div>
-          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-sky-500"></span>
-          </span>
-        </div>
-        <h3 className="text-base sm:text-lg font-black text-white tracking-tight">Loading Smart CRM Pipeline</h3>
-        <p className="mt-1.5 text-xs font-semibold text-slate-400 max-w-md leading-relaxed">
-          Retrieving buyer database records, pipeline stages, and outreach logs from server...
-        </p>
-        <div className="mt-6 w-56 h-1.5 bg-white/10 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-sky-400 via-indigo-400 to-emerald-400 animate-[pulse_1.2s_infinite] w-full" />
-        </div>
-        <div className="mt-4 flex items-center gap-2 text-[10px] font-bold text-sky-300 uppercase tracking-wider">
-          <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-ping" />
-          <span>Synchronizing database assets</span>
-        </div>
-        {loadTimeout && (
-          <div className="mt-6 flex flex-col items-center gap-2">
-            <p className="text-xs text-amber-300 font-semibold">Database is taking longer than expected to respond.</p>
-            <button
-              type="button"
-              onClick={fetchCrmData}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold rounded-lg transition shadow-lg active:scale-95 cursor-pointer"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              Retry Connection
-            </button>
-          </div>
-        )}
-      </div>
+      <SystematicLoadingScreen
+        title="Loading Smart CRM Pipeline"
+        subtitle="Retrieving buyer database records, pipeline stages, and outreach logs from server..."
+        onRetry={fetchCrmData}
+      />
     );
   }
 

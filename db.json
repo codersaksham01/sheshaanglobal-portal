@@ -1,186 +1,424 @@
-﻿{
-    "clients":  [
-
-                ],
-    "products":  [
-                     {
-                         "id":  "prod-sg-1",
-                         "sku":  "CUMIN-SG99",
-                         "description":  "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
-                         "unit_price":  228.27,
-                         "cost_price":  218.27,
-                         "weight":  1,
-                         "dimensions":  "N/A",
-                         "created_at":  "2026-08-10T17:38:19.480Z"
-                     }
-                 ],
-    "freight_presets":  [
-                            {
-                                "id":  "fre-sg-1",
-                                "name":  "Mundra to Khor Fakkan - 20ft FCL",
-                                "loading_port":  "Mundra Port, India",
-                                "destination_port":  "Khor Fakkan Port, UAE",
-                                "shipment_mode":  "Sea Freight (1x20ft FCL)",
-                                "freight_cost":  260000,
-                                "insurance_cost":  2860,
-                                "shipment_window":  "10-14 days post advance payment/LC confirmation",
-                                "transit_time":  "7-12 days approx., subject to carrier schedule",
-                                "partial_shipment":  "Allowed / Allowed",
-                                "container_type":  "20ft FCL Dry Container / Ambient Storage",
-                                "storage_condition":  "Store in a cool, dry place away from direct sunlight",
-                                "created_at":  "2026-08-10T17:38:19.480Z",
-                                "updated_at":  "2026-08-10T17:38:19.480Z"
-                            }
-                        ],
-    "quotes":  [
-                   {
-                       "id":  "quote-sg-1",
-                       "quote_number":  "SG-CIF-2026-0001",
-                       "client_id":  "client-sg-1",
-                       "currency":  "INR",
-                       "origin_country":  "India",
-                       "loading_port":  "Mundra Port, India",
-                       "shipment_mode":  "Sea Freight (1x20ft FCL)",
-                       "payment_terms":  "50% Advance, 50% vs Shipping Bill",
-                       "validity_days":  15,
-                       "packaging_cost":  45500,
-                       "inland_haulage_cost":  65000,
-                       "customs_clearance_cost":  19500,
-                       "freight_cost":  260000,
-                       "insurance_cost":  2860,
-                       "status":  "Draft",
-                       "margin_per_kg":  10,
-                       "internal_notes":  "Internal margin sample only. Not printed on PDFs.",
-                       "shipper_details":  {
-                                               "company_name":  "Sheshaan Global",
-                                               "address":  "Plot No. 1459, Opp. M.A.K. Azad Urdu School, Aasinagar, Nagpur - 440017, Maharashtra, India\nReg: IEC | GST | APEDA | FSSAI",
-                                               "contact_name":  "Sana Zeba Bakshi (CEO)",
-                                               "contact_email":  "info@sheshaanglobal.com",
-                                               "tax_id":  "GST: 27AAAAA1111A1Z1"
-                                           },
-                       "commercial_note":  "Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.",
-                       "included_responsibilities":  [
-                                                         "Complete raw product cost \u0026 export packing in 40 kg Jute Bags",
-                                                         "Inland haulage and transportation from factory to Mundra Port",
-                                                         "Terminal Handling Charges (THC) \u0026 container stuffing at origin port",
-                                                         "Export customs clearance, shipping bill, COO, and Phytosanitary Certificate",
-                                                         "Main ocean freight from Mundra to Khor Fakkan Port (INR 2,60,000.00 lump sum)",
-                                                         "Marine transit cargo insurance policy (INR 2,860.00 lump sum coverage)"
-                                                     ],
-                       "excluded_responsibilities":  [
-                                                         "Import duties, tariffs, and local destination taxes / VAT in destination country",
-                                                         "Destination port terminal handling charges (THC at Khor Fakkan)",
-                                                         "Import customs clearance and local destination documentation",
-                                                         "Inland transport/delivery from discharge port to buyer warehouse",
-                                                         "Container demurrage, detention, or storage fees at destination port",
-                                                         "Buyer-requested third-party pre-shipment or destination inspection/testing fees unless explicitly agreed in writing."
-                                                     ],
-                       "included_docs":  [
-                                             "Commercial Invoice (Issued)",
-                                             "Packing List (Issued)",
-                                             "Bill of Lading (Clean On-Board B/L)",
-                                             "Marine Insurance Certificate",
-                                             "Certificate of Origin (Issued)",
-                                             "Phytosanitary Certificate (Issued)"
-                                         ],
-                       "logistics_specs":  {
-                                               "shipment_window":  "10-14 days post advance payment/LC confirmation",
-                                               "transit_time":  "7-12 days approx., subject to carrier schedule",
-                                               "partial_shipment":  "Allowed / Allowed",
-                                               "container_type":  "20ft FCL Dry Container / Ambient Storage",
-                                               "storage_condition":  "Store in a cool, dry place away from direct sunlight"
-                                           },
-                       "commercial_terms":  [
-                                                "Quotation Validity \u0026 Ocean Freight Adjustments: Quoted rates are valid for 15 days from issuance. Ocean freight rates, insurance premiums, and exchange rates remain indicative until final vessel booking confirmation.",
-                                                "Payment Terms: 50% advance payment upon proforma invoice acceptance; balance 50% payable against soft copy of Shipping Bill / Bill of Lading (B/L).",
-                                                "Currency Exchange Protections \u0026 Settlement: All prices are quoted in Indian Rupees (INR) based on a baseline exchange rate. Final invoicing and settlement may be converted to USD or AED at prevailing RBI reference rates upon agreement.",
-                                                "Quality Assurance \u0026 Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, container stuffing/loading photographs, and seal numbers will be provided prior to vessel departure.",
-                                                "Claims \u0026 Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination port, supported by an official independent surveyor report and photographs.",
-                                                "Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.",
-                                                "Governing Law \u0026 Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration."
-                                            ],
-                       "created_at":  "2026-08-10T17:38:19.480Z",
-                       "updated_at":  "2026-08-10T18:09:03.996Z",
-                       "client":  {
-                                      "id":  "client-sg-1",
-                                      "company_name":  "BusyExim Private Limited",
-                                      "address":  "Plot No. 204, Industrial Area 1, Khor Fakkan / Dubai, UAE",
-                                      "contact_name":  "Nancy Sharma",
-                                      "contact_email":  "business@busyexim.com",
-                                      "destination_port":  "Khor Fakkan Port, UAE",
-                                      "created_at":  "2026-08-10T17:38:19.480Z"
-                                  },
-                       "items":  [
-                                     {
-                                         "quote_id":  "quote-sg-1",
-                                         "product_id":  "prod-sg-1",
-                                         "sku":  "CUMIN-SG99",
-                                         "description":  "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
-                                         "quantity":  13000,
-                                         "unit_price":  228.27,
-                                         "cost_price":  218.27,
-                                         "weight":  1,
-                                         "hs_code":  "09093129",
-                                         "packing_container":  "325 Jute Bags (40 kg Net / Bag)\n1 x 20ft FCL",
-                                         "basis_of_calculation":  "Per kg (13,000 kg)",
-                                         "id":  "quo-jjzfpotm1",
-                                         "updated_at":  "2026-08-10T18:08:51.121Z",
-                                         "created_at":  "2026-08-10T18:08:51.121Z"
-                                     }
-                                 ],
-                       "bank_details":  {
-                                            "beneficiary_bank":  "State Bank of India (SBI)",
-                                            "ifsc_code":  "SBIN0000432",
-                                            "swift_code":  "SBININBBXXX",
-                                            "account_holder_name":  "Sheshaan Global Export Account",
-                                            "account_number":  "334455667788",
-                                            "branch_location":  "Nagpur Main Branch, Civil Lines, Nagpur, India"
-                                        }
-                   }
-               ],
-    "quote_items":  [
-                        {
-                            "quote_id":  "quote-sg-1",
-                            "product_id":  "prod-sg-1",
-                            "sku":  "CUMIN-SG99",
-                            "description":  "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
-                            "quantity":  13000,
-                            "unit_price":  228.27,
-                            "cost_price":  218.27,
-                            "weight":  1,
-                            "hs_code":  "09093129",
-                            "packing_container":  "325 Jute Bags (40 kg Net / Bag)\n1 x 20ft FCL",
-                            "basis_of_calculation":  "Per kg (13,000 kg)",
-                            "id":  "quo-jjzfpotm1",
-                            "updated_at":  "2026-08-10T18:08:51.121Z",
-                            "created_at":  "2026-08-10T18:08:51.121Z"
-                        }
-                    ],
-    "blogs":  [
-
-              ],
-    "leads":  [
-
-              ],
-    "activities":  [
-
-                   ],
-    "freight_rate_history":  [
-
-                             ],
-    "invoices":  [
-
-                 ],
-    "shipments":  [
-
-                  ],
-    "document_checklists":  [
-
-                            ],
-    "app_users":  [
-
-                  ],
-    "tasks":  [
-
-              ]
+{
+  "clients": [
+    {
+      "id": "client-sg-1",
+      "company_name": "BusyExim Private Limited",
+      "address": "Plot No. 204, Industrial Area 1, Khor Fakkan / Dubai, UAE",
+      "contact_name": "Nancy Sharma",
+      "contact_email": "business@busyexim.com",
+      "destination_port": "Khor Fakkan Port, UAE",
+      "created_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "vendors": [
+    {
+      "id": "ven-sg-1",
+      "company_name": "Nagpur Spice Processing Co.",
+      "contact_name": "Operations Desk",
+      "contact_email": "procurement@example.com",
+      "phone": "+91 98765 43210",
+      "city": "Nagpur",
+      "country": "India",
+      "product_categories": "Cumin, coriander, fennel, export packing",
+      "payment_terms": "30% advance, balance before dispatch",
+      "rating": 4,
+      "status": "Preferred",
+      "notes": "Demo preferred supplier for spice processing and packing readiness.",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod-sg-1",
+      "sku": "CUMIN-SG99",
+      "description": "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
+      "unit_price": 228.27,
+      "cost_price": 218.27,
+      "weight": 1,
+      "dimensions": "N/A",
+      "created_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "freight_presets": [
+    {
+      "id": "fre-sg-1",
+      "name": "Mundra to Khor Fakkan - 20ft FCL",
+      "loading_port": "Mundra Port, India",
+      "destination_port": "Khor Fakkan Port, UAE",
+      "shipment_mode": "Sea Freight (1x20ft FCL)",
+      "freight_cost": 260000,
+      "insurance_cost": 2860,
+      "shipment_window": "10-14 days post advance payment/LC confirmation",
+      "transit_time": "7-12 days approx., subject to carrier schedule",
+      "partial_shipment": "Allowed / Allowed",
+      "container_type": "20ft FCL Dry Container / Ambient Storage",
+      "storage_condition": "Store in a cool, dry place away from direct sunlight",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "quotes": [
+    {
+      "id": "quote-sg-1",
+      "quote_number": "SG-CIF-2026-0001",
+      "client_id": "client-sg-1",
+      "currency": "INR",
+      "incoterm": "CIF (Cost, Insurance & Freight)",
+      "origin_country": "India",
+      "loading_port": "Mundra Port, India",
+      "shipment_mode": "Sea Freight (1x20ft FCL)",
+      "payment_terms": "50% Advance, 50% vs Shipping Bill",
+      "validity_days": 15,
+      "packaging_cost": 45500,
+      "inland_haulage_cost": 65000,
+      "customs_clearance_cost": 19500,
+      "freight_cost": 260000,
+      "insurance_cost": 2860,
+      "status": "Draft",
+      "margin_per_kg": 10,
+      "internal_notes": "Internal margin sample only. Not printed on PDFs.",
+      "shipper_details": {
+        "company_name": "Sheshaan Global",
+        "address": "Plot No. 1459, Opp. M.A.K. Azad Urdu School, Aasinagar, Nagpur - 440017, Maharashtra, India\nReg: IEC | GST | APEDA | FSSAI",
+        "contact_name": "Sana Zeba Bakshi (CEO)",
+        "contact_email": "info@sheshaanglobal.com",
+        "tax_id": "GST: 27AAAAA1111A1Z1"
+      },
+      "bank_details": {
+        "beneficiary_bank": "State Bank of India (SBI)",
+        "branch_location": "Nagpur Main Branch, Civil Lines, Nagpur, India",
+        "account_holder_name": "Sheshaan Global Export Account",
+        "account_number": "334455667788",
+        "ifsc_code": "SBIN0000432",
+        "swift_code": "SBININBBXXX"
+      },
+      "commercial_note": "Base FOB product price incorporates a commercial margin of INR 10.00/kg. FOB sub-components, main ocean freight, and marine insurance are transparently itemized above.",
+      "show_cif_breakdown": true,
+      "show_details_page": true,
+      "show_cif_port_in_total": false,
+      "included_responsibilities": [
+        "Complete raw product cost & export packing in 40 kg Jute Bags",
+        "Inland haulage and transportation from factory to Mundra Port",
+        "Terminal Handling Charges (THC) & container stuffing at origin port",
+        "Export customs clearance, shipping bill, COO, and Phytosanitary Certificate",
+        "Main ocean freight from Mundra to Khor Fakkan Port (INR 2,60,000.00 lump sum)",
+        "Marine transit cargo insurance policy (INR 2,860.00 lump sum coverage)"
+      ],
+      "excluded_responsibilities": [
+        "Import duties, tariffs, and local destination taxes / VAT in destination country",
+        "Destination port terminal handling charges (THC at Khor Fakkan)",
+        "Import customs clearance and local destination documentation",
+        "Inland transport/delivery from discharge port to buyer warehouse",
+        "Container demurrage, detention, or storage fees at destination port",
+        "Buyer-requested third-party pre-shipment or destination inspection/testing fees unless explicitly agreed in writing."
+      ],
+      "included_docs": [
+        "Commercial Invoice (Issued)",
+        "Packing List (Issued)",
+        "Bill of Lading (Clean On-Board B/L)",
+        "Marine Insurance Certificate",
+        "Certificate of Origin (Issued)",
+        "Phytosanitary Certificate (Issued)"
+      ],
+      "logistics_specs": {
+        "shipment_window": "10-14 days post advance payment/LC confirmation",
+        "transit_time": "7-12 days approx., subject to carrier schedule",
+        "partial_shipment": "Allowed / Allowed",
+        "container_type": "20ft FCL Dry Container / Ambient Storage",
+        "storage_condition": "Store in a cool, dry place away from direct sunlight"
+      },
+      "commercial_terms": [
+        "Quotation Validity & Ocean Freight Adjustments: Quoted rates are valid for 15 days from issuance. Ocean freight rates, insurance premiums, and exchange rates remain indicative until final vessel booking confirmation.",
+        "Payment Terms: 50% advance payment upon proforma invoice acceptance; balance 50% payable against soft copy of Shipping Bill / Bill of Lading (B/L).",
+        "Currency Exchange Protections & Settlement: All prices are quoted in Indian Rupees (INR) based on a baseline exchange rate. Final invoicing and settlement may be converted to USD or AED at prevailing RBI reference rates upon agreement.",
+        "Quality Assurance & Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, container stuffing/loading photographs, and seal numbers will be provided prior to vessel departure.",
+        "Claims & Discrepancies: Any product quality or weight claims must be reported in writing within 48 hours of cargo arrival at destination port, supported by an official independent surveyor report and photographs.",
+        "Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.",
+        "Governing Law & Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration."
+      ],
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "quote_items": [
+    {
+      "id": "qi-sg-1",
+      "quote_id": "quote-sg-1",
+      "product_id": "prod-sg-1",
+      "sku": "CUMIN-SG99",
+      "description": "Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min | Admixture: 1% Max\n- Moisture: 8-9% Max | Origin: Gujarat, India",
+      "quantity": 13000,
+      "unit_price": 228.27,
+      "cost_price": 218.27,
+      "weight": 1,
+      "pricing_basis": "kg",
+      "package_quantity": 325,
+      "package_unit_price": 9130.8,
+      "package_cost_price": 8730.8,
+      "hs_code": "09093129",
+      "packing_container": "325 Jute Bags (40 kg Net / Bag)\n1 x 20ft FCL",
+      "basis_of_calculation": "Per kg (13,000 kg)"
+    }
+  ],
+  "blogs": [],
+  "leads": [
+    {
+      "id": "lead-sg-1",
+      "company_name": "BusyExim Private Limited",
+      "contact_name": "Nancy Sharma",
+      "contact_email": "business@busyexim.com",
+      "phone": "+971 4 388 9100",
+      "country": "UAE",
+      "product_interest": "Cumin Seeds Singapore 99",
+      "estimated_value": 3360370,
+      "stage": "Quoted",
+      "priority": "High",
+      "owner": "Sana Zeba",
+      "next_follow_up": "2026-10-27T06:50:16.304Z",
+      "notes": "Demo pipeline lead linked to the active CIF quote.",
+      "client_id": "client-sg-1",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "inquiries": [
+    {
+      "id": "inq-sg-1",
+      "inquiry_number": "SG-2026-00001",
+      "inquiry_date": "2026-10-27",
+      "lead_source": "WhatsApp",
+      "client_id": "client-sg-1",
+      "lead_id": "lead-sg-1",
+      "buyer_company": "BusyExim Private Limited",
+      "contact_person": "Nancy Sharma",
+      "contact_email": "business@busyexim.com",
+      "whatsapp_number": "+971 4 388 9100",
+      "country": "UAE",
+      "salesperson": "Sana Zeba",
+      "priority": "Hot",
+      "stage": "Quotation Sent",
+      "product_name": "Cumin Seeds Singapore 99",
+      "product_category": "Spices / Agricultural Products",
+      "quantity": 13,
+      "quantity_unit": "MT",
+      "target_price": 0,
+      "currency": "INR",
+      "destination_country": "UAE",
+      "destination_port": "Khor Fakkan Port, UAE",
+      "required_delivery_date": "",
+      "incoterm": "CIF",
+      "packaging_requirement": "325 Jute Bags (40 kg Net / Bag), 1 x 20ft FCL",
+      "quality_specification": "Machine cleaned / sortex cleaned, purity 99% min",
+      "payment_terms": "50% Advance, 50% vs Shipping Bill",
+      "additional_requirements": "Buyer requested CIF quotation with export documents.",
+      "original_message": "WhatsApp inquiry for cumin seeds to UAE with CIF pricing and shipment timeline.",
+      "last_contact_date": "2026-10-27",
+      "next_follow_up_date": "2026-10-27",
+      "next_action": "WhatsApp follow-up on quotation acceptance",
+      "follow_up_status": "Due Today",
+      "estimated_value": 3360370,
+      "notes": "Demo inquiry linked to the existing buyer, quote, activity, and task.",
+      "created_by": "Sana Zeba",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "inquiry_quotations": [
+    {
+      "id": "inq-quote-sg-1",
+      "quotation_number": "SG-CIF-2026-0001",
+      "inquiry_id": "inq-sg-1",
+      "quote_id": "quote-sg-1",
+      "client_id": "client-sg-1",
+      "buyer_company": "BusyExim Private Limited",
+      "quotation_date": "2026-10-27",
+      "product_name": "Cumin Seeds Singapore 99",
+      "quantity": 13,
+      "quantity_unit": "MT",
+      "unit_price": 258490,
+      "currency": "INR",
+      "incoterm": "CIF",
+      "destination_port": "Khor Fakkan Port, UAE",
+      "payment_terms": "50% Advance, 50% vs Shipping Bill",
+      "validity_date": "2026-10-27",
+      "packaging": "325 Jute Bags (40 kg Net / Bag)",
+      "quality": "Purity 99% Min",
+      "freight": 260000,
+      "total_amount": 3360370,
+      "status": "Sent",
+      "notes": "First quotation connected to inquiry SG-2026-00001.",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "inquiry_follow_ups": [
+    {
+      "id": "inq-fu-sg-1",
+      "inquiry_id": "inq-sg-1",
+      "client_id": "client-sg-1",
+      "lead_id": "lead-sg-1",
+      "follow_up_date": "2026-10-27",
+      "last_contact_date": "2026-10-27",
+      "action": "WhatsApp",
+      "status": "Due Today",
+      "owner": "Sana Zeba",
+      "result": "",
+      "notes": "Confirm whether buyer accepts CIF quotation or needs revised price.",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "inquiry_attachments": [],
+  "activities": [
+    {
+      "id": "act-sg-1",
+      "client_id": "client-sg-1",
+      "lead_id": "lead-sg-1",
+      "quote_id": "quote-sg-1",
+      "type": "Quote",
+      "title": "CIF quote prepared",
+      "details": "SG-CIF-2026-0001 generated for Khor Fakkan shipment.",
+      "activity_date": "2026-10-27T06:50:16.304Z",
+      "owner": "Sana Zeba",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "freight_rate_history": [
+    {
+      "id": "frh-sg-1",
+      "loading_port": "Mundra Port, India",
+      "destination_port": "Khor Fakkan Port, UAE",
+      "shipment_mode": "Sea Freight (1x20ft FCL)",
+      "forwarder": "Preferred Forwarder",
+      "freight_cost": 260000,
+      "insurance_cost": 2860,
+      "currency": "INR",
+      "effective_date": "2026-10-27T06:50:16.304Z",
+      "validity_date": "2026-10-27T06:50:16.304Z",
+      "notes": "Seeded from default freight preset.",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv-sg-1",
+      "quote_id": "quote-sg-1",
+      "invoice_number": "PI-SG-2026-0001",
+      "invoice_type": "Proforma",
+      "client_id": "client-sg-1",
+      "amount": 3360370,
+      "currency": "INR",
+      "payment_status": "Pending",
+      "advance_amount": 1680185,
+      "balance_amount": 1680185,
+      "due_date": "2026-10-27T06:50:16.304Z",
+      "notes": "Demo proforma invoice record.",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "shipments": [
+    {
+      "id": "ship-sg-1",
+      "quote_id": "quote-sg-1",
+      "invoice_id": "inv-sg-1",
+      "client_id": "client-sg-1",
+      "booking_number": "BK-DEMO-001",
+      "vessel_name": "To be nominated",
+      "container_number": "",
+      "seal_number": "",
+      "bl_number": "",
+      "etd": "2026-10-27T06:50:16.304Z",
+      "eta": "2026-10-27T06:50:16.304Z",
+      "status": "Planning",
+      "notes": "Demo shipment tracker record.",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "document_checklists": [
+    {
+      "id": "doc-sg-1",
+      "quote_id": "quote-sg-1",
+      "shipment_id": "ship-sg-1",
+      "commercial_invoice": true,
+      "packing_list": true,
+      "certificate_origin": false,
+      "phytosanitary": false,
+      "insurance": false,
+      "bill_of_lading": false,
+      "notes": "Initial export document checklist.",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-sg-1",
+      "title": "Follow up on CIF quotation acceptance",
+      "status": "Open",
+      "priority": "High",
+      "due_date": "2026-10-27T06:50:16.304Z",
+      "owner": "Sana Zeba",
+      "client_id": "client-sg-1",
+      "lead_id": "lead-sg-1",
+      "quote_id": "quote-sg-1",
+      "invoice_id": "inv-sg-1",
+      "shipment_id": "ship-sg-1",
+      "notes": "Confirm buyer feedback and advance payment timeline.",
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "message_templates": [
+    {
+      "id": "tmpl-sg-1",
+      "name": "Quotation Follow-up",
+      "channel": "Email",
+      "category": "Quote Follow-up",
+      "subject": "Follow-up on {{quote_number}} from Sheshaan Global",
+      "body": "Hi {{buyer_name}},\n\nI hope you are doing well. I am following up on quotation {{quote_number}} for {{product_name}} with CIF value {{total_value}} to {{destination_port}}.\n\nIf this product is still relevant, we can share a revised offer. If your requirement has changed, we can also propose options from our wider export range: {{product_catalogue}}.\n\nRegards,\nSheshaan Global",
+      "active": true,
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    },
+    {
+      "id": "tmpl-sg-3",
+      "name": "General Buyer Introduction",
+      "channel": "Email",
+      "category": "Introduction",
+      "subject": "Export sourcing support from Sheshaan Global",
+      "body": "Hi {{buyer_name}},\n\nI am reaching out from Sheshaan Global, India.\n\nWe support international buyers with export-ready products including {{product_catalogue}}. If you do not have a specific product requirement right now, we can share our product range, current availability, packing options, and CIF/FOB quotations based on your destination port.\n\nPlease let us know the products or categories {{company_name}} is exploring.\n\nRegards,\nSheshaan Global",
+      "active": true,
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    },
+    {
+      "id": "tmpl-sg-2",
+      "name": "Shipment Status Update",
+      "channel": "WhatsApp",
+      "category": "Shipment Update",
+      "subject": "",
+      "body": "Hello {{buyer_name}}, shipment update for {{quote_number}}: current status is {{shipment_status}}. ETD: {{etd}}, ETA: {{eta}}. We will share documents as soon as they are ready.",
+      "active": true,
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "app_users": [
+    {
+      "id": "usr-sg-1",
+      "name": "Sana Zeba",
+      "email": "info@sheshaanglobal.com",
+      "role": "Admin",
+      "active": true,
+      "created_at": "2026-10-27T06:50:16.304Z",
+      "updated_at": "2026-10-27T06:50:16.304Z"
+    }
+  ],
+  "activity_logs": [],
+  "team_messages": []
 }

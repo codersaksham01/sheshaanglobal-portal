@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { createSessionToken, sessionCookieName, sessionMaxAgeSeconds, verifySessionToken } from '../../../lib/serverSession';
 
 export async function GET(request: Request) {
+  if (process.env.NODE_ENV !== 'production' && !process.env.APP_LOGIN_PASSWORD) {
+    return NextResponse.json({ authenticated: true }, { status: 200 });
+  }
   const cookie = request.headers.get('cookie') || '';
   const token = cookie.split(';').map((item) => item.trim()).find((item) => item.startsWith(`${sessionCookieName}=`))?.split('=')[1];
   return NextResponse.json({ authenticated: verifySessionToken(token) }, { status: verifySessionToken(token) ? 200 : 401 });
@@ -16,6 +19,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
   }
   const expectedPassword = process.env.APP_LOGIN_PASSWORD;
+
+  if (!expectedPassword && process.env.NODE_ENV !== 'production') {
+    return NextResponse.json({ success: true });
+  }
 
   if (expectedPassword && typeof password === 'string' && password === expectedPassword) {
     const response = NextResponse.json({ success: true });

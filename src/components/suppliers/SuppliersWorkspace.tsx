@@ -485,12 +485,14 @@ export function SuppliersWorkspace() {
     }
   };
 
-  const handleDeleteSupplier = (id: string, name: string) => {
+  const handleDeleteSupplier = async (id: string, name: string) => {
     if (confirm(`Are you sure you want to delete supplier "${name}"?`)) {
       setSuppliers(prev => prev.filter(s => s.id !== id));
       try {
-        supabase.from('vendors').delete().eq('id', id);
-      } catch {}
+        await supabase.from('vendors').delete().eq('id', id);
+      } catch (err: any) {
+        console.warn('Failed to delete vendor on server:', err);
+      }
       showToast(`Supplier "${name}" deleted`);
     }
   };

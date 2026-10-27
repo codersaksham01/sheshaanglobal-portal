@@ -61,8 +61,16 @@ function makeChainPromise(promise: Promise<any>, extra: any = {}): any {
   return chainObj;
 }
 
+let onDatabaseMutationCallback: (() => void) | null = null;
+export function setDatabaseMutationCallback(cb: () => void) {
+  onDatabaseMutationCallback = cb;
+}
+
 // Server API-backed database client to allow persistent state in Replit/Local workspaces.
 class ServerFileDB {
+  private memCache: Map<string, { data: any[]; time: number }> = new Map();
+  private inFlight: Map<string, Promise<any[]>> = new Map();
+
   private getLocalDB() {
     if (typeof window === 'undefined') return null;
     try {
@@ -109,6 +117,8 @@ class ServerFileDB {
       throw new Error(result.error || `Could not save ${table}`);
     }
 
+    this.memCache.delete(table);
+    if (onDatabaseMutationCallback) onDatabaseMutationCallback();
     return result.data || records;
   }
 
@@ -125,80 +135,116 @@ class ServerFileDB {
     if (!response.ok) {
       throw new Error(result.error || `Could not delete ${table}`);
     }
+
+    this.memCache.delete(table);
+    if (onDatabaseMutationCallback) onDatabaseMutationCallback();
   }
 
   private async fetchTable(table: string): Promise<any[]> {
     if (typeof window === 'undefined') return [];
 
-    try {
-      const response = await fetch(`/api/db?table=${encodeURIComponent(table)}`, {
-        headers: {
-          'x-portal-actor-email': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_email') || '' : '',
-          'x-portal-actor-name': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_name') || '' : ''
-        }
-      });
-      if (response.ok) {
-        const res = await response.json();
-        return res.data || [];
-      }
-      if (response.status === 401) {
-        const localDB = this.getLocalDB() || {};
-        return localDB[table] || [];
-      }
-      if (process.env.NODE_ENV === 'production') {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.error || `Could not load ${table}`);
-      }
-    } catch (e) {
-      console.error(`Failed to fetch saved data for ${table}`, e);
-      if (process.env.NODE_ENV === 'production') throw e;
+    const cached = this.memCache.get(table);
+    if (cached && Date.now() - cached.time < 15000) {
+      return cached.data;
     }
 
-    const localDB = this.getLocalDB() || {};
-    return localDB[table] || [];
+    const inFlightPromise = this.inFlight.get(table);
+    if (inFlightPromise) {
+      return inFlightPromise;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const response = await fetch(`/api/db?table=${encodeURIComponent(table)}`, {
+          headers: {
+            'x-portal-actor-email': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_email') || '' : '',
+            'x-portal-actor-name': typeof window !== 'undefined' ? localStorage.getItem('crixy_actor_name') || '' : ''
+          }
+        });
+        if (response.ok) {
+          const res = await response.json();
+          const records = res.data || [];
+          this.memCache.set(table, { data: records, time: Date.now() });
+          return records;
+        }
+        if (response.status === 401) {
+          const localDB = this.getLocalDB() || {};
+          return localDB[table] || [];
+        }
+        if (process.env.NODE_ENV === 'production') {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.error || `Could not load ${table}`);
+        }
+      } catch (e) {
+        console.error(`Failed to fetch saved data for ${table}`, e);
+        if (process.env.NODE_ENV === 'production') throw e;
+      } finally {
+        this.inFlight.delete(table);
+      }
+
+      const localDB = this.getLocalDB() || {};
+      const fallback = localDB[table] || [];
+      this.memCache.set(table, { data: fallback, time: Date.now() });
+      return fallback;
+    })();
+
+    this.inFlight.set(table, fetchPromise);
+    return fetchPromise;
   }
 
   from(table: string) {
     const fetchTable = () => this.fetchTable(table);
 
     return {
-      select: (columns: string = '*') => {
-        const basePromise = fetchTable().then(data => ({ data, error: null }));
-
-        const selectMethods = {
-          order: (col: string, { ascending = true } = {}) => {
-            const orderPromise = fetchTable().then(data => {
-              const sorted = [...data];
-              sorted.sort((a: any, b: any) => {
-                if (a[col] < b[col]) return ascending ? -1 : 1;
-                if (a[col] > b[col]) return ascending ? 1 : -1;
-                return 0;
+      select: (columns: string = '*', options?: any) => {
+        const createQueryChain = (currentPromise: Promise<any[]>) => {
+          const chainMethods: any = {
+            order: (col: string, { ascending = true } = {}) => {
+              const nextPromise = currentPromise.then(data => {
+                const sorted = [...data];
+                sorted.sort((a: any, b: any) => {
+                  if (a[col] < b[col]) return ascending ? -1 : 1;
+                  if (a[col] > b[col]) return ascending ? 1 : -1;
+                  return 0;
+                });
+                return sorted;
               });
-              return { data: sorted, error: null };
-            });
-            return makeChainPromise(orderPromise);
-          },
-          eq: (col: string, val: any) => {
-            const eqPromise = fetchTable().then(data => {
-              const filtered = data.filter((r: any) => r[col] === val);
-              return { data: filtered, error: null };
-            });
+              return createQueryChain(nextPromise);
+            },
+            eq: (col: string, val: any) => {
+              const nextPromise = currentPromise.then(data => data.filter((r: any) => r[col] === val));
+              return createQueryChain(nextPromise);
+            },
+            neq: (col: string, val: any) => {
+              const nextPromise = currentPromise.then(data => data.filter((r: any) => r[col] !== val));
+              return createQueryChain(nextPromise);
+            },
+            in: (col: string, valArray: any[]) => {
+              const nextPromise = currentPromise.then(data => data.filter((r: any) => valArray.includes(r[col])));
+              return createQueryChain(nextPromise);
+            },
+            limit: (count: number) => {
+              const nextPromise = currentPromise.then(data => data.slice(0, count));
+              return createQueryChain(nextPromise);
+            },
+            single: () => {
+              const singlePromise = currentPromise.then(data => ({
+                data: data[0] || null,
+                error: data[0] ? null : { message: 'Not found' }
+              }));
+              return makeChainPromise(singlePromise);
+            }
+          };
 
-            const eqMethods = {
-              single: () => {
-                const singlePromise = eqPromise.then(res => ({
-                  data: res.data[0] || null,
-                  error: res.data[0] ? null : { message: 'Not found' }
-                }));
-                return makeChainPromise(singlePromise);
-              }
-            };
-
-            return makeChainPromise(eqPromise, eqMethods);
-          }
+          const resultPromise = currentPromise.then(data => ({
+            data: options?.head ? [] : data,
+            count: data.length,
+            error: null
+          }));
+          return makeChainPromise(resultPromise, chainMethods);
         };
 
-        return makeChainPromise(basePromise, selectMethods);
+        return createQueryChain(fetchTable());
       },
       insert: (values: any) => {
         if (typeof window === 'undefined') {
@@ -238,8 +284,8 @@ class ServerFileDB {
             const selectMethods = {
               single: () => {
                 const singlePromise = insertPromise.then(res => ({
-                  data: res.data[0] || null,
-                  error: null
+                  data: res.data ? res.data[0] : null,
+                  error: res.error || null
                 }));
                 return makeChainPromise(singlePromise);
               }
@@ -250,6 +296,60 @@ class ServerFileDB {
 
         return makeChainPromise(insertPromise, insertMethods);
       },
+      upsert: (values: any) => {
+        if (typeof window === 'undefined') {
+          return makeChainPromise(Promise.resolve({ data: [], error: null }));
+        }
+
+        const upsertPromise = (async () => {
+          const localDB = this.getLocalDB() || {};
+          const currentTableData = localDB[table] || [];
+          const valArray = Array.isArray(values) ? values : [values];
+          
+          const recordsToUpsert = valArray.map((value: any) => {
+            const id = value.id || `${table.substring(0, 3)}-${Math.random().toString(36).slice(2, 11)}`;
+            return {
+              ...value,
+              id,
+              created_at: value.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+          });
+
+          const updatedTableData = [...currentTableData];
+          recordsToUpsert.forEach((rec: any) => {
+            const idx = updatedTableData.findIndex((r: any) => r.id === rec.id);
+            if (idx > -1) updatedTableData[idx] = { ...updatedTableData[idx], ...rec };
+            else updatedTableData.push(rec);
+          });
+          localDB[table] = updatedTableData;
+          this.saveLocalDB(localDB);
+
+          try {
+            const savedRecords = await this.saveServerRecords(table, recordsToUpsert);
+            return { data: savedRecords, error: null };
+          } catch (error) {
+            return { data: recordsToUpsert, error: { message: error instanceof Error ? error.message : `Could not save ${table}` } };
+          }
+        })();
+
+        const upsertMethods = {
+          select: () => {
+            const selectMethods = {
+              single: () => {
+                const singlePromise = upsertPromise.then(res => ({
+                  data: res.data ? res.data[0] : null,
+                  error: res.error || null
+                }));
+                return makeChainPromise(singlePromise);
+              }
+            };
+            return makeChainPromise(upsertPromise, selectMethods);
+          }
+        };
+
+        return makeChainPromise(upsertPromise, upsertMethods);
+      },
       update: (values: any) => {
         return {
           eq: (col: string, val: any) => {
@@ -257,7 +357,7 @@ class ServerFileDB {
               const localDB = this.getLocalDB() || {};
               const currentTableData = localDB[table] || [];
               
-              const updatedRecords: any[] = [];
+              let updatedRecords: any[] = [];
               const newTableData = currentTableData.map((record: any) => {
                 if (record[col] === val) {
                   const updated = { ...record, ...values, updated_at: new Date().toISOString() };
@@ -266,13 +366,28 @@ class ServerFileDB {
                 }
                 return record;
               });
+
+              if (updatedRecords.length === 0) {
+                if (col === 'id') {
+                  const recordToSave = { ...values, id: val, updated_at: new Date().toISOString() };
+                  updatedRecords = [recordToSave];
+                  newTableData.push(recordToSave);
+                } else {
+                  const serverRecords = await this.fetchTable(table);
+                  const matching = serverRecords.filter((r: any) => r[col] === val);
+                  updatedRecords = matching.map((r: any) => ({ ...r, ...values, updated_at: new Date().toISOString() }));
+                }
+              }
               
               localDB[table] = newTableData;
               this.saveLocalDB(localDB);
 
               try {
-                await this.saveServerRecords(table, updatedRecords);
-                return { data: updatedRecords, error: null };
+                if (updatedRecords.length > 0) {
+                  const saved = await this.saveServerRecords(table, updatedRecords);
+                  return { data: saved, error: null };
+                }
+                return { data: [], error: null };
               } catch (error) {
                 return { data: updatedRecords, error: { message: error instanceof Error ? error.message : `Could not update ${table}` } };
               }
@@ -294,7 +409,15 @@ class ServerFileDB {
               this.saveLocalDB(localDB);
 
               try {
-                await Promise.all(deletedRecords.map((record: any) => this.deleteServerRecord(table, record.id)));
+                if (col === 'id') {
+                  await this.deleteServerRecord(table, String(val));
+                } else if (deletedRecords.length > 0) {
+                  await Promise.all(deletedRecords.map((record: any) => this.deleteServerRecord(table, record.id)));
+                } else {
+                  const serverRecords = await this.fetchTable(table);
+                  const matching = serverRecords.filter((r: any) => r[col] === val);
+                  await Promise.all(matching.map((r: any) => this.deleteServerRecord(table, r.id)));
+                }
               } catch (error) {
                 return { data: null, error: { message: error instanceof Error ? error.message : `Could not delete ${table}` } };
               }
@@ -314,7 +437,15 @@ class ServerFileDB {
               this.saveLocalDB(localDB);
 
               try {
-                await Promise.all(deletedRecords.map((record: any) => this.deleteServerRecord(table, record.id)));
+                if (col === 'id') {
+                  await Promise.all(valArray.map((id: any) => this.deleteServerRecord(table, String(id))));
+                } else if (deletedRecords.length > 0) {
+                  await Promise.all(deletedRecords.map((record: any) => this.deleteServerRecord(table, record.id)));
+                } else {
+                  const serverRecords = await this.fetchTable(table);
+                  const matching = serverRecords.filter((r: any) => valArray.includes(r[col]));
+                  await Promise.all(matching.map((r: any) => this.deleteServerRecord(table, r.id)));
+                }
               } catch (error) {
                 return { data: null, error: { message: error instanceof Error ? error.message : `Could not delete ${table}` } };
               }

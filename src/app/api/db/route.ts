@@ -39,27 +39,52 @@ const emptyDB = {
   team_messages: []
 };
 
-const allowedTables = new Set(Object.keys(emptyDB));
+const allowedTables = new Set([...Object.keys(emptyDB), 'all']);
 type LocalTable = keyof typeof emptyDB;
+
+let cachedDbData: any = null;
+let lastDbMtime = 0;
 
 function readDB() {
   try {
     if (!fs.existsSync(dbPath)) {
       fs.writeFileSync(dbPath, JSON.stringify(emptyDB, null, 2), 'utf-8');
-      return { ...emptyDB };
+      cachedDbData = { ...emptyDB };
+      lastDbMtime = Date.now();
+      return cachedDbData;
     }
 
-    const parsed = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
-    return { ...emptyDB, ...parsed };
+    try {
+      const stat = fs.statSync(dbPath);
+      if (cachedDbData && stat.mtimeMs === lastDbMtime) {
+        return cachedDbData;
+      }
+      lastDbMtime = stat.mtimeMs;
+    } catch {}
+
+    let raw = fs.readFileSync(dbPath, 'utf-8');
+    if (raw.charCodeAt(0) === 0xFEFF) {
+      raw = raw.slice(1);
+    }
+    const parsed = JSON.parse(raw);
+    cachedDbData = { ...emptyDB, ...parsed };
+    return cachedDbData;
   } catch (err) {
     console.error('Error reading db.json:', err);
-    return { ...emptyDB };
+    return cachedDbData || { ...emptyDB };
   }
 }
 
 function writeDB(data: any) {
   try {
-    fs.writeFileSync(dbPath, JSON.stringify({ ...emptyDB, ...data }, null, 2), 'utf-8');
+    const full = { ...emptyDB, ...data };
+    fs.writeFileSync(dbPath, JSON.stringify(full, null, 2), 'utf-8');
+    cachedDbData = full;
+    try {
+      lastDbMtime = fs.statSync(dbPath).mtimeMs;
+    } catch {
+      lastDbMtime = Date.now();
+    }
     return true;
   } catch (err) {
     console.error('Error writing db.json:', err);
@@ -81,6 +106,21 @@ export async function GET(req: NextRequest) {
   }
 
   const db = readDB();
+
+  if (table === 'all') {
+    const resolvedQuotes = (db.quotes || []).map((q: any) => {
+      const client = (db.clients || []).find((c: any) => c.id === q.client_id);
+      const items = (db.quote_items || []).filter((qi: any) => qi.quote_id === q.id);
+      return { ...q, client, items };
+    });
+    return NextResponse.json({
+      data: {
+        ...db,
+        quotes: resolvedQuotes
+      }
+    });
+  }
+
   const records = db[table] || [];
 
   if (table === 'quotes') {

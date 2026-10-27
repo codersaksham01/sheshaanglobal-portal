@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { supabase, isSupabaseConfigured, isMock, setDatabaseMutationCallback } from './supabaseClient';
 import type {
   Quote,
   Client,
@@ -63,15 +63,8 @@ let memoryCache: PortalDataCache | null = null;
 let inFlightFetch: Promise<PortalDataCache> | null = null;
 
 export function hasCachedData(): boolean {
-  if (memoryCache !== null && memoryCache.lastFetched > 0) return true;
-  if (typeof window !== 'undefined') {
-    try {
-      const local = sessionStorage.getItem('cached_crm_leads');
-      if (local) {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) return true;
-      }
-    } catch {}
+  if (memoryCache !== null && memoryCache.lastFetched > 0 && (memoryCache.quotes.length > 0 || memoryCache.products.length > 0 || memoryCache.leads.length > 0)) {
+    return true;
   }
   return false;
 }
@@ -79,6 +72,13 @@ export function hasCachedData(): boolean {
 export function getPortalCache(): PortalDataCache | null {
   return memoryCache;
 }
+
+export function clearPortalCache(): void {
+  memoryCache = null;
+  inFlightFetch = null;
+}
+
+setDatabaseMutationCallback(clearPortalCache);
 
 export function setPortalCache(patch: Partial<PortalDataCache>): void {
   if (!memoryCache) {
@@ -130,8 +130,12 @@ export function setPortalCache(patch: Partial<PortalDataCache>): void {
 
 export async function fetchAllPortalData(options?: { force?: boolean }): Promise<PortalDataCache> {
   const force = options?.force || false;
-  // If fresh cache exists within 20s and not forced, return immediately
-  if (!force && memoryCache && Date.now() - memoryCache.lastFetched < 20000) {
+  const hasFullData = Boolean(
+    memoryCache &&
+    (memoryCache.quotes.length > 0 || memoryCache.products.length > 0 || memoryCache.leads.length > 0)
+  );
+  // If fresh cache with actual data exists within 30s and not forced, return immediately (0ms)
+  if (!force && memoryCache && hasFullData && Date.now() - memoryCache.lastFetched < 30000) {
     return memoryCache;
   }
   // Deduplicate concurrent fetch calls
@@ -141,49 +145,94 @@ export async function fetchAllPortalData(options?: { force?: boolean }): Promise
 
   inFlightFetch = (async () => {
     try {
-      const [
-        { data: qData },
-        { data: cData },
-        { data: vData },
-        { data: pData },
-        { data: fData },
-        { data: lData },
-        { data: inquiryData },
-        { data: inquiryQuotationData },
-        { data: inquiryFollowUpData },
-        { data: aData },
-        { data: rData },
-        { data: iData },
-        { data: sData },
-        { data: dData },
-        { data: tData },
-        { data: mtData },
-        { data: bData },
-        { data: uData },
-        { data: logData },
-        { data: chatData }
-      ] = await Promise.all([
-        supabase.from('quotes').select('*, client:clients(*), items:quote_items(*)').order('created_at', { ascending: false }),
-        supabase.from('clients').select('*').order('company_name'),
-        supabase.from('vendors').select('*').order('company_name'),
-        supabase.from('products').select('*').order('sku'),
-        supabase.from('freight_presets').select('*').order('name'),
-        supabase.from('leads').select('*').order('updated_at', { ascending: false }),
-        supabase.from('inquiries').select('*').order('updated_at', { ascending: false }),
-        supabase.from('inquiry_quotations').select('*').order('created_at', { ascending: false }),
-        supabase.from('inquiry_follow_ups').select('*').order('follow_up_date', { ascending: true }),
-        supabase.from('activities').select('*').order('activity_date', { ascending: false }),
-        supabase.from('freight_rate_history').select('*').order('effective_date', { ascending: false }),
-        supabase.from('invoices').select('*').order('created_at', { ascending: false }),
-        supabase.from('shipments').select('*').order('updated_at', { ascending: false }),
-        supabase.from('document_checklists').select('*').order('updated_at', { ascending: false }),
-        supabase.from('tasks').select('*').order('due_date', { ascending: true }),
-        supabase.from('message_templates').select('*').order('name'),
-        supabase.from('blogs').select('*').order('updated_at', { ascending: false }),
-        supabase.from('app_users').select('*').order('name'),
-        supabase.from('activity_logs').select('*').order('created_at', { ascending: false }),
-        supabase.from('team_messages').select('*').order('created_at', { ascending: false })
-      ]);
+      let qData: any[] = [], cData: any[] = [], vData: any[] = [], pData: any[] = [], fData: any[] = [];
+      let lData: any[] = [], inquiryData: any[] = [], inquiryQuotationData: any[] = [], inquiryFollowUpData: any[] = [];
+      let aData: any[] = [], rData: any[] = [], iData: any[] = [], sData: any[] = [], dData: any[] = [];
+      let tData: any[] = [], mtData: any[] = [], bData: any[] = [], uData: any[] = [], logData: any[] = [], chatData: any[] = [];
+
+      let usedBatch = false;
+      if (isMock && typeof window !== 'undefined') {
+        try {
+          const batchRes = await fetch('/api/db?table=all', {
+            headers: {
+              'x-portal-actor-email': localStorage.getItem('crixy_actor_email') || '',
+              'x-portal-actor-name': localStorage.getItem('crixy_actor_name') || ''
+            }
+          });
+          if (batchRes.ok) {
+            const batchJson = await batchRes.json();
+            const allDb = batchJson?.data;
+            if (allDb && typeof allDb === 'object') {
+              qData = allDb.quotes || [];
+              cData = allDb.clients || [];
+              vData = allDb.vendors || [];
+              pData = allDb.products || [];
+              fData = allDb.freight_presets || [];
+              lData = allDb.leads || [];
+              inquiryData = allDb.inquiries || [];
+              inquiryQuotationData = allDb.inquiry_quotations || [];
+              inquiryFollowUpData = allDb.inquiry_follow_ups || [];
+              aData = allDb.activities || [];
+              rData = allDb.freight_rate_history || [];
+              iData = allDb.invoices || [];
+              sData = allDb.shipments || [];
+              dData = allDb.document_checklists || [];
+              tData = allDb.tasks || [];
+              mtData = allDb.message_templates || [];
+              bData = allDb.blogs || [];
+              uData = allDb.app_users || [];
+              logData = allDb.activity_logs || [];
+              chatData = allDb.team_messages || [];
+              usedBatch = true;
+            }
+          }
+        } catch {}
+      }
+
+      if (!usedBatch) {
+        const results = await Promise.all([
+          supabase.from('quotes').select('*, client:clients(*), items:quote_items(*)').order('created_at', { ascending: false }),
+          supabase.from('clients').select('*').order('company_name'),
+          supabase.from('vendors').select('*').order('company_name'),
+          supabase.from('products').select('*').order('sku'),
+          supabase.from('freight_presets').select('*').order('name'),
+          supabase.from('leads').select('*').order('updated_at', { ascending: false }),
+          supabase.from('inquiries').select('*').order('updated_at', { ascending: false }),
+          supabase.from('inquiry_quotations').select('*').order('created_at', { ascending: false }),
+          supabase.from('inquiry_follow_ups').select('*').order('follow_up_date', { ascending: true }),
+          supabase.from('activities').select('*').order('activity_date', { ascending: false }),
+          supabase.from('freight_rate_history').select('*').order('effective_date', { ascending: false }),
+          supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+          supabase.from('shipments').select('*').order('updated_at', { ascending: false }),
+          supabase.from('document_checklists').select('*').order('updated_at', { ascending: false }),
+          supabase.from('tasks').select('*').order('due_date', { ascending: true }),
+          supabase.from('message_templates').select('*').order('name'),
+          supabase.from('blogs').select('*').order('updated_at', { ascending: false }),
+          supabase.from('app_users').select('*').order('name'),
+          supabase.from('activity_logs').select('*').order('created_at', { ascending: false }),
+          supabase.from('team_messages').select('*').order('created_at', { ascending: false })
+        ]);
+        qData = results[0].data || [];
+        cData = results[1].data || [];
+        vData = results[2].data || [];
+        pData = results[3].data || [];
+        fData = results[4].data || [];
+        lData = results[5].data || [];
+        inquiryData = results[6].data || [];
+        inquiryQuotationData = results[7].data || [];
+        inquiryFollowUpData = results[8].data || [];
+        aData = results[9].data || [];
+        rData = results[10].data || [];
+        iData = results[11].data || [];
+        sData = results[12].data || [];
+        dData = results[13].data || [];
+        tData = results[14].data || [];
+        mtData = results[15].data || [];
+        bData = results[16].data || [];
+        uData = results[17].data || [];
+        logData = results[18].data || [];
+        chatData = results[19].data || [];
+      }
 
       const activityLeadIds = new Set((aData || []).map((act: any) => act.lead_id).filter(Boolean));
       const quotedClientIds = new Set((qData || []).map((q: any) => q.client_id).filter(Boolean));

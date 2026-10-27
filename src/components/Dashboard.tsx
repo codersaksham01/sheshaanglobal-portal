@@ -48,6 +48,7 @@ import {
 import { SmartCommandCenter, SmartCommandMetric, SmartPortalInsight, SmartPortalPulse } from './SmartCommandCenter';
 import { usePortalIdentity } from './AuthGate';
 import { PortalSidebar } from './portal/PortalSidebar';
+import { SystematicLoadingScreen } from './SystematicLoadingScreen';
 import { canAccessTab, canManageTable } from '../lib/permissions';
 import {
   Anchor,
@@ -1024,7 +1025,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const router = useRouter();
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(() => !cachedData || (cachedData.quotes.length === 0 && cachedData.products.length === 0 && cachedData.leads.length === 0));
-  const [initialDataLoaded, setInitialDataLoaded] = useState<boolean>(() => Boolean(cachedData));
+  const [initialDataLoaded, setInitialDataLoaded] = useState<boolean>(() => Boolean(cachedData && (cachedData.quotes.length > 0 || cachedData.products.length > 0 || cachedData.leads.length > 0)));
   const [globalSearch, setGlobalSearch] = useState('');
   const [reachoutSearchQuery, setReachoutSearchQuery] = useState('');
   const [reachoutCountryFilter, setReachoutCountryFilter] = useState('All');
@@ -1473,7 +1474,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
       }
     }
     const hasData = hasCachedData();
-    fetchData({ silent: hasData });
+    fetchData({ silent: hasData, force: !hasData });
   }, []);
 
   useEffect(() => {
@@ -1503,11 +1504,15 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
     setCrmColumnVisibleCounts({});
   }, [crmSearchQuery, crmCountryFilter, crmSortKey]);
 
-  const fetchData = async (options?: { silent?: boolean } | unknown) => {
-    const isSilent = typeof options === 'object' && options !== null && 'silent' in options ? Boolean((options as { silent?: boolean }).silent) : false;
+  const fetchData = async (options?: { silent?: boolean; force?: boolean } | unknown) => {
+    const isExplicitSilent = typeof options === 'object' && options !== null && 'silent' in options;
+    const isSilent = isExplicitSilent ? Boolean((options as { silent?: boolean }).silent) : false;
+    const isForce = typeof options === 'object' && options !== null && 'force' in options
+      ? Boolean((options as { force?: boolean }).force)
+      : (!isExplicitSilent);
     if (!isSilent) setLoading(true);
     try {
-      const data = await fetchAllPortalData({ force: true });
+      const data = await fetchAllPortalData({ force: isForce });
       setQuotes(data.quotes);
       setClients(data.clients);
       setVendors(data.vendors);
@@ -5724,42 +5729,18 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
     );
   }
 
-  const busyScreen = (
-    <div className="portal-busy-overlay" role="status" aria-live="polite" aria-label="Loading Sheshaan Global portal">
-      <div className="portal-busy-card">
-        <div className="portal-busy-logo-wrap">
-          <Image src="/logo.png" alt="Sheshaan Global" width={72} height={72} className="h-full w-full object-contain" />
-        </div>
-        <div className="min-w-0 text-center">
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-sky-700">Sheshaan Global</p>
-          <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">
-            {importingBuyers ? 'Importing your trade data' : 'Preparing your workspace'}
-          </h2>
-          <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
-            {importProgress
-              ? `${importProgress.label} (${importProgress.processed.toLocaleString()} / ${importProgress.total.toLocaleString()})`
-              : 'Syncing buyers, quotes, tasks, shipments, and documents.'}
-          </p>
-        </div>
-        <div className="portal-busy-status">
-          <span className="portal-busy-dot" />
-          <span>{importProgress ? `${importProgressPercent}% complete` : 'Secure operating system loading'}</span>
-        </div>
-        <div className="portal-busy-track" aria-hidden="true">
-          <span
-            className={importProgress ? 'portal-busy-track-fill-determinate' : undefined}
-            style={{ width: importProgress ? `${importProgressPercent}%` : undefined }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-
   if (appBusy) {
     return (
-      <div className="portal-os relative min-h-screen">
-        {busyScreen}
-      </div>
+      <SystematicLoadingScreen
+        title={importingBuyers ? 'Importing Trade Data' : 'Preparing Sheshaan Global Workspace'}
+        subtitle={
+          importProgress
+            ? `${importProgress.label} (${importProgress.processed.toLocaleString()} / ${importProgress.total.toLocaleString()})`
+            : 'Syncing buyers, export quotations, shipments, tasks, and commercial records...'
+        }
+        progressPercent={importProgress ? importProgressPercent : undefined}
+        onRetry={() => fetchData()}
+      />
     );
   }
 

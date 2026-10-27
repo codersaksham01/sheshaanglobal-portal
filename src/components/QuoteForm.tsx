@@ -351,6 +351,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     storage_condition: 'Store in a cool, dry place away from direct sunlight'
   };
 
+  const blankLogisticsSpecs: LogisticsSpecs = {
+    shipment_window: '',
+    transit_time: '',
+    partial_shipment: '',
+    container_type: '',
+    storage_condition: ''
+  };
+
   const defaultCommercialTerms = [
     'Quotation Validity & Ocean Freight Adjustments: Quoted rates are valid for 15 days from issuance. Ocean freight rates, insurance premiums, and exchange rates remain indicative until final vessel booking confirmation.',
     'Payment Terms: 50% advance payment upon proforma invoice acceptance; balance 50% payable against soft copy of Shipping Bill / Bill of Lading (B/L).',
@@ -371,20 +379,20 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     'Governing Law & Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration.'
   ];
 
-  // Core Form States
+  // Core Form States - Starts completely fresh and blank for new quotations
   const [quoteNumber, setQuoteNumber] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [buyerSearchQuery, setBuyerSearchQuery] = useState('');
   const [buyerEntryMode, setBuyerEntryMode] = useState<'existing' | 'manual'>('existing');
   const [manualBuyer, setManualBuyer] = useState<Partial<Client>>(blankManualBuyer);
   const [currency, setCurrency] = useState<'USD' | 'INR'>('INR');
-  const [incoterm, setIncoterm] = useState('CIF (Cost, Insurance & Freight)');
-  const [originCountry, setOriginCountry] = useState('India');
-  const [loadingPort, setLoadingPort] = useState('Mundra Port, India');
+  const [incoterm, setIncoterm] = useState('');
+  const [originCountry, setOriginCountry] = useState('');
+  const [loadingPort, setLoadingPort] = useState('');
   const [destinationPort, setDestinationPort] = useState('');
-  const [shipmentMode, setShipmentMode] = useState('Sea Freight (1x20ft FCL)');
-  const [paymentTerms, setPaymentTerms] = useState('50% Advance, 50% vs Shipping Bill');
-  const [validityDays, setValidityDays] = useState<number>(15);
+  const [shipmentMode, setShipmentMode] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [validityDays, setValidityDays] = useState<number | ''>('');
   
   // Cost breakdown
   const [packagingCost, setPackagingCost] = useState<number>(0);
@@ -394,14 +402,19 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [insuranceCost, setInsuranceCost] = useState<number>(0);
   
   const [status, setStatus] = useState<Quote['status']>('Draft');
-  const [marginPerKg, setMarginPerKg] = useState<number>(10);
+  const [marginPerKg, setMarginPerKg] = useState<number>(0);
   const [internalNotes, setInternalNotes] = useState('');
   const [shipper, setShipper] = useState<ShipperDetails>(defaultShipper);
   const [bankDetails, setBankDetails] = useState<BankDetails>(defaultBankDetails);
   const [lineItems, setLineItems] = useState<QuoteItem[]>([]);
   const [productSearchQuery, setProductSearchQuery] = useState('');
-  const [commercialNote, setCommercialNote] = useState(defaultCommercialNoteText);
-  const [costBreakdownNotes, setCostBreakdownNotes] = useState<CostBreakdownNotes>(defaultCostBreakdownNotes);
+  const [commercialNote, setCommercialNote] = useState('');
+  const [costBreakdownNotes, setCostBreakdownNotes] = useState<CostBreakdownNotes>({
+    offered_goods: '',
+    origin_charges: '',
+    ocean_freight: '',
+    insurance: ''
+  });
   const [showCifBreakdown, setShowCifBreakdown] = useState(true);
   const [showDetailsPage, setShowDetailsPage] = useState(true);
   const [showCifPortInTotal, setShowCifPortInTotal] = useState(false);
@@ -413,11 +426,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [showInsuranceCharge, setShowInsuranceCharge] = useState(true);
 
   // Page 2 Lists States
-  const [includedScope, setIncludedScope] = useState<string[]>(defaultIncluded);
-  const [excludedScope, setExcludedScope] = useState<string[]>(defaultExcluded);
-  const [docList, setDocList] = useState<string[]>(defaultDocs);
-  const [specMap, setSpecMap] = useState<LogisticsSpecs>(defaultLogisticsSpecs);
-  const [commercialTerms, setCommercialTerms] = useState<string[]>(defaultCommercialTerms);
+  const [includedScope, setIncludedScope] = useState<string[]>([]);
+  const [excludedScope, setExcludedScope] = useState<string[]>([]);
+  const [docList, setDocList] = useState<string[]>([]);
+  const [specMap, setSpecMap] = useState<LogisticsSpecs>(blankLogisticsSpecs);
+  const [commercialTerms, setCommercialTerms] = useState<string[]>([]);
 
   const listsMatch = (left: string[], right: string[]) => left.length === right.length && left.every((item, index) => item === right[index]);
   const syncFreightModeDefaults = (mode: string) => {
@@ -451,6 +464,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
           }
         : current
     ));
+  };
+  const handleLoadStandardTerms = () => {
+    const isAir = isAirFreightMode(shipmentMode);
+    setIncludedScope(isAir ? defaultAirIncluded : defaultIncluded);
+    setExcludedScope(isAir ? defaultAirExcluded : defaultExcluded);
+    setDocList(isAir ? defaultAirDocs : defaultDocs);
+    setCommercialTerms(isAir ? defaultAirCommercialTerms : defaultCommercialTerms);
+    setSpecMap(defaultLogisticsSpecs);
   };
   const setShipmentModeWithDefaults = (mode: string) => {
     setShipmentMode(mode);
@@ -556,13 +577,13 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setBuyerEntryMode(draft.buyerEntryMode || 'existing');
     setManualBuyer({ ...blankManualBuyer, ...(draft.manualBuyer || {}) });
     setCurrency(draft.currency || 'INR');
-    setIncoterm(draft.incoterm || 'CIF (Cost, Insurance & Freight)');
-    setOriginCountry(draft.originCountry || 'India');
-    setLoadingPort(draft.loadingPort || 'Mundra Port, India');
+    setIncoterm(draft.incoterm || '');
+    setOriginCountry(draft.originCountry || '');
+    setLoadingPort(draft.loadingPort || '');
     setDestinationPort(draft.destinationPort || '');
-    setShipmentMode(draft.shipmentMode || 'Sea Freight (1x20ft FCL)');
-    setPaymentTerms(draft.paymentTerms || '50% Advance, 50% vs Shipping Bill');
-    setValidityDays(Number(draft.validityDays) || 15);
+    setShipmentMode(draft.shipmentMode || '');
+    setPaymentTerms(draft.paymentTerms || '');
+    setValidityDays(draft.validityDays ? Number(draft.validityDays) : '');
     setPackagingCost(Number(draft.packagingCost) || 0);
     setInlandHaulageCost(Number(draft.inlandHaulageCost) || 0);
     setCustomsClearanceCost(Number(draft.customsClearanceCost) || 0);
@@ -575,7 +596,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setBankDetails(draft.bankDetails || readDefaultBankDetails());
     setLineItems(draft.lineItems || []);
     setCommercialNote(draft.commercialNote || '');
-    setCostBreakdownNotes({ ...defaultCostBreakdownNotes, ...(draft.costBreakdownNotes || {}) });
+    setCostBreakdownNotes(draft.costBreakdownNotes || { offered_goods: '', origin_charges: '', ocean_freight: '', insurance: '' });
     setShowCifBreakdown(draft.showCifBreakdown ?? true);
     setShowDetailsPage(draft.showDetailsPage ?? true);
     setShowCifPortInTotal(draft.showCifPortInTotal ?? false);
@@ -584,15 +605,19 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setShowOriginCharges(draft.showOriginCharges ?? true);
     setShowOceanFreight(draft.showOceanFreight ?? true);
     setShowInsuranceCharge(draft.showInsuranceCharge ?? true);
-    setIncludedScope(draft.includedScope || defaultIncluded);
-    setExcludedScope(draft.excludedScope || defaultExcluded);
-    setDocList(draft.docList || defaultDocs);
-    setSpecMap(draft.specMap || defaultLogisticsSpecs);
-    setCommercialTerms(draft.commercialTerms || defaultCommercialTerms);
+    setIncludedScope(draft.includedScope || []);
+    setExcludedScope(draft.excludedScope || []);
+    setDocList(draft.docList || []);
+    setSpecMap(draft.specMap || blankLogisticsSpecs);
+    setCommercialTerms(draft.commercialTerms || []);
   };
 
   const restoreDraft = () => {
-    if (typeof window === 'undefined') return;
+    if (!quoteId || typeof window === 'undefined') {
+      autosaveReadyRef.current = true;
+      setDraftStatus('Ready');
+      return;
+    }
 
     const raw = window.localStorage.getItem(draftKey);
     if (raw) {
@@ -633,16 +658,22 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     if (quoteId) {
       fetchQuoteDetails(quoteId);
     } else {
-      // Clear forms for creation
+      // Clear forms for creation - brand new, completely fresh, no prefilled values
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('crixy-quote-draft-new');
+      }
       setSelectedClientId('');
+      setBuyerSearchQuery('');
+      setBuyerEntryMode('existing');
+      setManualBuyer(blankManualBuyer);
       setCurrency('INR');
-      setIncoterm('CIF (Cost, Insurance & Freight)');
-      setOriginCountry('India');
-      setLoadingPort('Mundra Port, India');
+      setIncoterm('');
+      setOriginCountry('');
+      setLoadingPort('');
       setDestinationPort('');
-      setShipmentMode('Sea Freight (1x20ft FCL)');
-      setPaymentTerms('50% Advance, 50% vs Shipping Bill');
-      setValidityDays(15);
+      setShipmentMode('');
+      setPaymentTerms('');
+      setValidityDays('');
       
       setPackagingCost(0);
       setInlandHaulageCost(0);
@@ -651,13 +682,19 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setInsuranceCost(0);
       
       setStatus('Draft');
-      setMarginPerKg(10);
+      setMarginPerKg(0);
       setInternalNotes('');
       setShipper(defaultShipper);
       setBankDetails(readDefaultBankDetails());
       setLineItems([]);
-      setCommercialNote(defaultCommercialNoteText);
-      setCostBreakdownNotes(defaultCostBreakdownNotes);
+      setProductSearchQuery('');
+      setCommercialNote('');
+      setCostBreakdownNotes({
+        offered_goods: '',
+        origin_charges: '',
+        ocean_freight: '',
+        insurance: ''
+      });
       setShowCifBreakdown(true);
       setShowDetailsPage(true);
       setShowCifPortInTotal(false);
@@ -667,12 +704,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setShowOceanFreight(true);
       setShowInsuranceCharge(true);
       
-      setIncludedScope(defaultIncluded);
-      setExcludedScope(defaultExcluded);
-      setDocList(defaultDocs);
-      setSpecMap(defaultLogisticsSpecs);
-      setCommercialTerms(defaultCommercialTerms);
-      generateNextQuoteNumber().then(() => restoreDraft());
+      setIncludedScope([]);
+      setExcludedScope([]);
+      setDocList([]);
+      setSpecMap(blankLogisticsSpecs);
+      setCommercialTerms([]);
+      generateNextQuoteNumber();
+      autosaveReadyRef.current = true;
+      setDraftStatus('Ready');
     }
   }, [quoteId]);
 
@@ -748,7 +787,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       const { data } = await supabase.from('quotes').select('*');
       const year = new Date().getFullYear();
       const next = ((data || []) as Quote[]).reduce((max, quote) => {
-        const match = quote.quote_number?.match(new RegExp(`SG-CIF-${year}-(\\d+)$`));
+        const match = quote.quote_number?.match(new RegExp(`(?:SG-)?(?:[A-Z]+-)?${year}-(\\d+)`));
         return match ? Math.max(max, Number(match[1])) : max;
       }, 0) + 1;
       setQuoteNumber(`SG-CIF-${year}-${String(next).padStart(4, '0')}`);
@@ -790,13 +829,13 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         setQuoteNumber(q.quote_number);
         setSelectedClientId(q.client_id || '');
         setCurrency(q.currency || 'INR');
-        setIncoterm(q.incoterm || 'CIF (Cost, Insurance & Freight)');
-        setOriginCountry(q.origin_country || 'India');
-        setLoadingPort(q.loading_port || 'Mundra Port, India');
-        setDestinationPort((q.client as Client | undefined)?.destination_port || '');
-        setShipmentMode(q.shipment_mode || 'Sea Freight (1x20ft FCL)');
-        setPaymentTerms(q.payment_terms || '50% Advance, 50% vs Shipping Bill');
-        setValidityDays(Number(q.validity_days) || 15);
+        setIncoterm(q.incoterm || '');
+        setOriginCountry(q.origin_country || '');
+        setLoadingPort(q.loading_port || '');
+        setDestinationPort(q.destination_port || (q.client as Client | undefined)?.destination_port || '');
+        setShipmentMode(q.shipment_mode || '');
+        setPaymentTerms(q.payment_terms || '');
+        setValidityDays(q.validity_days ? Number(q.validity_days) : '');
         
         setPackagingCost(Number(q.packaging_cost) || 0);
         setInlandHaulageCost(Number(q.inland_haulage_cost) || 0);
@@ -810,7 +849,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         if (q.shipper_details) setShipper(q.shipper_details as ShipperDetails);
         setBankDetails((q.bank_details as BankDetails) || readDefaultBankDetails());
         setCommercialNote(q.commercial_note || '');
-        setCostBreakdownNotes({ ...defaultCostBreakdownNotes, ...((q.cost_breakdown_notes as CostBreakdownNotes | undefined) || {}) });
+        setCostBreakdownNotes((q.cost_breakdown_notes as CostBreakdownNotes | undefined) || {
+          offered_goods: '',
+          origin_charges: '',
+          ocean_freight: '',
+          insurance: ''
+        });
         setShowCifBreakdown(q.show_cif_breakdown ?? true);
         setShowDetailsPage(q.show_details_page ?? true);
         setShowCifPortInTotal(q.show_cif_port_in_total ?? false);
@@ -821,11 +865,11 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         setShowInsuranceCharge(q.show_insurance_charge ?? true);
         setLineItems(q.items || []);
 
-        setIncludedScope(q.included_responsibilities || defaultIncluded);
-        setExcludedScope(q.excluded_responsibilities || defaultExcluded);
-        setDocList(q.included_docs || defaultDocs);
-        setSpecMap(q.logistics_specs || defaultLogisticsSpecs);
-        setCommercialTerms(q.commercial_terms || defaultCommercialTerms);
+        setIncludedScope(q.included_responsibilities || []);
+        setExcludedScope(q.excluded_responsibilities || []);
+        setDocList(q.included_docs || []);
+        setSpecMap(q.logistics_specs || blankLogisticsSpecs);
+        setCommercialTerms(q.commercial_terms || []);
       }
       restoreDraft();
     } catch (err) {
@@ -841,44 +885,48 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const handleAddLineItem = (productId: string) => {
     if (productId === 'custom') {
       const newItem: QuoteItem = {
-        sku: 'CUMIN-SG99',
-        description: 'Cumin Seeds Singapore 99 (Jeera)\n- Quality: Machine Cleaned / Sortex Cleaned\n- Purity: 99% Min\n- Moisture: 8-9% Max',
-        quantity: 13000,
-        unit_price: 228.27,
-        cost_price: 218.27,
+        sku: '',
+        description: '',
+        quantity: 0,
+        unit_price: 0,
+        cost_price: 0,
         weight: 1.0,
         pricing_basis: 'kg',
-        package_quantity: 325,
-        package_unit_price: 228.27 * 40,
-        package_cost_price: 218.27 * 40,
-        hs_code: '09093129',
-        packing_container: '325 Jute Bags (40 kg Net / Bag)',
-        basis_of_calculation: 'Per kg (13,000 kg)'
+        package_quantity: 0,
+        package_unit_price: 0,
+        package_cost_price: 0,
+        hs_code: '',
+        packing_container: '',
+        basis_of_calculation: ''
       };
-      setLineItems([...lineItems, newItem]);
+      setLineItems(prev => [...prev, newItem]);
       return;
     }
 
     const prod = products.find(p => p.id === productId);
     if (!prod) return;
 
+    const unitPrice = Number(prod.unit_price) || 0;
+    const costPrice = Number(prod.cost_price) || 0;
+    const weight = Number(prod.weight) || 1.0;
+
     const newItem: QuoteItem = {
       product_id: prod.id,
-      sku: prod.sku,
-      description: prod.description,
-      quantity: 13000,
-      unit_price: Number(prod.unit_price) || 0,
-      cost_price: Number(prod.cost_price) || Math.max((Number(prod.unit_price) || 0) - marginPerKg, 0),
-      weight: Number(prod.weight) || 1.0,
+      sku: prod.sku || '',
+      description: prod.description || '',
+      quantity: 0,
+      unit_price: unitPrice,
+      cost_price: costPrice,
+      weight: weight,
       pricing_basis: 'kg',
-      package_quantity: 325,
-      package_unit_price: (Number(prod.unit_price) || 0) * 40,
-      package_cost_price: (Number(prod.cost_price) || Math.max((Number(prod.unit_price) || 0) - marginPerKg, 0)) * 40,
-      hs_code: '09093129',
-      packing_container: '325 Jute Bags (40 kg Net / Bag)',
-      basis_of_calculation: 'Per kg (13,000 kg)'
+      package_quantity: 0,
+      package_unit_price: 0,
+      package_cost_price: 0,
+      hs_code: (prod as { hs_code?: string }).hs_code || '',
+      packing_container: (prod as { packing_container?: string }).packing_container || '',
+      basis_of_calculation: ''
     };
-    setLineItems([...lineItems, newItem]);
+    setLineItems(prev => [...prev, newItem]);
   };
 
   const handleUpdateLineItem = (index: number, fields: Partial<QuoteItem>) => {
@@ -1128,12 +1176,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         quote_number: quoteNumber,
         client_id: quoteClient.id,
         currency,
-        incoterm: incoterm.trim() || 'CIF (Cost, Insurance & Freight)',
+        incoterm: incoterm.trim(),
         origin_country: originCountry,
         loading_port: loadingPort,
         shipment_mode: shipmentMode,
         payment_terms: paymentTerms,
-        validity_days: validityDays,
+        validity_days: validityDays ? Number(validityDays) : null,
         
         packaging_cost: packagingCost,
         inland_haulage_cost: inlandHaulageCost,
@@ -1344,12 +1392,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     quote_number: quoteNumber,
     client_id: currentClient?.id || selectedClientId,
     currency,
-    incoterm: incoterm.trim() || 'CIF (Cost, Insurance & Freight)',
+    incoterm: incoterm.trim(),
     origin_country: originCountry,
     loading_port: loadingPort,
     shipment_mode: shipmentMode,
     payment_terms: paymentTerms,
-    validity_days: validityDays,
+    validity_days: validityDays ? Number(validityDays) : undefined,
     packaging_cost: packagingCost,
     inland_haulage_cost: inlandHaulageCost,
     customs_clearance_cost: customsClearanceCost,
@@ -1901,6 +1949,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   type="text"
                   value={originCountry}
                   onChange={setOriginCountry}
+                  placeholder="e.g. India"
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
@@ -1910,6 +1959,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   type="text"
                   value={loadingPort}
                   onChange={setLoadingPort}
+                  placeholder="e.g. Mundra Port, India"
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
@@ -1920,6 +1970,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   value={shipmentMode}
                   onChange={setShipmentMode}
                   list="shipment-mode-options"
+                  placeholder="e.g. Sea Freight (1x20ft FCL)"
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
                 <datalist id="shipment-mode-options">
@@ -1929,14 +1980,14 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   <button
                     type="button"
                     onClick={() => setShipmentModeWithDefaults('Sea Freight (1x20ft FCL)')}
-                    className={`rounded-md border px-3 py-1.5 text-[11px] font-black transition ${!freightLabels.isAir ? 'border-sky-300 bg-sky-100 text-sky-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+                    className={`rounded-md border px-3 py-1.5 text-[11px] font-black transition ${shipmentMode && !freightLabels.isAir ? 'border-sky-300 bg-sky-100 text-sky-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
                   >
                     Ocean Freight
                   </button>
                   <button
                     type="button"
                     onClick={() => setShipmentModeWithDefaults('Air Freight (Airport-to-Airport)')}
-                    className={`rounded-md border px-3 py-1.5 text-[11px] font-black transition ${freightLabels.isAir ? 'border-sky-300 bg-sky-100 text-sky-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
+                    className={`rounded-md border px-3 py-1.5 text-[11px] font-black transition ${shipmentMode && freightLabels.isAir ? 'border-sky-300 bg-sky-100 text-sky-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}
                   >
                     Air Freight
                   </button>
@@ -1948,6 +1999,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   type="text"
                   value={paymentTerms}
                   onChange={setPaymentTerms}
+                  placeholder="e.g. 50% Advance, 50% vs Shipping Bill"
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
@@ -1967,7 +2019,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                 <FastInput
                   type="number"
                   value={validityDays}
-                  onChange={(value) => setValidityDays(parseInt(value) || 15)}
+                  placeholder="e.g. 15"
+                  onChange={(value) => setValidityDays(value ? parseInt(value) || 0 : '')}
                   className="w-full px-3 py-1.5 border border-slate-300 rounded"
                 />
               </div>
@@ -1984,7 +2037,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                   onClick={() => handleAddLineItem('custom')}
                   className="rounded-md border border-slate-200 bg-white px-3 py-2 text-[11px] font-black text-slate-700 transition hover:bg-slate-50"
                 >
-                  + Add Cumin Seed Sample
+                  + Add New Product
                 </button>
               </div>
               <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -1999,7 +2052,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                 <div className="mt-2 grid max-h-64 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
                   {filteredProductOptions.length === 0 ? (
                     <div className="rounded-md border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-[11px] font-semibold text-slate-400 sm:col-span-2 xl:col-span-3">
-                      No product found. Add it in Products first or use the sample item.
+                      No product found. Search with another keyword or click &quot;+ Add New Product&quot; above.
                     </div>
                   ) : filteredProductOptions.map((product) => (
                     <button
@@ -2089,7 +2142,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                               step="1"
                               value={item.package_quantity || ''}
                               onChange={(value) => handleUpdateLineItem(index, { package_quantity: parseFloat(value) || 0 })}
-                              placeholder="325"
+                              placeholder="Optional"
                               className="w-full px-2 py-1 border rounded bg-white"
                             />
                           </div>
@@ -2100,7 +2153,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                               step="0.01"
                               value={item.weight || ''}
                               onChange={(value) => handleUpdateLineItem(index, { weight: parseFloat(value) || 0 })}
-                              placeholder="40"
+                              placeholder="Optional"
                               className="w-full px-2 py-1 border rounded bg-white"
                             />
                           </div>
@@ -2498,13 +2551,22 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               <div className="space-y-3">
                 <div className="flex justify-between items-center border-b pb-1">
                   <h4 className="font-semibold text-slate-800">Included in Seller&apos;s Price</h4>
-                  <button
-                    type="button"
-                    onClick={() => handleAddListItem('included')}
-                    className="text-[10px] text-sky-600 hover:text-sky-500 font-bold"
-                  >
-                    + Add Inclusion
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleLoadStandardTerms}
+                      className="text-[10px] text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded font-bold hover:bg-sky-100 transition"
+                    >
+                      Load Standard Terms
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddListItem('included')}
+                      className="text-[10px] text-sky-600 hover:text-sky-500 font-bold"
+                    >
+                      + Add Inclusion
+                    </button>
+                  </div>
                 </div>
                 {includedScope.map((item, idx) => (
                   <div key={idx} className="flex gap-2 items-center">

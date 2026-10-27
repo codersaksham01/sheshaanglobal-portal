@@ -1,7 +1,829 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image, Svg, Path, Line, Circle, Rect, Polyline, Font } from '@react-pdf/renderer';
 import { Quote, QuoteItem, BankDetails, CostBreakdownNotes } from '../lib/types';
 
+// Register fonts for crisp vector typography
+const isBrowser = typeof window !== 'undefined';
+try {
+  Font.register({
+    family: 'TimesCustom',
+    fonts: [
+      { src: isBrowser ? '/fonts/Times-Regular.ttf' : `${process.cwd()}/public/fonts/Times-Regular.ttf`, fontWeight: 'normal' },
+      { src: isBrowser ? '/fonts/Times-Bold.ttf' : `${process.cwd()}/public/fonts/Times-Bold.ttf`, fontWeight: 'bold' }
+    ]
+  });
+
+  Font.register({
+    family: 'ArialCustom',
+    fonts: [
+      { src: isBrowser ? '/fonts/Arial-Regular.ttf' : `${process.cwd()}/public/fonts/Arial-Regular.ttf`, fontWeight: 'normal' },
+      { src: isBrowser ? '/fonts/Arial-Bold.ttf' : `${process.cwd()}/public/fonts/Arial-Bold.ttf`, fontWeight: 'bold' }
+    ]
+  });
+} catch (e) {
+  // Graceful fallback to core PDF fonts
+}
+
+// Design System Palette (faithfully matching reference image)
+const C = {
+  navyDark: '#101B32',         // Primary deep navy
+  navyMedium: '#173D5B',       // Header & card header navy
+  navyHeaderBorder: '#275276', // Vertical border inside dark table headers
+  slateText: '#2D3748',        // Main body text
+  slateMuted: '#556987',       // Subtitles, secondary text
+  slateLight: '#475569',       // Details labels
+  bgSection: '#EEF2F6',        // Section header & note background
+  borderGrey: '#D6DEE7',       // Table & card borders
+  borderLight: '#E2E8F0',      // Dividers
+  bgWords: '#FFF5EA',          // Soft peach/cream words box background
+  borderWords: '#F6D7B8',      // Words box border
+  bgTotalRow: '#EAF2F8',       // Grand total light blue tint
+  white: '#FFFFFF',
+  goldLine: '#CBB499',         // Header vertical line
+};
+
+const styles = StyleSheet.create({
+  page: {
+    paddingTop: 22,
+    paddingHorizontal: 26,
+    paddingBottom: 22,
+    fontFamily: 'ArialCustom',
+    fontSize: 7.5,
+    color: C.slateText,
+    backgroundColor: C.white,
+  },
+
+  // Upper Header
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '61%',
+  },
+  logo: {
+    width: 60,
+    height: 50,
+    objectFit: 'contain',
+    marginRight: 8,
+  },
+  brandCol: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+  },
+  companyTitle: {
+    fontFamily: 'TimesCustom',
+    fontWeight: 'bold',
+    fontSize: 18,
+    color: C.navyDark,
+    letterSpacing: 0.6,
+  },
+  tagline: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.8,
+    color: '#475569',
+    letterSpacing: 1.8,
+    marginTop: 2,
+    textTransform: 'uppercase',
+  },
+  regLine: {
+    fontFamily: 'ArialCustom',
+    fontSize: 5.6,
+    color: '#64748B',
+    letterSpacing: 0.4,
+    marginTop: 4,
+  },
+  headerDivider: {
+    width: 0.75,
+    height: 52,
+    backgroundColor: C.goldLine,
+    marginHorizontal: 10,
+  },
+  headerRight: {
+    flexDirection: 'column',
+    width: '35%',
+    alignItems: 'flex-start',
+    paddingLeft: 4,
+  },
+  quoteTitle: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.8,
+    color: '#475569',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  refNumber: {
+    fontFamily: 'TimesCustom',
+    fontWeight: 'bold',
+    fontSize: 13.5,
+    color: C.navyDark,
+    marginBottom: 4,
+  },
+  metaTable: {
+    flexDirection: 'column',
+    width: '100%',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 1.5,
+  },
+  metaLabel: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.8,
+    color: '#334155',
+    width: 38,
+  },
+  metaColon: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.8,
+    color: '#334155',
+    width: 10,
+    textAlign: 'center',
+  },
+  metaVal: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.8,
+    color: C.navyDark,
+  },
+
+  // Section Banner Bar
+  sectionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.bgSection,
+    height: 18,
+    marginBottom: 6,
+    overflow: 'hidden',
+  },
+  sectionBadge: {
+    width: 26,
+    height: '100%',
+    backgroundColor: C.navyMedium,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionBadgeText: {
+    fontFamily: 'TimesCustom',
+    fontWeight: 'bold',
+    fontSize: 9.5,
+    color: C.white,
+  },
+  sectionTitleText: {
+    fontFamily: 'TimesCustom',
+    fontWeight: 'bold',
+    fontSize: 8.5,
+    color: C.navyDark,
+    paddingLeft: 8,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+
+  // Party details
+  partyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  partyCard: {
+    width: '49%',
+    borderWidth: 0.75,
+    borderColor: C.borderGrey,
+    borderRadius: 2,
+    backgroundColor: C.white,
+    overflow: 'hidden',
+  },
+  partyHeaderBar: {
+    backgroundColor: C.navyMedium,
+    paddingVertical: 3.5,
+    paddingHorizontal: 8,
+  },
+  partyHeaderTitle: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 6.8,
+    color: C.white,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  partyBody: {
+    padding: 7,
+  },
+  partyName: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 8.8,
+    color: C.navyDark,
+    marginBottom: 3,
+  },
+  partyAddress: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.5,
+    color: '#475569',
+    lineHeight: 1.3,
+    marginBottom: 6,
+  },
+  partyDivider: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#EEF2F6',
+    marginBottom: 5,
+  },
+  kvRow: {
+    flexDirection: 'row',
+    marginBottom: 2.5,
+    alignItems: 'flex-start',
+  },
+  kvLabel: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.2,
+    color: '#64748B',
+    width: 40,
+  },
+  kvColon: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.2,
+    color: '#64748B',
+    width: 8,
+    textAlign: 'center',
+  },
+  kvValue: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.2,
+    color: C.navyDark,
+    flex: 1,
+  },
+
+  // Shipment Horizontal Grid
+  shipmentBar: {
+    flexDirection: 'row',
+    borderWidth: 0.75,
+    borderColor: C.borderGrey,
+    borderRadius: 2,
+    backgroundColor: C.white,
+    marginBottom: 8,
+    alignItems: 'stretch',
+  },
+  shipmentCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4.5,
+    paddingHorizontal: 5,
+    borderRightWidth: 0.75,
+    borderRightColor: C.borderGrey,
+  },
+  shipmentColLast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4.5,
+    paddingHorizontal: 5,
+  },
+  shipmentIconBox: {
+    width: 17,
+    marginRight: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shipmentContent: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  shipmentLabel: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 5.2,
+    color: '#556987',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginBottom: 1,
+  },
+  shipmentVal: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 6.5,
+    color: C.navyDark,
+    lineHeight: 1.15,
+  },
+
+  // Table Common
+  table: {
+    borderWidth: 0.75,
+    borderColor: C.borderGrey,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  tHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: C.navyMedium,
+    alignItems: 'center',
+    paddingVertical: 4.5,
+  },
+  tHeaderCol: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 5.8,
+    color: C.white,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    paddingHorizontal: 3,
+  },
+  tHeaderColBorder: {
+    borderRightWidth: 0.75,
+    borderRightColor: C.navyHeaderBorder,
+  },
+  tRow: {
+    flexDirection: 'row',
+    borderTopWidth: 0.75,
+    borderTopColor: C.borderGrey,
+    backgroundColor: C.white,
+    alignItems: 'center',
+    paddingVertical: 4.5,
+  },
+  tCell: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.5,
+    color: C.slateText,
+    paddingHorizontal: 3,
+  },
+  tCellBorder: {
+    borderRightWidth: 0.75,
+    borderRightColor: C.borderGrey,
+  },
+  tCellBold: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 6.8,
+    color: C.navyDark,
+  },
+
+  // Section 2 Table Columns
+  colS2Sr: { width: '4%', textAlign: 'center' },
+  colS2Desc: { width: '33%', paddingLeft: 4 },
+  colS2Hs: { width: '9%', textAlign: 'center' },
+  colS2Pack: { width: '16%', textAlign: 'center' },
+  colS2Qty: { width: '13%', textAlign: 'center' },
+  colS2Price: { width: '11%', textAlign: 'center' },
+  colS2Total: { width: '14%', textAlign: 'right', paddingRight: 6 },
+
+  // Grand Total Row
+  grandTotalRow: {
+    flexDirection: 'row',
+    borderTopWidth: 0.75,
+    borderTopColor: C.borderGrey,
+    backgroundColor: C.bgTotalRow,
+    alignItems: 'center',
+    paddingVertical: 4.5,
+  },
+  grandTotalLeftCell: {
+    width: '86%',
+    paddingLeft: 10,
+    borderRightWidth: 0.75,
+    borderRightColor: C.borderGrey,
+  },
+  grandTotalLabel: {
+    fontFamily: 'TimesCustom',
+    fontWeight: 'bold',
+    fontSize: 8,
+    color: C.navyDark,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  grandTotalRightCell: {
+    width: '14%',
+    paddingRight: 6,
+    textAlign: 'right',
+  },
+  grandTotalVal: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 8.5,
+    color: C.navyDark,
+    textAlign: 'right',
+  },
+
+  // Words Box
+  wordsBox: {
+    borderWidth: 0.75,
+    borderColor: C.borderWords,
+    backgroundColor: C.bgWords,
+    borderRadius: 2,
+    paddingVertical: 3.5,
+    paddingHorizontal: 8,
+    marginBottom: 7,
+  },
+  wordsText: {
+    fontFamily: 'ArialCustom',
+    fontSize: 6.3,
+    color: '#334155',
+  },
+
+  // Section 3 Table Columns
+  colS3Sr: { width: '4%', textAlign: 'center' },
+  colS3Desc: { width: '40%', paddingLeft: 4 },
+  colS3Basis: { width: '23%', textAlign: 'left', paddingLeft: 6 },
+  colS3Rate: { width: '15%', textAlign: 'left', paddingLeft: 6 },
+  colS3Total: { width: '18%', textAlign: 'right', paddingRight: 6 },
+
+  // Section 3 Dark Highlighted Total Bar
+  offeredTotalBar: {
+    flexDirection: 'row',
+    backgroundColor: C.navyMedium,
+    alignItems: 'center',
+    paddingVertical: 4.5,
+    paddingHorizontal: 8,
+    justifyContent: 'space-between',
+  },
+  offeredTotalLeft: {
+    fontFamily: 'TimesCustom',
+    fontWeight: 'bold',
+    fontSize: 8,
+    color: C.white,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  offeredTotalRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  offeredTotalDivider: {
+    color: '#8BA9C4',
+    fontSize: 9,
+    marginRight: 10,
+  },
+  offeredTotalVal: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 9,
+    color: C.white,
+    textAlign: 'right',
+  },
+
+  // Note Box
+  noteBox: {
+    flexDirection: 'row',
+    borderWidth: 0.75,
+    borderColor: C.borderGrey,
+    borderRadius: 2,
+    backgroundColor: C.bgSection,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  noteLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  noteIconBox: {
+    marginRight: 4,
+  },
+  noteTitle: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 7.2,
+    color: C.navyDark,
+    letterSpacing: 0.5,
+  },
+  noteDivider: {
+    width: 0.75,
+    height: 24,
+    backgroundColor: '#CBD5E1',
+    marginRight: 8,
+  },
+  noteRightTextGroup: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  noteTextLine: {
+    fontFamily: 'ArialCustom',
+    fontSize: 5.8,
+    color: '#334155',
+    lineHeight: 1.3,
+  },
+
+  // Footer
+  footer: {
+    borderTopWidth: 0.75,
+    borderTopColor: C.borderGrey,
+    paddingTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 'auto',
+  },
+  footerCol1: {
+    width: '25%',
+    flexDirection: 'column',
+  },
+  footerBrand: {
+    fontFamily: 'TimesCustom',
+    fontWeight: 'bold',
+    fontSize: 7.5,
+    color: C.navyDark,
+  },
+  footerTagline: {
+    fontFamily: 'ArialCustom',
+    fontSize: 4.8,
+    color: C.slateMuted,
+    letterSpacing: 0.6,
+    marginTop: 1,
+    textTransform: 'uppercase',
+  },
+  footerDivider: {
+    width: 0.75,
+    height: 18,
+    backgroundColor: C.borderGrey,
+    marginHorizontal: 3,
+  },
+  footerCol2: {
+    width: '29%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  footerCol3: {
+    width: '24%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  footerCol4: {
+    width: '18%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  footerCircleIcon: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: C.navyDark,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 5,
+  },
+  footerText: {
+    fontFamily: 'ArialCustom',
+    fontSize: 5.2,
+    color: '#475569',
+    lineHeight: 1.25,
+  },
+  footerPhone: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 6.5,
+    color: C.navyDark,
+  },
+
+  // Page 2 Styles
+  page2Header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 0.75,
+    borderBottomColor: C.borderGrey,
+    paddingBottom: 6,
+    marginBottom: 10,
+  },
+  page2HeaderText: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 7.5,
+    color: C.navyDark,
+  },
+  page2HeaderDate: {
+    fontFamily: 'ArialCustom',
+    fontSize: 7,
+    color: '#64748B',
+  },
+  p2TwoColRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  p2Box: {
+    width: '49%',
+    borderWidth: 0.75,
+    borderColor: C.borderGrey,
+    borderRadius: 2,
+    backgroundColor: C.white,
+    overflow: 'hidden',
+  },
+  p2BoxHeader: {
+    backgroundColor: C.navyMedium,
+    paddingVertical: 3.5,
+    paddingHorizontal: 8,
+  },
+  p2BoxHeaderTitle: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 6.5,
+    color: C.white,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  p2BoxBody: {
+    padding: 6,
+  },
+  p2BulletRow: {
+    flexDirection: 'row',
+    marginBottom: 3,
+    alignItems: 'flex-start',
+  },
+  p2BulletDot: {
+    width: 8,
+    fontSize: 6,
+    color: C.navyMedium,
+  },
+  p2BulletText: {
+    flex: 1,
+    fontFamily: 'ArialCustom',
+    fontSize: 5.8,
+    color: C.slateText,
+    lineHeight: 1.3,
+  },
+  p2SpecRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#EEF2F6',
+    paddingVertical: 2.5,
+  },
+  p2SpecLabel: {
+    fontFamily: 'ArialCustom',
+    fontSize: 5.8,
+    color: '#64748B',
+  },
+  p2SpecValue: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 5.8,
+    color: C.navyDark,
+  },
+  p2TermsContainer: {
+    borderWidth: 0.75,
+    borderColor: C.borderGrey,
+    borderRadius: 2,
+    backgroundColor: C.bgSection,
+    padding: 6,
+    marginBottom: 8,
+  },
+  p2TermRow: {
+    flexDirection: 'row',
+    marginBottom: 3,
+    alignItems: 'flex-start',
+  },
+  p2TermNum: {
+    width: 12,
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 5.6,
+    color: C.navyMedium,
+  },
+  p2TermText: {
+    flex: 1,
+    fontFamily: 'ArialCustom',
+    fontSize: 5.6,
+    color: '#334155',
+    lineHeight: 1.25,
+  },
+
+  // Signatures
+  signaturesGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  signatureBox: {
+    width: '49%',
+    borderWidth: 0.75,
+    borderColor: C.borderGrey,
+    borderRadius: 2,
+    padding: 8,
+    alignItems: 'center',
+    backgroundColor: C.white,
+  },
+  signatureRoleLabel: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 6.5,
+    color: C.navyDark,
+    textAlign: 'center',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  signatureSignLine: {
+    width: '80%',
+    height: 40,
+    borderBottomWidth: 0.75,
+    borderBottomColor: '#CBD5E1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  signatureImage: {
+    width: 80,
+    height: 35,
+    objectFit: 'contain',
+  },
+  stampImage: {
+    width: 50,
+    height: 50,
+    objectFit: 'contain',
+  },
+  signatureTextName: {
+    fontFamily: 'ArialCustom',
+    fontWeight: 'bold',
+    fontSize: 6.8,
+    color: C.navyDark,
+    marginTop: 2,
+  },
+  signatureTextCompany: {
+    fontFamily: 'ArialCustom',
+    fontSize: 5.8,
+    color: '#64748B',
+  },
+});
+
+// Precise Vector SVG Icons
+const BoxIcon = () => (
+  <Svg width="15" height="15" viewBox="0 0 24 24">
+    <Path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke={C.navyMedium} strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M3.27 6.96L12 12.01l8.73-5.05" stroke={C.navyMedium} strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <Line x1="12" y1="22.08" x2="12" y2="12" stroke={C.navyMedium} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const GlobeIcon = () => (
+  <Svg width="15" height="15" viewBox="0 0 24 24">
+    <Circle cx="12" cy="12" r="10" stroke={C.navyMedium} strokeWidth="1.7" fill="none" />
+    <Line x1="2" y1="12" x2="22" y2="12" stroke={C.navyMedium} strokeWidth="1.7" />
+    <Path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" stroke={C.navyMedium} strokeWidth="1.7" fill="none" />
+  </Svg>
+);
+
+const AnchorIcon = () => (
+  <Svg width="15" height="15" viewBox="0 0 24 24">
+    <Circle cx="12" cy="5" r="3" stroke={C.navyMedium} strokeWidth="1.7" fill="none" />
+    <Line x1="12" y1="22" x2="12" y2="8" stroke={C.navyMedium} strokeWidth="1.7" strokeLinecap="round" />
+    <Path d="M5 12H2a10 10 0 0 0 20 0h-3" stroke={C.navyMedium} strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const MapPinIcon = () => (
+  <Svg width="15" height="15" viewBox="0 0 24 24">
+    <Path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" stroke={C.navyMedium} strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <Circle cx="12" cy="10" r="3" stroke={C.navyMedium} strokeWidth="1.7" fill="none" />
+  </Svg>
+);
+
+const ContainerIcon = () => (
+  <Svg width="16" height="15" viewBox="0 0 24 24">
+    <Rect x="2" y="5" width="20" height="14" rx="1.5" stroke={C.navyMedium} strokeWidth="1.7" fill="none" />
+    <Line x1="6" y1="5" x2="6" y2="19" stroke={C.navyMedium} strokeWidth="1.3" />
+    <Line x1="9" y1="5" x2="9" y2="19" stroke={C.navyMedium} strokeWidth="1.3" />
+    <Line x1="12" y1="5" x2="12" y2="19" stroke={C.navyMedium} strokeWidth="1.3" />
+    <Line x1="15" y1="5" x2="15" y2="19" stroke={C.navyMedium} strokeWidth="1.3" />
+    <Line x1="18" y1="5" x2="18" y2="19" stroke={C.navyMedium} strokeWidth="1.3" />
+  </Svg>
+);
+
+const DocIcon = () => (
+  <Svg width="15" height="15" viewBox="0 0 24 24">
+    <Path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke={C.navyMedium} strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <Polyline points="14 2 14 8 20 8" stroke={C.navyMedium} strokeWidth="1.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <Line x1="16" y1="13" x2="8" y2="13" stroke={C.navyMedium} strokeWidth="1.7" strokeLinecap="round" />
+    <Line x1="16" y1="17" x2="8" y2="17" stroke={C.navyMedium} strokeWidth="1.7" strokeLinecap="round" />
+    <Line x1="10" y1="9" x2="8" y2="9" stroke={C.navyMedium} strokeWidth="1.7" strokeLinecap="round" />
+  </Svg>
+);
+
+const FooterPinBadge = () => (
+  <Svg width="8" height="8" viewBox="0 0 24 24">
+    <Path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" fill="#FFFFFF" />
+    <Circle cx="12" cy="10" r="3" fill={C.navyDark} />
+  </Svg>
+);
+
+const FooterMailBadge = () => (
+  <Svg width="8" height="8" viewBox="0 0 24 24">
+    <Rect x="2" y="4" width="20" height="16" rx="2" stroke="#FFFFFF" strokeWidth="2" fill="none" />
+    <Path d="M22 6l-10 7L2 6" stroke="#FFFFFF" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
+const FooterPhoneBadge = () => (
+  <Svg width="8" height="8" viewBox="0 0 24 24">
+    <Path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" fill="#FFFFFF" />
+  </Svg>
+);
+
+// Calculation Helpers
 const getItemPricingBasis = (item: QuoteItem) => item.pricing_basis || 'kg';
 const getItemPackageQuantity = (item: QuoteItem) => Number(item.package_quantity || 0);
 const getItemPackageWeight = (item: QuoteItem) => Number(item.weight || 0);
@@ -39,634 +861,6 @@ const getFreightPdfLabels = (mode?: string) => {
   };
 };
 
-// PDF Styling layout
-const styles = StyleSheet.create({
-  page: {
-    paddingTop: 24,
-    paddingHorizontal: 28,
-    paddingBottom: 28,
-    fontFamily: 'Helvetica',
-    fontSize: 8,
-    color: '#334155', // slate-700
-    backgroundColor: '#ffffff',
-  },
-  brandAccent: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 8,
-    backgroundColor: '#0f172a',
-  },
-  brandAccentGold: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: '32%',
-    height: 8,
-    backgroundColor: '#f97316',
-  },
-  
-  // Upper Header
-  companyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#0284c7', // Sky-600
-    paddingBottom: 10,
-    marginBottom: 12,
-  },
-  logoImage: {
-    width: 60,
-    height: 50,
-    objectFit: 'contain',
-    marginRight: 10,
-  },
-  companyLogoCol: {
-    flexDirection: 'column',
-  },
-  companyNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 3,
-  },
-  companyTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#0f172a', // Dark slate
-    letterSpacing: 0.5,
-  },
-  companySlogan: {
-    fontSize: 6.8,
-    color: '#0f766e', // Teal-700
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginTop: 2,
-  },
-  companyMeta: {
-    fontSize: 6.2,
-    color: '#64748b',
-    marginTop: 3,
-    lineHeight: 1.3,
-  },
-  docHeaderCol: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    maxWidth: '45%',
-    backgroundColor: '#f8fafc',
-    borderRadius: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  docHeaderTitle: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  docHeaderRef: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#0284c7',
-    marginTop: 3,
-  },
-  docHeaderMeta: {
-    fontSize: 6.8,
-    color: '#475569',
-    marginTop: 3,
-    lineHeight: 1.25,
-  },
-  statusPill: {
-    marginTop: 5,
-    paddingVertical: 2.5,
-    paddingHorizontal: 7,
-    borderRadius: 999,
-    backgroundColor: '#e0f2fe',
-    color: '#0369a1',
-    fontSize: 6.2,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // Section Dividers
-  sectionTitle: {
-    fontSize: 8.5,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    backgroundColor: '#f1f5f9',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#0284c7',
-    marginBottom: 6,
-    marginTop: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // Party Details Box
-  partyContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'stretch',
-    marginBottom: 8,
-  },
-  partyCard: {
-    width: '49%',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 4,
-    backgroundColor: '#ffffff',
-  },
-  partyHeaderBar: {
-    backgroundColor: '#0f172a',
-    paddingVertical: 3.5,
-    paddingHorizontal: 8,
-    borderTopLeftRadius: 3,
-    borderTopRightRadius: 3,
-  },
-  partyHeaderText: {
-    fontSize: 7.2,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  partyBody: {
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    lineHeight: 1.3,
-  },
-  partyName: {
-    fontSize: 8.5,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginBottom: 4,
-  },
-  partyText: {
-    fontSize: 6.8,
-    color: '#475569',
-    lineHeight: 1.3,
-    marginBottom: 4,
-  },
-  partyInfoRow: {
-    flexDirection: 'row',
-    borderTopWidth: 0.5,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 3,
-    marginTop: 3,
-  },
-  partyInfoLabel: {
-    width: '20%',
-    fontSize: 6.2,
-    color: '#64748b',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
-  partyInfoValue: {
-    width: '80%',
-    fontSize: 6.8,
-    color: '#334155',
-    lineHeight: 1.25,
-  },
-
-  // Logistics Parameters Grid
-  logisticsGrid: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 4,
-    marginBottom: 10,
-    backgroundColor: '#f8fafc',
-  },
-  logisticsRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  logisticsRowLast: {
-    flexDirection: 'row',
-  },
-  logisticsCell: {
-    flex: 1,
-    paddingVertical: 4.5,
-    paddingHorizontal: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#e2e8f0',
-  },
-  logisticsCellLast: {
-    flex: 1,
-    paddingVertical: 4.5,
-    paddingHorizontal: 8,
-  },
-  logisticsLabel: {
-    fontSize: 6.2,
-    color: '#0284c7',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  logisticsVal: {
-    fontSize: 7.2,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-
-  // Tables
-  table: {
-    width: '100%',
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#0f172a', // slate-900 (luxurious dark slate)
-    paddingVertical: 5.5,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-  },
-  tableHeaderCol: {
-    color: '#ffffff',
-    fontSize: 6.2,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 0,
-    lineHeight: 1.2,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#e2e8f0',
-    paddingVertical: 5.5,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-  },
-  tableRowAlternate: {
-    flexDirection: 'row',
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#e2e8f0',
-    paddingVertical: 5.5,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-  },
-  tableCol: {
-    fontSize: 6.7,
-    color: '#334155',
-    lineHeight: 1.28,
-  },
-  tableColDescBlock: {
-    flexDirection: 'column',
-  },
-  tableColDescTitle: {
-    fontWeight: 'bold',
-    color: '#0f172a',
-    fontSize: 7.5,
-    marginBottom: 2,
-  },
-  tableColDescBullet: {
-    fontSize: 6.5,
-    color: '#64748b',
-    marginLeft: 5,
-    marginTop: 1,
-  },
-
-  // Table Column Widths (Commercial offer)
-  colSr: { width: '4%' },
-  colDesc: { width: '32%' },
-  colHs: { width: '8%', textAlign: 'center' },
-  colPack: { width: '17%' },
-  colQty: { width: '14%', textAlign: 'right', paddingRight: 4 },
-  colPrice: { width: '12%', textAlign: 'right', paddingLeft: 4 },
-  colTotal: { width: '13%', textAlign: 'right' },
-
-  // Table Column Widths (Packing List - no pricing)
-  colPlPl: { width: '22%' },
-  colPlDesc: { width: '48%' },
-  colPlQty: { width: '15%', textAlign: 'right' },
-  colPlWeight: { width: '15%', textAlign: 'right' },
-
-  // Subtotals and Grand Totals
-  grandTotalRow: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: '#cbd5e1',
-  },
-  grandTotalLabel: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  grandTotalVal: {
-    fontSize: 9.5,
-    fontWeight: 'bold',
-    color: '#0284c7', // Sky-600
-  },
-  amountWordsBlock: {
-    paddingVertical: 5.5,
-    paddingHorizontal: 8,
-    backgroundColor: '#fff7ed',
-    borderRadius: 5,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-  },
-  amountWordsText: {
-    fontSize: 7.2,
-    fontWeight: 'bold',
-    color: '#475569',
-    lineHeight: 1.3,
-  },
-
-  // Section 3: Cost Breakdown Widths
-  colBdSr: { width: '5%' },
-  colBdDesc: { width: '45%' },
-  colBdBasis: { width: '18%' },
-  colBdRate: { width: '15%', textAlign: 'right' },
-  colBdTotal: { width: '17%', textAlign: 'right' },
-
-  // Breakdown Summary Rows (FOB subtotal, Ocean freight, CIF Total)
-  tableRowSubtotal: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#cbd5e1',
-  },
-  tableRowGrandTotal: {
-    flexDirection: 'row',
-    backgroundColor: '#0f172a',
-    paddingVertical: 6.5,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  bdSubtotalLabel: {
-    flexGrow: 1,
-    fontSize: 7.5,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    textTransform: 'uppercase',
-    textAlign: 'right',
-    paddingRight: 10,
-  },
-  bdSubtotalVal: {
-    width: '17%',
-    fontSize: 8,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    textAlign: 'right',
-  },
-  bdGrandLabel: {
-    flexGrow: 1,
-    fontSize: 8,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    textTransform: 'uppercase',
-    textAlign: 'right',
-    paddingRight: 10,
-  },
-  bdGrandVal: {
-    width: '17%',
-    fontSize: 9.5,
-    fontWeight: 'bold',
-    color: '#38bdf8', // Sky-400
-    textAlign: 'right',
-  },
-
-  commercialNoteBlock: {
-    marginTop: 6,
-    paddingHorizontal: 4,
-    lineHeight: 1.35,
-  },
-  commercialNoteText: {
-    fontSize: 7,
-    color: '#64748b',
-  },
-
-  // Page 2 CSS
-  responsibilitiesContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    alignItems: 'stretch',
-  },
-  scopeBox: {
-    width: '49%',
-    borderWidth: 1,
-    borderRadius: 4,
-    padding: 8,
-  },
-  scopeBoxIncluded: {
-    borderColor: '#bbf7d0', // Green-200
-    backgroundColor: '#f0fdf4', // Green-50
-  },
-  scopeBoxExcluded: {
-    borderColor: '#fecaca', // Red-200
-    backgroundColor: '#fef2f2', // Red-50
-  },
-  scopeTitle: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    marginBottom: 5,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  scopeTitleIncluded: { color: '#15803d' },
-  scopeTitleExcluded: { color: '#b91c1c' },
-  bulletList: {
-    flexDirection: 'column',
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 4.5,
-  },
-  bulletPoint: {
-    fontSize: 7.5,
-    marginRight: 5,
-    fontWeight: 'bold',
-  },
-  bulletPointIncluded: { color: '#16a34a' },
-  bulletPointExcluded: { color: '#dc2626' },
-  bulletText: {
-    fontSize: 6.8,
-    color: '#334155',
-    lineHeight: 1.35,
-    flex: 1,
-  },
-
-  // Documentations side-by-side Page 2
-  docSpecsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    alignItems: 'stretch',
-  },
-  docBox: {
-    width: '49%',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 4,
-    padding: 8,
-    backgroundColor: '#f8fafc',
-  },
-  docTitle: {
-    fontSize: 8,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    paddingBottom: 4,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  specsBox: {
-    width: '49%',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 4,
-    padding: 8,
-    backgroundColor: '#f8fafc',
-  },
-  specsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 3.5,
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#e2e8f0',
-  },
-  specsLabel: {
-    fontSize: 6.8,
-    fontWeight: 'bold',
-    color: '#475569',
-  },
-  specsValue: {
-    fontSize: 6.8,
-    color: '#0f172a',
-    textAlign: 'right',
-  },
-
-  // Terms and Conditions Section 6
-  termsSection: {
-    marginBottom: 12,
-  },
-  termsList: {
-    flexDirection: 'column',
-    gap: 4,
-  },
-  termRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 3.5,
-  },
-  termNum: {
-    fontSize: 7.2,
-    fontWeight: 'bold',
-    color: '#0f172a',
-    marginRight: 5,
-    width: '3.5%',
-  },
-  termText: {
-    fontSize: 6.8,
-    color: '#475569',
-    lineHeight: 1.35,
-    flex: 1,
-  },
-
-  // Signatures Section Page 2
-  signaturesGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 'auto', // Pushes signature box to the very bottom
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-  },
-  signatureBox: {
-    width: '49%',
-    alignItems: 'center',
-    padding: 4,
-  },
-  signatureRoleLabel: {
-    fontSize: 7.2,
-    fontWeight: 'bold',
-    color: '#475569',
-    textTransform: 'uppercase',
-    marginBottom: 10,
-    textAlign: 'center',
-    lineHeight: 1.25,
-  },
-  signatureSignLine: {
-    width: '80%',
-    borderBottomWidth: 1,
-    borderBottomColor: '#cbd5e1',
-    marginBottom: 6,
-    height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  signatureImage: {
-    width: 110,
-    height: 36,
-    objectFit: 'contain',
-    marginBottom: -4,
-  },
-  stampImage: {
-    width: 118,
-    height: 42,
-    objectFit: 'contain',
-  },
-  signatureCursive: {
-    fontSize: 12,
-    fontFamily: 'Times-Italic',
-    color: '#1e3a8a',
-  },
-  signatureTextName: {
-    fontSize: 7.8,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-  signatureTextCompany: {
-    fontSize: 6.8,
-    color: '#64748b',
-    marginTop: 2,
-  },
-
-  // Universal Page Footer
-  footer: {
-    position: 'absolute',
-    bottom: 14,
-    left: 28,
-    right: 28,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderTopWidth: 0.5,
-    borderTopColor: '#cbd5e1',
-    paddingTop: 5,
-    fontSize: 6.2,
-    color: '#94a3b8',
-  }
-});
-
-// Helper: Indian & International Number-to-Words logic
 const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
 const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
@@ -694,6 +888,7 @@ function numberToWords(num: number, currency: 'USD' | 'INR'): string {
   }
   
   const integerPart = Math.floor(safeNum);
+  const decimalPart = Math.round((safeNum - integerPart) * 100);
   let result = '';
   
   if (currency === 'INR') {
@@ -719,6 +914,9 @@ function numberToWords(num: number, currency: 'USD' | 'INR'): string {
     }
     
     result = result.trim();
+    if (decimalPart > 0) {
+      return `Indian Rupees ${result || 'Zero'} and ${convertLessThanThousand(decimalPart)} Paise Only.`;
+    }
     return `Indian Rupees ${result} Only.`;
   } else {
     let n = integerPart;
@@ -743,9 +941,31 @@ function numberToWords(num: number, currency: 'USD' | 'INR'): string {
     }
     
     result = result.trim();
+    if (decimalPart > 0) {
+      return `U.S. Dollars ${result || 'Zero'} and ${convertLessThanThousand(decimalPart)} Cents Only.`;
+    }
     return `U.S. Dollars ${result} Only.`;
   }
 }
+
+// Logo resolution helper (works in Node and Browser)
+const getLogoSrc = () => {
+  if (typeof window !== 'undefined') {
+    return '/logo-opt.png';
+  }
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const fullPath = path.resolve(process.cwd(), 'public', 'logo-opt.png');
+    if (fs.existsSync(fullPath)) {
+      const b64 = fs.readFileSync(fullPath).toString('base64');
+      return `data:image/png;base64,${b64}`;
+    }
+  } catch {
+    // fallback
+  }
+  return '/logo-opt.png';
+};
 
 interface QuotePDFProps {
   quote: Quote;
@@ -765,58 +985,75 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
     }
   };
 
+  const currencySymbol = quote.currency === 'USD' ? 'USD' : 'INR';
+
+  // Format with currency symbol and 2 decimals (for cost breakdown)
   const formatValue = (amount: number) => {
     const validAmount = Number(amount) || 0;
-    const symbol = quote.currency === 'INR' ? 'INR' : 'USD';
-    const formatter = new Intl.NumberFormat(quote.currency === 'INR' ? 'en-IN' : 'en-US', {
+    const formatter = new Intl.NumberFormat('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-    return `${symbol} ${formatter.format(validAmount)}`;
+    return `${currencySymbol} ${formatter.format(validAmount)}`;
+  };
+
+  // Format for section 2 product totals (integers without .00, matching reference)
+  const formatSection2Amount = (amount: number) => {
+    const validAmount = Number(amount) || 0;
+    const hasDecimals = validAmount % 1 !== 0;
+    const formatter = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: hasDecimals ? 2 : 0,
+      maximumFractionDigits: 2,
+    });
+    return `${currencySymbol} ${formatter.format(validAmount)}`;
   };
 
   const formatDate = (dateStr?: string) => {
-    const toDayMonthYear = (date: Date) => {
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const toFormatted = (date: Date) => {
+      const day = date.getDate();
+      const month = months[date.getMonth()];
       const year = date.getFullYear();
-      return `${day}-${month}-${year}`;
+      return `${day} ${month} ${year}`;
     };
-    if (!dateStr || dateStr === 'preview') return toDayMonthYear(new Date());
+    if (!dateStr || dateStr === 'preview') return toFormatted(new Date());
     const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? toDayMonthYear(new Date()) : toDayMonthYear(d);
+    return isNaN(d.getTime()) ? toFormatted(new Date()) : toFormatted(d);
   };
 
   const lineItems = quote.items || [];
   const showCifBreakdown = quote.show_cif_breakdown !== false;
-  const showDetailsPage = quote.show_details_page !== false;
-  const showCifPortInTotal = quote.show_cif_port_in_total === true;
+  const showDetailsPage = quote.show_details_page === true;
   const showSignatureBlock = quote.show_signature_block !== false;
   const showCeoSignature = quote.show_ceo_signature !== false;
   const showOriginCharges = quote.show_origin_charges !== false;
   const showOceanFreight = quote.show_ocean_freight !== false;
   const showInsuranceCharge = quote.show_insurance_charge !== false;
+
+  // Subtotal for Section 2
+  const itemsSubtotal = lineItems.reduce((sum, item) => sum + getItemSellTotal(item), 0);
+
+  // Origin export charges
+  const originExportCharges = Number(quote.packaging_cost || 0) + Number(quote.inland_haulage_cost || 0) + Number(quote.customs_clearance_cost || 0);
   
-  // Calculate item sum base (FOB base value)
-  const itemsSubtotal = lineItems.reduce(
-    (sum, item) => sum + getItemSellTotal(item),
-    0
-  );
+  // Total FOB (items + origin charges if applicable)
+  const totalFOB = itemsSubtotal + (showOriginCharges ? originExportCharges : 0);
   
-  // Calculate commercial values shown in Section 2 and reconciled in the CIF breakdown.
-  const originExportCharges = Number(quote.packaging_cost) + Number(quote.inland_haulage_cost) + Number(quote.customs_clearance_cost);
-  const totalFOB = itemsSubtotal + originExportCharges;
-  
-  // Final CIF
-  const totalCIF = totalFOB + Number(quote.freight_cost) + Number(quote.insurance_cost);
-  
+  // Final Total including freight and insurance
+  const freightAmount = showOceanFreight ? Number(quote.freight_cost || 0) : 0;
+  const insuranceAmount = showInsuranceCharge ? Number(quote.insurance_cost || 0) : 0;
+  const finalOfferedTotal = totalFOB + freightAmount + insuranceAmount;
+
   // Total quantity
   const totalQty = lineItems.reduce((sum, item) => sum + getItemNetWeight(item), 0);
   const totalWeight = totalQty;
 
   const defaultShipper = {
     company_name: 'Sheshaan Global',
-    address: 'Plot No. 1459, Opp. M.A.K. Azad Urdu School, Aasinagar, Nagpur - 440017, Maharashtra, India',
+    address: 'Plot No. 1459, Opp. M.A.K. Azad Urdu School,\nAasingar, Nagpur - 440017, Maharashtra, India',
     contact_name: 'Sana Zeba Bakshi (CEO)',
     contact_email: 'info@sheshaanglobal.com',
     tax_id: 'GST | APEDA | FSSAI'
@@ -834,37 +1071,81 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   const shipper = quote.shipper_details || defaultShipper;
   const bankDetails = quote.bank_details || defaultBankDetails;
   const client = quote.client || {
-    company_name: 'N/A',
-    address: 'N/A',
-    contact_name: 'N/A',
-    contact_email: 'N/A',
-    destination_port: 'N/A'
+    id: 'client-temp',
+    company_name: '',
+    address: '',
+    contact_name: '',
+    contact_email: '',
+    destination_port: ''
   };
-  const clientEmail = client.contact_email || 'N/A';
-  const buyerPhone = clientEmail.includes('busyexim') ? '+971 4 388 9100' : 'N/A';
-  const destinationPortLabel = (client.destination_port || 'Destination').trim();
-  const incotermLabel = (quote.incoterm || 'CIF (Cost, Insurance & Freight)').trim();
-  const incotermCode = incotermLabel.split(/[ (]/)[0].trim().toUpperCase() || 'CIF';
-  const freightLabels = getFreightPdfLabels(quote.shipment_mode);
-  const grandTotalLabel = 'GRAND TOTAL';
-  const offeredTotalLabel = showCifPortInTotal ? `TOTAL OFFERED ${incotermCode} VALUE (${destinationPortLabel.split(',')[0].toUpperCase()})` : 'TOTAL OFFERED VALUE';
-  const commercialBreakdownTitle = `3. Transparent ${incotermCode} Cost Structure Breakdown`;
 
-  // Pre-filled scope fallbacks matching the Sheshaan Global sample
+  const clientAddress = client.address && client.address !== 'N/A'
+    ? client.address
+    : '-';
+
+  const clientContact = client.contact_name && client.contact_name !== 'N/A'
+    ? `${client.contact_name} ${client.phone ? `| ${client.phone}` : ''}`
+    : '-';
+
+  const clientEmail = client.contact_email || '-';
+  const destinationPort = (quote.destination_port || client.destination_port || '').trim();
+  const incotermRaw = (quote.incoterm || '').trim();
+  const incotermCode = incotermRaw.split(/[ (]/)[0].trim().toUpperCase() || 'FOB';
+  const freightLabels = getFreightPdfLabels(quote.shipment_mode);
+
+  const costNotes: CostBreakdownNotes = quote.cost_breakdown_notes || {};
+
+  // Build Cost Breakdown Rows matching reference structure
+  const costBreakdownRows = [
+    {
+      visible: true,
+      title: 'Offered Goods Value',
+      detail: costNotes.offered_goods || 'Commercial offer value from Section 2, inclusive of quoted selling margin.',
+      basis: 'As per Section 2',
+      rate: 'Offered Rate',
+      amount: itemsSubtotal
+    },
+    {
+      visible: showOriginCharges && originExportCharges > 0,
+      title: 'Local Transport, Export & Handling Charges',
+      detail: costNotes.origin_charges || 'Export packing, inland haulage, THC, loading, and customs clearance as applicable.',
+      basis: 'Origin Services',
+      rate: 'Overall Order',
+      amount: originExportCharges
+    },
+    {
+      visible: showOceanFreight && Number(quote.freight_cost || 0) > 0,
+      title: freightLabels.freightTitle,
+      detail: costNotes.ocean_freight || `Lump-sum ${freightLabels.freightDetail} from ${(quote.loading_port || 'Loading Port').split(',')[0].trim()} to ${(destinationPort).split(',')[0].trim()}.`,
+      basis: `Lump Sum (${quote.shipment_mode || 'Sea Freight 1x20ft FCL'})`,
+      rate: 'Overall Order',
+      amount: Number(quote.freight_cost)
+    },
+    {
+      visible: showInsuranceCharge && Number(quote.insurance_cost || 0) > 0,
+      title: freightLabels.insuranceTitle,
+      detail: costNotes.insurance || freightLabels.insuranceDetail,
+      basis: 'Lump Sum (Policy)',
+      rate: 'Overall Order',
+      amount: Number(quote.insurance_cost)
+    }
+  ].filter(r => r.visible);
+
+  // Pre-filled fallback terms for Page 2
   const includedScope = quote.included_responsibilities || [
-    'Complete raw product cost & export packing in 40 kg Jute Bags',
-    'Inland haulage and transportation from factory to Mundra Port',
+    'Complete raw product cost & export packing in 50 kg PP Bags',
+    'Inland haulage and transportation from factory to loading port',
     'Terminal Handling Charges (THC) & container stuffing at origin port',
     'Export customs clearance, shipping bill, COO, and Phytosanitary Certificate',
-    `${freightLabels.includedFreightPrefix} from ${(quote.loading_port || 'Mundra').split(',')[0].trim()} to ${client.destination_port} (${formatValue(quote.freight_cost)} lump sum)`,
-    `${freightLabels.insuranceTitle} policy (${formatValue(quote.insurance_cost)} lump sum)`
+    `${freightLabels.includedFreightPrefix} from ${(quote.loading_port || 'Nhava Sheva').split(',')[0].trim()} to ${destinationPort} (${formatValue(quote.freight_cost || 0)} lump sum)`,
+    `${freightLabels.insuranceTitle} policy (${formatValue(quote.insurance_cost || 0)} lump sum)`
   ];
 
   const excludedScope = quote.excluded_responsibilities || [
     'Import duties, tariffs, and local destination taxes / VAT in destination country',
     freightLabels.isAir
-      ? `Destination airport handling charges and local terminal fees at ${client.destination_port}`
-      : `Destination port terminal handling charges (THC at ${client.destination_port})`,
+      ? `Destination airport handling charges and local terminal fees at ${destinationPort}`
+      : `Destination port terminal handling charges (THC at ${destinationPort})`,
     'Import customs clearance and local destination documentation',
     freightLabels.isAir ? 'Inland transport/delivery from destination airport to buyer warehouse' : 'Inland transport/delivery from discharge port to buyer warehouse',
     freightLabels.isAir ? 'Airline storage, handling, or warehousing fees at destination airport' : 'Container demurrage, detention, or storage fees at destination port',
@@ -889,8 +1170,8 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   };
 
   const commercialTerms = quote.commercial_terms || [
-    `Quotation Validity & ${freightLabels.freightAdjustmentTerm}: Quoted rates are valid for ${quote.validity_days || 15} days from issuance. ${freightLabels.freightRateTerm}, insurance premiums, and exchange rates remain indicative until final ${freightLabels.bookingTerm}.`,
-    'Payment Terms: ' + quote.payment_terms,
+    `Quotation Validity & ${freightLabels.freightAdjustmentTerm}: Quoted rates are valid for ${quote.validity_days || 7} days from issuance. ${freightLabels.freightRateTerm}, insurance premiums, and exchange rates remain indicative until final ${freightLabels.bookingTerm}.`,
+    'Payment Terms: ' + (quote.payment_terms || '50% Advance, 50% against shipping bill'),
     `Currency Exchange Protections & Settlement: All prices are quoted in ${quote.currency} based on a baseline exchange rate. Final proforma invoicing and settlement may be converted to USD or AED at prevailing RBI reference rates upon agreement.`,
     freightLabels.isAir
       ? 'Quality Assurance & Pre-Shipment Photos: Goods are supplied strictly per contract specifications. Pre-shipment quality inspection reports, packing photographs, and airway booking references will be provided prior to dispatch.'
@@ -903,267 +1184,226 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
       : 'Force Majeure: Seller shall not be held liable for shipment delays or non-performance resulting from vessel delays, port congestion, acts of God, strikes, or unexpected customs policy changes.',
     'Governing Law & Dispute Resolution: This contract shall be governed by Indian Maritime and Commercial Law. Any dispute arising under this agreement shall be subject to the exclusive jurisdiction of the courts in Nagpur, Maharashtra, India, or resolved through binding arbitration.'
   ];
-  const costNotes: CostBreakdownNotes = quote.cost_breakdown_notes || {};
 
-  const costBreakdownRows = [
-    {
-      visible: true,
-      title: 'Offered Goods Value',
-      detail: costNotes.offered_goods || 'Commercial offer value from Section 2, inclusive of quoted selling margin.',
-      basis: 'As per Section 2',
-      rate: 'Offered Rate',
-      amount: itemsSubtotal
-    },
-    {
-      visible: showOriginCharges,
-      title: 'Local Transport, Export & Handling Charges',
-      detail: costNotes.origin_charges || 'Export packing, inland haulage, THC, loading, and customs clearance as applicable.',
-      basis: 'Origin Services',
-      rate: 'Overall Order',
-      amount: originExportCharges
-    },
-    {
-      visible: showOceanFreight,
-      title: freightLabels.freightTitle,
-      detail: costNotes.ocean_freight || `Lump-sum ${freightLabels.freightDetail} from ${(quote.loading_port || 'Mundra').split(',')[0].trim()} to ${(client.destination_port || 'Destination').split(',')[0].trim()}.`,
-      basis: `Lump Sum (${quote.shipment_mode})`,
-      rate: 'Overall Order',
-      amount: Number(quote.freight_cost)
-    },
-    {
-      visible: showInsuranceCharge,
-      title: freightLabels.insuranceTitle,
-      detail: costNotes.insurance || freightLabels.insuranceDetail,
-      basis: 'Lump Sum (Policy)',
-      rate: 'Overall Order',
-      amount: Number(quote.insurance_cost)
-    }
-  ].filter((row) => row.visible);
-
-  const renderSignaturesBlock = () => (
-    <View style={styles.signaturesGrid} wrap={false}>
-      <View style={styles.signatureBox}>
-        <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller)</Text>
-        <View style={styles.signatureSignLine}>
-          {showCeoSignature && (
-            <Image src="/signature.png" style={styles.signatureImage} />
-          )}
-        </View>
-        <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
-        <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
-        <View style={{ marginTop: 4, alignItems: 'center' }}>
-          <Image src="/stamp.png" style={styles.stampImage} />
-        </View>
-      </View>
-
-      <View style={styles.signatureBox}>
-        <Text style={styles.signatureRoleLabel}>{documentType === 'packing_list' ? 'Received & Audited By Buyer' : 'Accepted & Confirmed By Buyer'}{"\n"}(Buyer Order Confirmation)</Text>
-        <View style={[styles.signatureSignLine, { borderStyle: 'dashed' }]} />
-        <Text style={styles.signatureTextName}>Authorized Buyer Signature & Stamp</Text>
-        <Text style={styles.signatureTextCompany}>{client.contact_name} / {client.company_name}</Text>
-      </View>
-    </View>
-  );
+  const logoSrc = getLogoSrc();
 
   return (
     <Document>
-      
       {/* ==================== PAGE 1 ==================== */}
       <Page size="A4" style={styles.page}>
-        <View style={styles.brandAccent} fixed />
-        <View style={styles.brandAccentGold} fixed />
         
-        {/* Upper Header Block */}
-        <View style={styles.companyHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Image src="/logo.png" style={styles.logoImage} />
-            <View style={{ marginLeft: 2 }}>
-              <Text style={[styles.companyTitle, { textTransform: 'uppercase' }]}>{shipper.company_name}</Text>
-              <Text style={styles.companySlogan}>Exporting Goodness Worldwide</Text>
-              <Text style={styles.companyMeta}>
-                IEC | GST | APEDA | FSSAI | Global Export Documentation
-              </Text>
+        {/* Upper Header */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Image src={logoSrc} style={styles.logo} />
+            <View style={styles.brandCol}>
+              <Text style={styles.companyTitle}>{shipper.company_name.toUpperCase()}</Text>
+              <Text style={styles.tagline}>EXPORTING GOODNESS WORLDWIDE</Text>
+              <Text style={styles.regLine}>IEC  |  GST  |  APEDA  |  FSSAI  |  GLOBAL EXPORT DOCUMENTATION</Text>
             </View>
           </View>
-          
-          <View style={styles.docHeaderCol}>
-            <Text style={styles.docHeaderTitle}>{getDocumentTitle()}</Text>
-            <Text style={styles.docHeaderRef}>REF: {quote.quote_number}</Text>
-            <Text style={styles.docHeaderMeta}>
-              Date: {formatDate(quote.created_at)} | Validity: {quote.validity_days || 15} Days
-            </Text>
-            <Text style={styles.statusPill}>{quote.status || 'Draft'} | {quote.currency}</Text>
+          <View style={styles.headerDivider} />
+          <View style={styles.headerRight}>
+            <Text style={styles.quoteTitle}>{getDocumentTitle()}</Text>
+            <Text style={styles.refNumber}>REF: {quote.quote_number || 'SG-CIF-2026-1236'}</Text>
+            <View style={styles.metaTable}>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Date</Text>
+                <Text style={styles.metaColon}>:</Text>
+                <Text style={styles.metaVal}>{formatDate(quote.created_at)}</Text>
+              </View>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Validity</Text>
+                <Text style={styles.metaColon}>:</Text>
+                <Text style={styles.metaVal}>{quote.validity_days ? `${quote.validity_days} Days` : '-'}</Text>
+              </View>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Terms</Text>
+                <Text style={styles.metaColon}>:</Text>
+                <Text style={styles.metaVal}>{quote.payment_terms || '-'}</Text>
+              </View>
+            </View>
           </View>
         </View>
 
         {/* 1. QUOTATION & PARTY DETAILS */}
-        <Text style={styles.sectionTitle}>1. Quotation & Party Details</Text>
-        <View style={styles.partyContainer} wrap={false}>
+        <View style={styles.sectionBar}>
+          <View style={styles.sectionBadge}>
+            <Text style={styles.sectionBadgeText}>1.</Text>
+          </View>
+          <Text style={styles.sectionTitleText}>QUOTATION & PARTY DETAILS</Text>
+        </View>
+
+        {/* Party Row */}
+        <View style={styles.partyRow}>
+          {/* Exporter */}
           <View style={styles.partyCard}>
             <View style={styles.partyHeaderBar}>
-              <Text style={styles.partyHeaderText}>Exporter / Seller</Text>
+              <Text style={styles.partyHeaderTitle}>EXPORTER / SELLER</Text>
             </View>
             <View style={styles.partyBody}>
               <Text style={styles.partyName}>{shipper.company_name}</Text>
-              <Text style={styles.partyText}>{shipper.address}</Text>
-              <View style={styles.partyInfoRow}>
-                <Text style={styles.partyInfoLabel}>Contact</Text>
-                <Text style={styles.partyInfoValue}>
-                  {shipper.contact_name} | {shipper.contact_name === 'Sana Zeba Bakshi (CEO)' ? '+91 81499 09546' : '+91 XXXXX XXXXX'}
-                </Text>
+              <Text style={styles.partyAddress}>{shipper.address}</Text>
+              <View style={styles.partyDivider} />
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Contact</Text>
+                <Text style={styles.kvColon}>:</Text>
+                <Text style={styles.kvValue}>{shipper.contact_name}  |  +91 81499 09546</Text>
               </View>
-              <View style={styles.partyInfoRow}>
-                <Text style={styles.partyInfoLabel}>Email</Text>
-                <Text style={styles.partyInfoValue}>{shipper.contact_email} | www.sheshaanglobal.com</Text>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Email</Text>
+                <Text style={styles.kvColon}>:</Text>
+                <Text style={styles.kvValue}>{shipper.contact_email}</Text>
+              </View>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Website</Text>
+                <Text style={styles.kvColon}>:</Text>
+                <Text style={styles.kvValue}>www.sheshaanglobal.com</Text>
               </View>
             </View>
           </View>
-          
+
+          {/* Buyer */}
           <View style={styles.partyCard}>
             <View style={styles.partyHeaderBar}>
-              <Text style={styles.partyHeaderText}>To: Buyer / Consignee</Text>
+              <Text style={styles.partyHeaderTitle}>TO: BUYER / CONSIGNEE</Text>
             </View>
             <View style={styles.partyBody}>
-              <Text style={styles.partyName}>{client.company_name}</Text>
-              <Text style={styles.partyText}>{client.address && client.address !== 'N/A' ? client.address : 'To: [Buyer Business Address, City, Country]'}</Text>
-              <View style={styles.partyInfoRow}>
-                <Text style={styles.partyInfoLabel}>Contact</Text>
-                <Text style={styles.partyInfoValue}>{client.contact_name || 'N/A'} | {buyerPhone}</Text>
+              <Text style={styles.partyName}>{client.company_name || '-'}</Text>
+              <Text style={styles.partyAddress}>{clientAddress}</Text>
+              <View style={styles.partyDivider} />
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Contact</Text>
+                <Text style={styles.kvColon}>:</Text>
+                <Text style={styles.kvValue}>{clientContact}</Text>
               </View>
-              <View style={styles.partyInfoRow}>
-                <Text style={styles.partyInfoLabel}>Email</Text>
-                <Text style={styles.partyInfoValue}>{clientEmail} | Port: {client.destination_port}</Text>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Email</Text>
+                <Text style={styles.kvColon}>:</Text>
+                <Text style={styles.kvValue}>{clientEmail}</Text>
+              </View>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>Port</Text>
+                <Text style={styles.kvColon}>:</Text>
+                <Text style={styles.kvValue}>{destinationPort || '-'}</Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* Logistics Grid details */}
-        <View style={styles.logisticsGrid} wrap={false}>
-          <View style={styles.logisticsRow}>
-            <View style={styles.logisticsCell}>
-              <Text style={styles.logisticsLabel}>Incoterm</Text>
-              <Text style={styles.logisticsVal}>{incotermLabel}</Text>
-            </View>
-            <View style={styles.logisticsCell}>
-              <Text style={styles.logisticsLabel}>Origin</Text>
-              <Text style={styles.logisticsVal}>{quote.origin_country}</Text>
-            </View>
-            <View style={styles.logisticsCellLast}>
-              <Text style={styles.logisticsLabel}>Loading Port</Text>
-              <Text style={styles.logisticsVal}>{quote.loading_port}</Text>
+        {/* Shipment Horizontal Grid */}
+        <View style={styles.shipmentBar}>
+          <View style={[styles.shipmentCol, { width: '13%' }]}>
+            <View style={styles.shipmentIconBox}><BoxIcon /></View>
+            <View style={styles.shipmentContent}>
+              <Text style={styles.shipmentLabel}>INCOTERM</Text>
+              <Text style={styles.shipmentVal}>{incotermCode || '-'}</Text>
             </View>
           </View>
-          <View style={styles.logisticsRowLast}>
-            <View style={styles.logisticsCell}>
-              <Text style={styles.logisticsLabel}>Destination Port</Text>
-              <Text style={styles.logisticsVal}>{client.destination_port}</Text>
+          <View style={[styles.shipmentCol, { width: '11%' }]}>
+            <View style={styles.shipmentIconBox}><GlobeIcon /></View>
+            <View style={styles.shipmentContent}>
+              <Text style={styles.shipmentLabel}>ORIGIN</Text>
+              <Text style={styles.shipmentVal}>{quote.origin_country || '-'}</Text>
             </View>
-            <View style={styles.logisticsCell}>
-              <Text style={styles.logisticsLabel}>Shipment Mode</Text>
-              <Text style={styles.logisticsVal}>{quote.shipment_mode}</Text>
+          </View>
+          <View style={[styles.shipmentCol, { width: '19%' }]}>
+            <View style={styles.shipmentIconBox}><AnchorIcon /></View>
+            <View style={styles.shipmentContent}>
+              <Text style={styles.shipmentLabel}>LOADING PORT</Text>
+              <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>{quote.loading_port || '-'}</Text>
             </View>
-            <View style={styles.logisticsCellLast}>
-              <Text style={styles.logisticsLabel}>Payment Terms</Text>
-              <Text style={styles.logisticsVal}>{quote.payment_terms}</Text>
+          </View>
+          <View style={[styles.shipmentCol, { width: '19%' }]}>
+            <View style={styles.shipmentIconBox}><MapPinIcon /></View>
+            <View style={styles.shipmentContent}>
+              <Text style={styles.shipmentLabel}>DESTINATION PORT</Text>
+              <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>{destinationPort || '-'}</Text>
+            </View>
+          </View>
+          <View style={[styles.shipmentCol, { width: '18%' }]}>
+            <View style={styles.shipmentIconBox}><ContainerIcon /></View>
+            <View style={styles.shipmentContent}>
+              <Text style={styles.shipmentLabel}>SHIPMENT MODE</Text>
+              <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>{quote.shipment_mode || '-'}</Text>
+            </View>
+          </View>
+          <View style={[styles.shipmentColLast, { width: '20%' }]}>
+            <View style={styles.shipmentIconBox}><DocIcon /></View>
+            <View style={styles.shipmentContent}>
+              <Text style={styles.shipmentLabel}>PAYMENT TERMS</Text>
+              <Text style={[styles.shipmentVal, { fontSize: 5.2, fontFamily: 'ArialCustom' }]}>{quote.payment_terms || '-'}</Text>
             </View>
           </View>
         </View>
 
         {/* 2. COMMERCIAL OFFER & SPECIFICATIONS */}
-        <Text style={styles.sectionTitle}>2. {documentType === 'packing_list' ? 'Export Goods Specifications' : 'Commercial Offer & Specifications'}</Text>
-        <View style={styles.table} wrap={false}>
-          {/* Header */}
-          <View style={styles.tableHeader}>
-            {documentType !== 'packing_list' ? (
+        <View style={styles.sectionBar}>
+          <View style={styles.sectionBadge}>
+            <Text style={styles.sectionBadgeText}>2.</Text>
+          </View>
+          <Text style={styles.sectionTitleText}>
+            {documentType === 'packing_list' ? 'EXPORT GOODS SPECIFICATIONS' : 'COMMERCIAL OFFER & SPECIFICATIONS'}
+          </Text>
+        </View>
+
+        {/* Section 2 Table */}
+        <View style={styles.table}>
+          <View style={styles.tHeaderRow}>
+            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Sr]}>SR</Text>
+            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Desc]}>PRODUCT DESCRIPTION & SPECIFICATIONS</Text>
+            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Hs]}>HS CODE</Text>
+            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Pack]}>PACKING & CONTAINER</Text>
+            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Qty]}>QUANTITY</Text>
+            {documentType !== 'packing_list' && (
               <>
-                <Text style={[styles.tableHeaderCol, styles.colSr]}>SR</Text>
-                <Text style={[styles.tableHeaderCol, styles.colDesc]}>Product Description & Specifications</Text>
-                <Text style={[styles.tableHeaderCol, styles.colHs]}>HS Code</Text>
-                <Text style={[styles.tableHeaderCol, styles.colPack]}>Packing & Container</Text>
-                <Text style={[styles.tableHeaderCol, styles.colQty]}>Quantity</Text>
-                <Text style={[styles.tableHeaderCol, styles.colPrice]}>Unit Price ({quote.currency})</Text>
-                <Text style={[styles.tableHeaderCol, styles.colTotal]}>Total Amount ({quote.currency})</Text>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.tableHeaderCol, styles.colSr]}>SR</Text>
-                <Text style={[styles.tableHeaderCol, { width: '45%' }]}>Product Description & Specifications</Text>
-                <Text style={[styles.tableHeaderCol, { width: '15%', textAlign: 'center' }]}>HS Code</Text>
-                <Text style={[styles.tableHeaderCol, { width: '20%' }]}>Packing & Container</Text>
-                <Text style={[styles.tableHeaderCol, { width: '15%', textAlign: 'right' }]}>Quantity</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Price]}>UNIT PRICE ({currencySymbol})</Text>
+                <Text style={[styles.tHeaderCol, styles.colS2Total]}>TOTAL AMOUNT ({currencySymbol})</Text>
               </>
             )}
           </View>
 
-          {/* Rows */}
+          {/* Line items */}
           {lineItems.map((item, index) => {
-            const isAlternate = index % 2 === 1;
-            const rowStyle = isAlternate ? styles.tableRowAlternate : styles.tableRow;
             const pricingBasis = getItemPricingBasis(item);
             const netWeight = getItemNetWeight(item);
             const packageQuantity = getItemPackageQuantity(item);
             const packageWeight = getItemPackageWeight(item);
             const itemTotal = getItemSellTotal(item);
-            const currencyLabel = quote.currency === 'INR' ? 'INR' : '$';
             const unitPriceAmount = pricingBasis === 'package'
-              ? Number(item.package_unit_price) || 0
-              : Number(item.unit_price) || 0;
+              ? Number(item.package_unit_price || 0)
+              : Number(item.unit_price || 0);
             const unitPriceBasis = pricingBasis === 'package' ? 'pkg' : 'kg';
-            
-            const descLines = (item.description || '').split('\n');
-            const mainTitle = descLines[0];
-            const bullets = descLines.slice(1);
+
+            const descLines = (item.description || '').split('\n').filter(Boolean);
+            const mainTitle = descLines[0] || 'Product';
+            const specBullets = descLines.slice(1);
 
             return (
-              <View key={item.id || index} style={rowStyle} wrap={false}>
-                <Text style={[styles.tableCol, styles.colSr]}>{index + 1}</Text>
-                
-                {documentType !== 'packing_list' ? (
+              <View key={item.id || index} style={styles.tRow} wrap={false}>
+                <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Sr]}>{index + 1}</Text>
+                <View style={[styles.colS2Desc, styles.tCellBorder]}>
+                  <Text style={styles.tCellBold}>{mainTitle}</Text>
+                  {specBullets.map((b, bi) => (
+                    <Text key={bi} style={[styles.tCell, { fontSize: 5.5, color: '#64748B', marginTop: 1 }]}>
+                      {b}
+                    </Text>
+                  ))}
+                </View>
+                <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Hs]}>{item.hs_code || '-'}</Text>
+                <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Pack]}>{item.packing_container || '-'}</Text>
+                <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Qty]}>
+                  {pricingBasis === 'package' && packageQuantity > 0
+                    ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} pkgs\n(${packageWeight} kg/pkg)`
+                    : `${new Intl.NumberFormat('en-US').format(netWeight)} kg\n(${(netWeight / 1000).toFixed(2)} MT)`}
+                </Text>
+                {documentType !== 'packing_list' && (
                   <>
-                    <View style={[styles.tableCol, styles.colDesc, styles.tableColDescBlock]}>
-                      <Text style={styles.tableColDescTitle}>{mainTitle || 'Product'}</Text>
-                      {(bullets || []).map((b, bi) => (
-                        <Text key={bi} style={styles.tableColDescBullet}>{b}</Text>
-                      ))}
-                    </View>
-                    
-                    <Text style={[styles.tableCol, styles.colHs]}>{item.hs_code || 'N/A'}</Text>
-                    <Text style={[styles.tableCol, styles.colPack]}>{item.packing_container || 'Standard Carton'}</Text>
-                    
-                    <Text style={[styles.tableCol, styles.colQty]}>
-                      {pricingBasis === 'package' && packageQuantity > 0
-                        ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} packages`
-                        : `${new Intl.NumberFormat('en-US').format(netWeight)} kg`}{"\n"}
-                      {pricingBasis === 'package' && packageWeight ? `${packageWeight} kg/pkg` : ''}{"\n"}
-                      {`${new Intl.NumberFormat('en-US').format(netWeight)} kg (${(netWeight / 1000).toFixed(2)} MT)`}
+                    <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Price]}>
+                      {currencySymbol} {unitPriceAmount.toFixed(2)}{"\n"}/{unitPriceBasis}
                     </Text>
-                    
-                    <Text style={[styles.tableCol, styles.colPrice]}>
-                      {currencyLabel}{"\n"}
-                      {unitPriceAmount.toFixed(2)}{"\n"}
-                      / {unitPriceBasis}
-                    </Text>
-                    
-                    <Text style={[styles.tableCol, styles.colTotal, { fontWeight: 'bold' }]}>
-                      {quote.currency === 'INR' ? 'INR' : '$'} {new Intl.NumberFormat('en-US').format(itemTotal)}
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <View style={[styles.tableCol, { width: '45%' }, styles.tableColDescBlock]}>
-                      <Text style={styles.tableColDescTitle}>{mainTitle || 'Product'}</Text>
-                      {(bullets || []).map((b, bi) => (
-                        <Text key={bi} style={styles.tableColDescBullet}>{b}</Text>
-                      ))}
-                    </View>
-                    <Text style={[styles.tableCol, { width: '15%', textAlign: 'center' }]}>{item.hs_code || 'N/A'}</Text>
-                    <Text style={[styles.tableCol, { width: '20%' }]}>{item.packing_container || 'Standard Carton'}</Text>
-                    <Text style={[styles.tableCol, { width: '15%', textAlign: 'right', fontWeight: 'bold' }]}>
-                      {pricingBasis === 'package' && packageQuantity > 0
-                        ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} pkg`
-                        : `${new Intl.NumberFormat('en-US').format(netWeight)} kg`}{"\n"}
-                      {`${new Intl.NumberFormat('en-US').format(netWeight)} kg`}
+                    <Text style={[styles.tCellBold, styles.colS2Total, { fontSize: 7.5 }]}>
+                      {formatSection2Amount(itemTotal)}
                     </Text>
                   </>
                 )}
@@ -1171,286 +1411,420 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
             );
           })}
 
-          {/* Grand total header row of section 2 */}
+          {/* Grand Total Row */}
           {documentType !== 'packing_list' && (
             <View style={styles.grandTotalRow} wrap={false}>
-              <Text style={styles.grandTotalLabel}>{grandTotalLabel}</Text>
-              <Text style={styles.grandTotalVal}>{formatValue(itemsSubtotal)}</Text>
+              <View style={styles.grandTotalLeftCell}>
+                <Text style={styles.grandTotalLabel}>GRAND TOTAL</Text>
+              </View>
+              <View style={styles.grandTotalRightCell}>
+                <Text style={styles.grandTotalVal}>{formatSection2Amount(itemsSubtotal)}</Text>
+              </View>
             </View>
           )}
         </View>
 
-        {/* Amount in words */}
+        {/* Amount in words box */}
         {documentType !== 'packing_list' && (
-          <View style={styles.amountWordsBlock} wrap={false}>
-            <Text style={styles.amountWordsText}>
+          <View style={styles.wordsBox} wrap={false}>
+            <Text style={styles.wordsText}>
               Amount in Words: {numberToWords(itemsSubtotal, quote.currency)}
             </Text>
           </View>
         )}
 
-        {/* 3. TRANSPARENT CIF COST STRUCTURE BREAKDOWN / BANK INSTRUCTIONS */}
+        {/* 3. TRANSPARENT FOB / CIF COST STRUCTURE BREAKDOWN */}
         {documentType === 'quotation' && showCifBreakdown && (
           <>
-            <Text style={styles.sectionTitle}>{commercialBreakdownTitle}</Text>
-            <View style={styles.table} wrap={false}>
-              {/* Header */}
-              <View style={styles.tableHeader}>
-                <Text style={[styles.tableHeaderCol, styles.colBdSr]}>SR</Text>
-                <Text style={[styles.tableHeaderCol, styles.colBdDesc]}>Cost Component Itemization</Text>
-                <Text style={[styles.tableHeaderCol, styles.colBdBasis]}>Basis of Calculation</Text>
-                <Text style={[styles.tableHeaderCol, styles.colBdRate]}>Rate / Charge</Text>
-                <Text style={[styles.tableHeaderCol, styles.colBdTotal]}>Total Amount ({quote.currency})</Text>
+            <View style={styles.sectionBar} wrap={false}>
+              <View style={styles.sectionBadge}>
+                <Text style={styles.sectionBadgeText}>3.</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>
+                TRANSPARENT {incotermCode} COST STRUCTURE BREAKDOWN
+              </Text>
+            </View>
+
+            <View style={styles.table}>
+              <View style={styles.tHeaderRow} wrap={false}>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS3Sr]}>SR</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS3Desc]}>COST COMPONENT / ITEMIZATION</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS3Basis]}>BASIS OF CALCULATION</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS3Rate]}>RATE / CHARGE</Text>
+                <Text style={[styles.tHeaderCol, styles.colS3Total]}>TOTAL AMOUNT ({currencySymbol})</Text>
               </View>
 
               {costBreakdownRows.map((row, index) => (
-                <View key={row.title} style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlternate} wrap={false}>
-                  <Text style={[styles.tableCol, styles.colBdSr]}>{index + 1}</Text>
-                  <View style={[styles.tableCol, styles.colBdDesc]}>
-                    <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>{row.title}</Text>
-                    <Text style={{ fontSize: 6, color: '#64748b', marginTop: 1 }}>{row.detail}</Text>
+                <View key={row.title} style={styles.tRow} wrap={false}>
+                  <Text style={[styles.tCell, styles.tCellBorder, styles.colS3Sr]}>{index + 1}</Text>
+                  <View style={[styles.colS3Desc, styles.tCellBorder]}>
+                    <Text style={styles.tCellBold}>{row.title}</Text>
+                    <Text style={[styles.tCell, { fontSize: 5.4, color: '#64748B', marginTop: 1 }]}>
+                      {row.detail}
+                    </Text>
                   </View>
-                  <Text style={[styles.tableCol, styles.colBdBasis]}>{row.basis}</Text>
-                  <Text style={[styles.tableCol, styles.colBdRate]}>{row.rate}</Text>
-                  <Text style={[styles.tableCol, styles.colBdTotal]}>{formatValue(row.amount)}</Text>
+                  <Text style={[styles.tCell, styles.tCellBorder, styles.colS3Basis]}>{row.basis}</Text>
+                  <Text style={[styles.tCell, styles.tCellBorder, styles.colS3Rate]}>{row.rate}</Text>
+                  <Text style={[styles.tCell, styles.colS3Total]}>{formatValue(row.amount)}</Text>
                 </View>
               ))}
 
-              {/* Grand total breakdown */}
-              <View style={styles.tableRowGrandTotal} wrap={false}>
-                <Text style={styles.bdGrandLabel}>{offeredTotalLabel}</Text>
-                <Text style={styles.bdGrandVal}>{formatValue(totalCIF)}</Text>
+              {/* Highlighted Dark Total Row */}
+              <View style={styles.offeredTotalBar} wrap={false}>
+                <Text style={styles.offeredTotalLeft}>TOTAL OFFERED {incotermCode} VALUE</Text>
+                <View style={styles.offeredTotalRightGroup}>
+                  <Text style={styles.offeredTotalDivider}>|</Text>
+                  <Text style={styles.offeredTotalVal}>{formatValue(finalOfferedTotal)}</Text>
+                </View>
               </View>
             </View>
 
-            <View style={[styles.amountWordsBlock, { marginTop: 4 }]} wrap={false}>
-              <Text style={styles.amountWordsText}>
-                Total Offered {incotermCode} Value in Words: {numberToWords(totalCIF, quote.currency)}
+            <View style={styles.wordsBox} wrap={false}>
+              <Text style={styles.wordsText}>
+                Total Offered {incotermCode} Value in Words: {numberToWords(finalOfferedTotal, quote.currency)}
               </Text>
             </View>
           </>
         )}
 
+        {/* Banking Settlement for Invoice */}
         {documentType === 'invoice' && (
           <>
-            <Text style={styles.sectionTitle}>3. Banking Settlement & Wire Instructions</Text>
-            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 10 }} wrap={false}>
-              <Text style={{ fontSize: 7.5, fontWeight: 'bold', color: '#0f172a', marginBottom: 6, borderBottomWidth: 0.5, borderBottomColor: '#cbd5e1', paddingBottom: 2 }}>TELEGRAPHIC TRANSFER (T/T) ACCOUNT ROUTING</Text>
+            <View style={styles.sectionBar}>
+              <View style={styles.sectionBadge}>
+                <Text style={styles.sectionBadgeText}>3.</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>BANKING SETTLEMENT & WIRE INSTRUCTIONS</Text>
+            </View>
+            <View style={[styles.table, { padding: 8, backgroundColor: C.bgSection }]}>
+              <Text style={{ fontFamily: 'ArialCustom', fontWeight: 'bold', fontSize: 7, color: C.navyDark, marginBottom: 5 }}>
+                TELEGRAPHIC TRANSFER (T/T) ACCOUNT ROUTING
+              </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                 <View style={{ width: '48%', marginBottom: 3 }}>
-                  <Text style={{ fontSize: 5.5, color: '#64748b', textTransform: 'uppercase' }}>Beneficiary Bank</Text>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#334155' }}>{bankDetails.beneficiary_bank}</Text>
+                  <Text style={{ fontSize: 5.5, color: '#64748B' }}>Beneficiary Bank</Text>
+                  <Text style={{ fontFamily: 'ArialCustom', fontWeight: 'bold', fontSize: 6.8, color: C.navyDark }}>{bankDetails.beneficiary_bank}</Text>
                 </View>
                 <View style={{ width: '48%', marginBottom: 3 }}>
-                  <Text style={{ fontSize: 5.5, color: '#64748b', textTransform: 'uppercase' }}>Branch Location</Text>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#334155' }}>{bankDetails.branch_location}</Text>
+                  <Text style={{ fontSize: 5.5, color: '#64748B' }}>Branch Location</Text>
+                  <Text style={{ fontFamily: 'ArialCustom', fontWeight: 'bold', fontSize: 6.8, color: C.navyDark }}>{bankDetails.branch_location}</Text>
                 </View>
                 <View style={{ width: '48%', marginBottom: 3 }}>
-                  <Text style={{ fontSize: 5.5, color: '#64748b', textTransform: 'uppercase' }}>Account Holder Name</Text>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#334155' }}>{bankDetails.account_holder_name}</Text>
+                  <Text style={{ fontSize: 5.5, color: '#64748B' }}>Account Holder Name</Text>
+                  <Text style={{ fontFamily: 'ArialCustom', fontWeight: 'bold', fontSize: 6.8, color: C.navyDark }}>{bankDetails.account_holder_name}</Text>
                 </View>
                 <View style={{ width: '48%', marginBottom: 3 }}>
-                  <Text style={{ fontSize: 5.5, color: '#64748b', textTransform: 'uppercase' }}>Routing Account Number</Text>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#334155' }}>{bankDetails.account_number}</Text>
+                  <Text style={{ fontSize: 5.5, color: '#64748B' }}>Routing Account Number</Text>
+                  <Text style={{ fontFamily: 'ArialCustom', fontWeight: 'bold', fontSize: 6.8, color: C.navyDark }}>{bankDetails.account_number}</Text>
                 </View>
                 <View style={{ width: '48%' }}>
-                  <Text style={{ fontSize: 5.5, color: '#64748b', textTransform: 'uppercase' }}>Local IFSC Code</Text>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#334155' }}>{bankDetails.ifsc_code}</Text>
+                  <Text style={{ fontSize: 5.5, color: '#64748B' }}>Local IFSC Code</Text>
+                  <Text style={{ fontFamily: 'ArialCustom', fontWeight: 'bold', fontSize: 6.8, color: C.navyDark }}>{bankDetails.ifsc_code}</Text>
                 </View>
                 <View style={{ width: '48%' }}>
-                  <Text style={{ fontSize: 5.5, color: '#64748b', textTransform: 'uppercase' }}>SWIFT BIC Identifier</Text>
-                  <Text style={{ fontSize: 7, fontWeight: 'bold', color: '#334155' }}>{bankDetails.swift_code}</Text>
+                  <Text style={{ fontSize: 5.5, color: '#64748B' }}>SWIFT BIC Identifier</Text>
+                  <Text style={{ fontFamily: 'ArialCustom', fontWeight: 'bold', fontSize: 6.8, color: C.navyDark }}>{bankDetails.swift_code}</Text>
                 </View>
               </View>
             </View>
           </>
         )}
 
+        {/* Shipping Weight for Packing List */}
         {documentType === 'packing_list' && (
           <>
-            <Text style={styles.sectionTitle}>3. Shipping Weight & Volumetric Totals</Text>
-            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between' }} wrap={false}>
+            <View style={styles.sectionBar}>
+              <View style={styles.sectionBadge}>
+                <Text style={styles.sectionBadgeText}>3.</Text>
+              </View>
+              <Text style={styles.sectionTitleText}>SHIPPING WEIGHT & VOLUMETRIC TOTALS</Text>
+            </View>
+            <View style={[styles.shipmentBar, { padding: 8, justifyContent: 'space-between' }]}>
               <View>
-                <Text style={{ fontSize: 6, color: '#64748b', textTransform: 'uppercase' }}>Total Packages</Text>
-                <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#0f172a', marginTop: 2 }}>{lineItems.length === 1 && lineItems[0]?.packing_container?.includes('325') ? '325 Bags' : 'Standard Crates/Bags'}</Text>
+                <Text style={styles.shipmentLabel}>TOTAL PACKAGES</Text>
+                <Text style={[styles.shipmentVal, { fontSize: 8 }]}>
+                  {lineItems.length === 1 && lineItems[0]?.packing_container ? lineItems[0].packing_container : 'Standard Export Bags/Cartons'}
+                </Text>
               </View>
               <View>
-                <Text style={{ fontSize: 6, color: '#64748b', textTransform: 'uppercase' }}>Total Estimated Gross Weight</Text>
-                <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#0f172a', marginTop: 2 }}>{new Intl.NumberFormat('en-US').format(totalWeight)} kg</Text>
+                <Text style={styles.shipmentLabel}>TOTAL ESTIMATED GROSS WEIGHT</Text>
+                <Text style={[styles.shipmentVal, { fontSize: 8 }]}>
+                  {new Intl.NumberFormat('en-US').format(totalWeight)} kg ({(totalWeight / 1000).toFixed(2)} MT)
+                </Text>
               </View>
               <View>
-                <Text style={{ fontSize: 6, color: '#64748b', textTransform: 'uppercase' }}>Shipment Container Specifications</Text>
-                <Text style={{ fontSize: 9, fontWeight: 'bold', color: '#0f172a', marginTop: 2 }}>{quote.shipment_mode}</Text>
+                <Text style={styles.shipmentLabel}>CONTAINER SPECIFICATION</Text>
+                <Text style={[styles.shipmentVal, { fontSize: 8 }]}>{quote.shipment_mode || '20ft FCL Dry Container'}</Text>
               </View>
             </View>
           </>
         )}
 
-        {/* Note on commercial structure */}
-        {(documentType === 'quotation' || documentType === 'invoice') && quote.commercial_note?.trim() && (
-          <View style={styles.commercialNoteBlock} wrap={false}>
-            <Text style={styles.commercialNoteText}>
-              Note on Commercial Structure: {quote.commercial_note}
+        {/* Note Box */}
+        <View style={styles.noteBox} wrap={false}>
+          <View style={styles.noteLeftGroup}>
+            <View style={styles.noteIconBox}><DocIcon /></View>
+            <Text style={styles.noteTitle}>NOTE</Text>
+          </View>
+          <View style={styles.noteDivider} />
+          <View style={styles.noteRightTextGroup}>
+            {quote.commercial_note?.trim() ? (
+              <Text style={styles.noteTextLine}>
+                {quote.commercial_note}
+              </Text>
+            ) : null}
+            <Text style={styles.noteTextLine}>
+              This commercial structure is indicative and subject to final confirmation, availability of cargo, and standard export documentation.
             </Text>
           </View>
-        )}
+        </View>
 
-        {!showDetailsPage && showSignatureBlock && renderSignaturesBlock()}
-
-        {/* Footer Page 1 */}
-        <Text
-          style={styles.footer}
-          render={() => (
-            `${shipper.company_name} | Office: Maharashtra, India | Email: ${shipper.contact_email} | Web: www.sheshaanglobal.com | Page 1 of ${showDetailsPage ? '2' : '1'}`
-          )}
-          fixed
-        />
+        {/* Footer */}
+        <View style={styles.footer} wrap={false}>
+          <View style={styles.footerCol1}>
+            <Text style={styles.footerBrand}>SHESHAAN GLOBAL</Text>
+            <Text style={styles.footerTagline}>EXPORTING GOODNESS WORLDWIDE</Text>
+          </View>
+          <View style={styles.footerDivider} />
+          <View style={styles.footerCol2}>
+            <View style={styles.footerCircleIcon}><FooterPinBadge /></View>
+            <Text style={styles.footerText}>
+              {shipper.address.replace(/\n/g, ', ')}
+            </Text>
+          </View>
+          <View style={styles.footerDivider} />
+          <View style={styles.footerCol3}>
+            <View style={styles.footerCircleIcon}><FooterMailBadge /></View>
+            <Text style={styles.footerText}>
+              {shipper.contact_email}{"\n"}www.sheshaanglobal.com
+            </Text>
+          </View>
+          <View style={styles.footerDivider} />
+          <View style={styles.footerCol4}>
+            <View style={styles.footerCircleIcon}><FooterPhoneBadge /></View>
+            <Text style={styles.footerPhone}>+91 81499 09546</Text>
+          </View>
+        </View>
       </Page>
 
-      {/* ==================== PAGE 2 ==================== */}
+      {/* ==================== PAGE 2 (If Details Page Enabled) ==================== */}
       {showDetailsPage && (
-      <Page size="A4" style={styles.page}>
-        <View style={styles.brandAccent} fixed />
-        <View style={styles.brandAccentGold} fixed />
-        
-        {/* Mini Header Page 2 */}
-        <View style={[styles.companyHeader, { marginBottom: 15 }]}>
-          <Text style={{ fontSize: 8, fontWeight: 'bold', color: '#475569' }}>
-            {(shipper.company_name || '').toUpperCase()} - {getDocumentTitle()} REF: {quote.quote_number || ''}
-          </Text>
-          <Text style={{ fontSize: 8, color: '#64748b' }}>
-            Date: {formatDate(quote.created_at)}
-          </Text>
-        </View>
+        <Page size="A4" style={styles.page}>
+          
+          {/* Mini Header Page 2 */}
+          <View style={styles.page2Header}>
+            <Text style={styles.page2HeaderText}>
+              {shipper.company_name.toUpperCase()} - {getDocumentTitle()} REF: {quote.quote_number || 'SG-CIF-2026-1236'}
+            </Text>
+            <Text style={styles.page2HeaderDate}>
+              Date: {formatDate(quote.created_at)}
+            </Text>
+          </View>
 
-        {/* 4. SCOPE OF RESPONSIBILITIES & EXPORT CONDITIONS */}
-        {documentType !== 'packing_list' ? (
-          <>
-            <Text style={styles.sectionTitle}>4. Scope of Responsibilities & Export Conditions</Text>
-            <View style={styles.responsibilitiesContainer} wrap={false}>
-              
-              <View style={[styles.scopeBox, styles.scopeBoxIncluded]}>
-                <Text style={[styles.scopeTitle, styles.scopeTitleIncluded]}>Included in Seller&apos;s {incotermCode} Price</Text>
-                <View style={styles.bulletList}>
-                  {includedScope.map((item, idx) => (
-                    <View key={idx} style={styles.bulletRow}>
-                      <Text style={[styles.bulletPoint, styles.bulletPointIncluded]}>-</Text>
-                      <Text style={styles.bulletText}>{item}</Text>
-                    </View>
-                  ))}
+          {/* 4. SCOPE OF RESPONSIBILITIES & EXPORT CONDITIONS */}
+          {documentType !== 'packing_list' ? (
+            <>
+              <View style={styles.sectionBar}>
+                <View style={styles.sectionBadge}>
+                  <Text style={styles.sectionBadgeText}>4.</Text>
+                </View>
+                <Text style={styles.sectionTitleText}>SCOPE OF RESPONSIBILITIES & EXPORT CONDITIONS</Text>
+              </View>
+              <View style={styles.p2TwoColRow}>
+                <View style={styles.p2Box}>
+                  <View style={styles.p2BoxHeader}>
+                    <Text style={styles.p2BoxHeaderTitle}>INCLUDED IN SELLER&apos;S {incotermCode} PRICE</Text>
+                  </View>
+                  <View style={styles.p2BoxBody}>
+                    {includedScope.map((item, idx) => (
+                      <View key={idx} style={styles.p2BulletRow}>
+                        <Text style={styles.p2BulletDot}>•</Text>
+                        <Text style={styles.p2BulletText}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.p2Box}>
+                  <View style={styles.p2BoxHeader}>
+                    <Text style={styles.p2BoxHeaderTitle}>BUYER EXCLUSIONS & RESPONSIBILITIES</Text>
+                  </View>
+                  <View style={styles.p2BoxBody}>
+                    {excludedScope.map((item, idx) => (
+                      <View key={idx} style={styles.p2BulletRow}>
+                        <Text style={styles.p2BulletDot}>•</Text>
+                        <Text style={styles.p2BulletText}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
               </View>
-              
-              <View style={[styles.scopeBox, styles.scopeBoxExcluded]}>
-                <Text style={[styles.scopeTitle, styles.scopeTitleExcluded]}>Buyer Exclusions & Responsibilities</Text>
-                <View style={styles.bulletList}>
-                  {excludedScope.map((item, idx) => (
-                    <View key={idx} style={styles.bulletRow}>
-                      <Text style={[styles.bulletPoint, styles.bulletPointExcluded]}>-</Text>
-                      <Text style={styles.bulletText}>{item}</Text>
-                    </View>
-                  ))}
+            </>
+          ) : (
+            <>
+              <View style={styles.sectionBar}>
+                <View style={styles.sectionBadge}>
+                  <Text style={styles.sectionBadgeText}>4.</Text>
                 </View>
+                <Text style={styles.sectionTitleText}>PACKAGING & STUFFING SPECIFICATIONS</Text>
               </View>
-            </View>
-          </>
-        ) : (
-          <>
-            <Text style={styles.sectionTitle}>4. Packaging & Stuffing Specifications</Text>
-            <View style={{ borderWidth: 0.75, borderColor: '#cbd5e1', borderRadius: 3, padding: 8, backgroundColor: '#f8fafc', marginBottom: 12 }} wrap={false}>
-              <Text style={{ fontSize: 7, color: '#334155', lineHeight: 1.4 }}>
-                - Packaging Material: High-strength, food-grade single Jute Bags (40 kg Net / Bag) with internal LDPE poly liner (50 microns).{"\n"}
-                - Container Stuffing: 325 bags manually palletized, strapped, and shrink-wrapped with corner guards inside a standard 20ft FCL container.{"\n"}
-                - Cargo Protection: Desiccant bags placed inside container to prevent sweat/moisture condensation.
-              </Text>
-            </View>
-          </>
-        )}
+              <View style={[styles.p2TermsContainer, { marginBottom: 10 }]}>
+                <Text style={[styles.p2TermText, { fontSize: 6.2 }]}>
+                  • Packaging Material: High-strength, food-grade PP bags (50 kg Net / Bag) with internal moisture liner.{"\n"}
+                  • Container Stuffing: Manually palletized, strapped, and shrink-wrapped with corner guards inside standard 20ft FCL container.{"\n"}
+                  • Cargo Protection: Desiccant bags placed inside container to prevent sweat/moisture condensation.
+                </Text>
+              </View>
+            </>
+          )}
 
-        {/* 5. DOCUMENTATION & LOGISTICS PARAMETERS */}
-        <Text style={styles.sectionTitle}>5. Documentation & Logistics Parameters</Text>
-        <View style={styles.docSpecsContainer} wrap={false}>
-          
-          <View style={styles.docBox}>
-            <Text style={styles.docTitle}>{documentType === 'packing_list' ? 'Shipping Documents Attached' : 'Export Documentation Included'}</Text>
-            <View style={styles.bulletList}>
-              {docList.map((item, idx) => (
-                <View key={idx} style={styles.bulletRow}>
-                  <Text style={[styles.bulletPoint, { color: '#475569' }]}>-</Text>
-                  <Text style={styles.bulletText}>{item}</Text>
-                </View>
-              ))}
+          {/* 5. DOCUMENTATION & LOGISTICS PARAMETERS */}
+          <View style={styles.sectionBar}>
+            <View style={styles.sectionBadge}>
+              <Text style={styles.sectionBadgeText}>5.</Text>
             </View>
+            <Text style={styles.sectionTitleText}>DOCUMENTATION & LOGISTICS PARAMETERS</Text>
           </View>
-          
-          <View style={styles.specsBox}>
-            <Text style={styles.docTitle}>Logistics & Operational Specifications</Text>
-            
-            <View style={styles.specsRow}>
-              <Text style={styles.specsLabel}>Shipment Window:</Text>
-              <Text style={styles.specsValue}>{specMap.shipment_window}</Text>
-            </View>
-            <View style={styles.specsRow}>
-              <Text style={styles.specsLabel}>Transit Time:</Text>
-              <Text style={styles.specsValue}>{specMap.transit_time}</Text>
-            </View>
-            <View style={styles.specsRow}>
-              <Text style={styles.specsLabel}>Partial Shipment / Transshipment:</Text>
-              <Text style={styles.specsValue}>{specMap.partial_shipment}</Text>
-            </View>
-            <View style={styles.specsRow}>
-              <Text style={styles.specsLabel}>Container Type:</Text>
-              <Text style={styles.specsValue}>{specMap.container_type}</Text>
-            </View>
-            <View style={[styles.specsRow, { borderBottomWidth: 0 }]}>
-              <Text style={styles.specsLabel}>Storage Condition:</Text>
-              <Text style={styles.specsValue}>{specMap.storage_condition}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* 6. COMMERCIAL TERMS & CONDITIONS */}
-        {documentType !== 'packing_list' ? (
-          <>
-            <Text style={styles.sectionTitle}>6. Commercial Terms & Conditions</Text>
-            <View style={styles.termsSection} wrap={false}>
-              <View style={styles.termsList}>
-                {commercialTerms.map((term, idx) => (
-                  <View key={idx} style={styles.termRow}>
-                    <Text style={styles.termNum}>{idx + 1}.</Text>
-                    <Text style={styles.termText}>{term}</Text>
+          <View style={styles.p2TwoColRow}>
+            <View style={styles.p2Box}>
+              <View style={styles.p2BoxHeader}>
+                <Text style={styles.p2BoxHeaderTitle}>
+                  {documentType === 'packing_list' ? 'SHIPPING DOCUMENTS ATTACHED' : 'EXPORT DOCUMENTATION INCLUDED'}
+                </Text>
+              </View>
+              <View style={styles.p2BoxBody}>
+                {docList.map((item, idx) => (
+                  <View key={idx} style={styles.p2BulletRow}>
+                    <Text style={styles.p2BulletDot}>•</Text>
+                    <Text style={styles.p2BulletText}>{item}</Text>
                   </View>
                 ))}
               </View>
             </View>
-          </>
-        ) : (
-          <>
-            <Text style={styles.sectionTitle}>6. {freightLabels.isAir ? 'Air Cargo Delivery & Receipt Conditions' : 'Port Delivery & Receipt Conditions'}</Text>
-            <View style={{ borderLeftWidth: 2, borderLeftColor: '#0ea5e9', paddingLeft: 6, marginBottom: 15 }} wrap={false}>
-              <Text style={{ fontSize: 6.5, color: '#64748b', lineHeight: 1.4 }}>
-                {freightLabels.isAir
-                  ? '1. Recipient must validate carton count, airway bill reference, and package condition immediately upon airport cargo release.\n2. Weight tolerances: A standard moisture weight variation of +/- 0.5% during air transport is commercially acceptable.'
-                  : '1. Recipient must perform validation of seal integrity and container numbers against the Clean Bill of Lading immediately upon port clearance.\n2. Weight tolerances: A standard moisture weight variation of +/- 0.5% during sea transport is commercially acceptable.'}
+            <View style={styles.p2Box}>
+              <View style={styles.p2BoxHeader}>
+                <Text style={styles.p2BoxHeaderTitle}>LOGISTICS & OPERATIONAL SPECIFICATIONS</Text>
+              </View>
+              <View style={styles.p2BoxBody}>
+                <View style={styles.p2SpecRow}>
+                  <Text style={styles.p2SpecLabel}>Shipment Window:</Text>
+                  <Text style={styles.p2SpecValue}>{specMap.shipment_window}</Text>
+                </View>
+                <View style={styles.p2SpecRow}>
+                  <Text style={styles.p2SpecLabel}>Transit Time:</Text>
+                  <Text style={styles.p2SpecValue}>{specMap.transit_time}</Text>
+                </View>
+                <View style={styles.p2SpecRow}>
+                  <Text style={styles.p2SpecLabel}>Partial Shipment / Transshipment:</Text>
+                  <Text style={styles.p2SpecValue}>{specMap.partial_shipment}</Text>
+                </View>
+                <View style={styles.p2SpecRow}>
+                  <Text style={styles.p2SpecLabel}>Container Type:</Text>
+                  <Text style={styles.p2SpecValue}>{specMap.container_type}</Text>
+                </View>
+                <View style={[styles.p2SpecRow, { borderBottomWidth: 0 }]}>
+                  <Text style={styles.p2SpecLabel}>Storage Condition:</Text>
+                  <Text style={styles.p2SpecValue}>{specMap.storage_condition}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* 6. COMMERCIAL TERMS & CONDITIONS */}
+          {documentType !== 'packing_list' ? (
+            <>
+              <View style={styles.sectionBar}>
+                <View style={styles.sectionBadge}>
+                  <Text style={styles.sectionBadgeText}>6.</Text>
+                </View>
+                <Text style={styles.sectionTitleText}>COMMERCIAL TERMS & CONDITIONS</Text>
+              </View>
+              <View style={styles.p2TermsContainer}>
+                {commercialTerms.map((term, idx) => (
+                  <View key={idx} style={styles.p2TermRow}>
+                    <Text style={styles.p2TermNum}>{idx + 1}.</Text>
+                    <Text style={styles.p2TermText}>{term}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.sectionBar}>
+                <View style={styles.sectionBadge}>
+                  <Text style={styles.sectionBadgeText}>6.</Text>
+                </View>
+                <Text style={styles.sectionTitleText}>
+                  {freightLabels.isAir ? 'AIR CARGO DELIVERY & RECEIPT CONDITIONS' : 'PORT DELIVERY & RECEIPT CONDITIONS'}
+                </Text>
+              </View>
+              <View style={styles.p2TermsContainer}>
+                <Text style={[styles.p2TermText, { fontSize: 6 }]}>
+                  {freightLabels.isAir
+                    ? '1. Recipient must validate carton count, airway bill reference, and package condition immediately upon airport cargo release.\n2. Weight tolerances: A standard moisture weight variation of +/- 0.5% during air transport is commercially acceptable.'
+                    : '1. Recipient must perform validation of seal integrity and container numbers against the Clean Bill of Lading immediately upon port clearance.\n2. Weight tolerances: A standard moisture weight variation of +/- 0.5% during sea transport is commercially acceptable.'}
+                </Text>
+              </View>
+            </>
+          )}
+
+          {/* SIGNATURES BLOCK */}
+          {showSignatureBlock && (
+            <View style={styles.signaturesGrid} wrap={false}>
+              <View style={styles.signatureBox}>
+                <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller)</Text>
+                <View style={styles.signatureSignLine}>
+                  {showCeoSignature && (
+                    <Image src="/signature.png" style={styles.signatureImage} />
+                  )}
+                </View>
+                <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
+                <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
+                <View style={{ marginTop: 4, alignItems: 'center' }}>
+                  <Image src="/stamp.png" style={styles.stampImage} />
+                </View>
+              </View>
+
+              <View style={styles.signatureBox}>
+                <Text style={styles.signatureRoleLabel}>
+                  {documentType === 'packing_list' ? 'Received & Audited By Buyer' : 'Accepted & Confirmed By Buyer'}{"\n"}(Buyer Order Confirmation)
+                </Text>
+                <View style={[styles.signatureSignLine, { borderStyle: 'dashed' }]} />
+                <Text style={styles.signatureTextName}>Authorized Buyer Signature & Stamp</Text>
+                <Text style={styles.signatureTextCompany}>
+                  {[client.contact_name, client.company_name].filter(Boolean).join(' / ') || 'Authorized Buyer Representative'}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Footer Page 2 */}
+          <View style={styles.footer} wrap={false}>
+            <View style={styles.footerCol1}>
+              <Text style={styles.footerBrand}>SHESHAAN GLOBAL</Text>
+              <Text style={styles.footerTagline}>EXPORTING GOODNESS WORLDWIDE</Text>
+            </View>
+            <View style={styles.footerDivider} />
+            <View style={styles.footerCol2}>
+              <View style={styles.footerCircleIcon}><FooterPinBadge /></View>
+              <Text style={styles.footerText}>
+                {shipper.address.replace(/\n/g, ', ')}
               </Text>
             </View>
-          </>
-        )}
-
-        {/* SIGNATURES BLOCK */}
-        {showSignatureBlock && renderSignaturesBlock()}
-
-        {/* Footer Page 2 */}
-        <Text
-          style={styles.footer}
-          render={() => (
-            `${shipper.company_name} | Office: Maharashtra, India | Email: ${shipper.contact_email} | Web: www.sheshaanglobal.com | Page 2 of 2`
-          )}
-          fixed
-        />
-      </Page>
+            <View style={styles.footerDivider} />
+            <View style={styles.footerCol3}>
+              <View style={styles.footerCircleIcon}><FooterMailBadge /></View>
+              <Text style={styles.footerText}>
+                {shipper.contact_email}{"\n"}www.sheshaanglobal.com
+              </Text>
+            </View>
+            <View style={styles.footerDivider} />
+            <View style={styles.footerCol4}>
+              <View style={styles.footerCircleIcon}><FooterPhoneBadge /></View>
+              <Text style={styles.footerPhone}>+91 81499 09546</Text>
+            </View>
+          </View>
+        </Page>
       )}
-
     </Document>
   );
 };
