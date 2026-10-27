@@ -270,6 +270,14 @@ export function AccountingWorkspace() {
   const [demoOtpHint, setDemoOtpHint] = useState<string | null>(null);
   const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null);
   const [pendingExpenseData, setPendingExpenseData] = useState<any>(null);
+  const [callmebotDelivered, setCallmebotDelivered] = useState(false);
+  const [showGatewayConfig, setShowGatewayConfig] = useState(false);
+  const [callmebotApiKey, setCallmebotApiKey] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('portal_callmebot_key') || '';
+    }
+    return '';
+  });
 
   // PDF Download state
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -470,13 +478,15 @@ export function AccountingWorkspace() {
             action: 'send',
             amount: numAmount,
             title: payload.title,
-            payee: payload.paid_to_or_from
+            payee: payload.paid_to_or_from,
+            callmebotApiKey: callmebotApiKey.trim() || undefined
           })
         });
         const data = await res.json();
         if (data.success) {
           setDemoOtpHint(data.previewCode || null);
           setWhatsappUrl(data.whatsappUrl || null);
+          setCallmebotDelivered(Boolean(data.callmebotDelivered));
         } else {
           setOtpError(data.error || 'Failed to dispatch OTP to mobile number');
         }
@@ -537,13 +547,15 @@ export function AccountingWorkspace() {
           action: 'send',
           amount: pendingExpenseData.amount,
           title: pendingExpenseData.title,
-          payee: pendingExpenseData.paid_to_or_from
+          payee: pendingExpenseData.paid_to_or_from,
+          callmebotApiKey: callmebotApiKey.trim() || undefined
         })
       });
       const data = await res.json();
       if (data.success) {
         setDemoOtpHint(data.previewCode || null);
         setWhatsappUrl(data.whatsappUrl || null);
+        setCallmebotDelivered(Boolean(data.callmebotDelivered));
         setOtpTimer(60);
       } else {
         setOtpError(data.error || 'Failed to resend OTP');
@@ -1795,6 +1807,17 @@ export function AccountingWorkspace() {
                 </div>
               )}
 
+              {/* Delivery notification if sent via external bot */}
+              {callmebotDelivered && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <div className="min-w-0">
+                    <p className="font-bold">Dispatched from External Bot Number (+34 623 78 64 49)</p>
+                    <p className="text-[11px] text-emerald-700">Automated WhatsApp OTP delivered to +91 81499 09546.</p>
+                  </div>
+                </div>
+              )}
+
               {/* 100% Free WhatsApp Direct Dispatch */}
               {whatsappUrl && (
                 <a
@@ -1809,6 +1832,74 @@ export function AccountingWorkspace() {
                   <span>📲 Deliver OTP to WhatsApp (+91 81499 09546) • 100% Free</span>
                 </a>
               )}
+
+              {/* Free External Number Bot Gateway Setup */}
+              <div className="border border-slate-200/90 rounded-xl overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setShowGatewayConfig(!showGatewayConfig)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-slate-700 font-bold transition text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🤖</span>
+                    <span>Free Cloud Bot External Number (+34 623 78 64 49)</span>
+                  </div>
+                  <span className="text-[11px] text-blue-900 font-medium">
+                    {showGatewayConfig ? 'Hide Guide ▲' : (callmebotApiKey ? 'Configured ✓ ▼' : 'Configure Free ▼')}
+                  </span>
+                </button>
+
+                {showGatewayConfig && (
+                  <div className="p-3.5 bg-white space-y-2.5 border-t border-slate-100">
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      To receive automatic messages dispatched from CallMeBot’s external server number (<b>+34 623 78 64 49</b>) for free:
+                    </p>
+                    <ol className="list-decimal pl-4 space-y-1 text-[11px] text-slate-600">
+                      <li>
+                        From <b>+91 81499 09546</b>, tap below to send a one-time message to the bot:
+                      </li>
+                      <li className="list-none pt-1">
+                        <a
+                          href="https://wa.me/34623786449?text=I%20allow%20callmebot%20to%20send%20me%20messages"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold hover:bg-emerald-100 transition text-[11px]"
+                        >
+                          <span>Send: "I allow callmebot to send me messages"</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </li>
+                      <li className="pt-1">
+                        The bot immediately replies with your free personal <b>API Key</b>.
+                      </li>
+                      <li>Paste that API key below:</li>
+                    </ol>
+
+                    <div className="flex gap-2 pt-1">
+                      <input
+                        type="text"
+                        placeholder="e.g. 9812450"
+                        value={callmebotApiKey}
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          setCallmebotApiKey(val);
+                          if (typeof window !== 'undefined') {
+                            localStorage.setItem('portal_callmebot_key', val);
+                          }
+                        }}
+                        className="flex-1 px-3 py-1.5 rounded-lg bg-slate-100 text-xs font-mono border border-slate-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleResendOtp}
+                        className="px-3 py-1.5 rounded-lg bg-blue-900 text-white font-bold text-xs hover:bg-blue-800 transition"
+                      >
+                        Save & Dispatch
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Instant Verification Helper with 1-Click Auto-Fill */}
               {demoOtpHint && (

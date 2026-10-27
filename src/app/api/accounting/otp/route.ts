@@ -18,7 +18,7 @@ const ADMIN_NAME = 'Sana Zeba Bakshi';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { action = 'send', amount, title, payee } = body;
+    const { action = 'send', amount, title, payee, callmebotApiKey, fast2smsApiKey } = body;
 
     if (action === 'send') {
       const numAmount = Number(amount) || 0;
@@ -45,12 +45,55 @@ export async function POST(req: NextRequest) {
 
       console.log(`[EXPENSE OTP DISPATCH] Target: ${TARGET_PHONE} (${ADMIN_NAME}) | Code: ${code} | Amount: ₹${numAmount.toLocaleString('en-IN')}`);
 
-      // 100% Free WhatsApp Direct Dispatch Link
       const cleanPhone = TARGET_PHONE.replace(/\D/g, ''); // 918149909546
-      const whatsappText = `🔒 *SHESHAAN GLOBAL SECURITY OTP*\n\nExpense Disbursement Authorization\nAmount: ₹${numAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nCost Head: ${title || 'Internal Expense'}\nBeneficiary: ${payee || 'Direct Voucher'}\n\nYour 6-Digit Verification Code is:\n👉 *${code}*\n\n(Valid for 5 minutes. Certified to CEO Sana Zeba Bakshi)`;
-      const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(whatsappText)}`;
+      const last10Digits = cleanPhone.slice(-10); // 8149909546
 
-      // Attempt free SMS tier in background (fails silently if quota reached)
+      // 1. Attempt Free External Delivery via CallMeBot WhatsApp API (Sends from CallMeBot cloud number +34 xxx)
+      const cmbKey = callmebotApiKey || process.env.CALLMEBOT_API_KEY;
+      let callmebotDelivered = false;
+      if (cmbKey) {
+        try {
+          const cmbUrl = `https://api.callmebot.com/whatsapp.php?phone=${cleanPhone}&text=${encodeURIComponent(
+            `🔒 *SHESHAAN GLOBAL SECURITY OTP*\n\nYour 6-Digit Code: *${code}*\nAmount: ₹${numAmount.toLocaleString('en-IN')}\nCost Head: ${title || 'Internal Expense'}\n\n(Valid for 5 mins for CEO Sana Zeba Bakshi)`
+          )}&apikey=${cmbKey}`;
+          const cmbRes = await fetch(cmbUrl);
+          if (cmbRes.ok) {
+            callmebotDelivered = true;
+            console.log(`[CallMeBot OTP] Sent successfully from cloud number to ${cleanPhone}`);
+          }
+        } catch (e) {
+          console.warn('[CallMeBot Error]', e);
+        }
+      }
+
+      // 2. Attempt Free Developer SMS via Fast2SMS API (Sends from Indian carrier shortcode directly to cellular inbox)
+      const fastKey = fast2smsApiKey || process.env.FAST2SMS_API_KEY;
+      let fast2smsDelivered = false;
+      if (fastKey) {
+        try {
+          const fRes = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+            method: 'POST',
+            headers: {
+              authorization: fastKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              variables_values: code,
+              route: 'otp',
+              numbers: last10Digits
+            })
+          });
+          const fJson = await fRes.json();
+          if (fJson.return) {
+            fast2smsDelivered = true;
+            console.log(`[Fast2SMS OTP] Sent successfully to cellular phone ${last10Digits}`);
+          }
+        } catch (e) {
+          console.warn('[Fast2SMS Error]', e);
+        }
+      }
+
+      // 3. Fallback background free tier SMS attempt
       try {
         fetch('https://textbelt.com/text', {
           method: 'POST',
@@ -63,6 +106,10 @@ export async function POST(req: NextRequest) {
         }).catch(() => {});
       } catch {}
 
+      // 4. Preformatted 100% Free WhatsApp Direct URL as immediate zero-barrier fallback
+      const whatsappText = `🔒 *SHESHAAN GLOBAL SECURITY OTP*\n\nExpense Disbursement Authorization\nAmount: ₹${numAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\nCost Head: ${title || 'Internal Expense'}\nBeneficiary: ${payee || 'Direct Voucher'}\n\nYour 6-Digit Verification Code is:\n👉 *${code}*\n\n(Valid for 5 minutes. Certified to CEO Sana Zeba Bakshi)`;
+      const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(whatsappText)}`;
+
       return NextResponse.json({
         success: true,
         requiresOtp: true,
@@ -71,7 +118,9 @@ export async function POST(req: NextRequest) {
         expiresInSeconds: 300,
         message: `OTP generated for administrator ${ADMIN_NAME} (${TARGET_PHONE}).`,
         previewCode: code,
-        whatsappUrl
+        whatsappUrl,
+        callmebotDelivered,
+        fast2smsDelivered
       });
     }
 
