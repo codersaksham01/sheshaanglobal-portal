@@ -35,7 +35,8 @@ import {
   Sparkles,
   RotateCcw,
   SlidersHorizontal,
-  ExternalLink
+  ExternalLink,
+  Trash2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { getPortalCache, setPortalCache, fetchAllPortalData } from '../../lib/portalDataStore';
@@ -235,6 +236,8 @@ export function AccountingWorkspace() {
   const [selectedRecordForApproval, setSelectedRecordForApproval] = useState<AccountingRecord | null>(null);
   const [rejectionNotes, setRejectionNotes] = useState('');
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+  const [recordToDelete, setRecordToDelete] = useState<AccountingRecord | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Expense Form State
   const [expenseForm, setExpenseForm] = useState({
@@ -747,6 +750,33 @@ export function AccountingWorkspace() {
     }
   };
 
+  const handleDeleteRecord = async () => {
+    if (!recordToDelete) return;
+    setDeleteLoading(true);
+    try {
+      const { error } = await supabase
+        .from('accounting_transactions')
+        .delete()
+        .eq('id', recordToDelete.id);
+
+      if (!error) {
+        const next = records.filter((r) => r.id !== recordToDelete.id);
+        setRecords(next);
+        setPortalCache({ accountingTransactions: next });
+        const recordType = recordToDelete.type === 'expense' ? 'Expense' : 'Income';
+        setActionSuccessMessage(`${recordType} "${recordToDelete.title}" (₹${recordToDelete.amount.toLocaleString('en-IN')}) permanently deleted.`);
+        setRecordToDelete(null);
+      } else {
+        alert('Failed to delete transaction: ' + (error.message || 'Unknown error'));
+      }
+    } catch (err: any) {
+      console.error('Failed to delete transaction:', err);
+      alert('Failed to delete transaction.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const handleDownloadPDF = async () => {
     if (downloadingPdf) return;
     setDownloadingPdf(true);
@@ -1215,29 +1245,39 @@ export function AccountingWorkspace() {
                             )}
                           </td>
                           <td className="py-3.5 px-4 text-right whitespace-nowrap align-top">
-                            {isPending && (
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleApproveExpense(item)}
-                                  className="px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-800 text-white font-bold text-[11px] transition shadow-xs active:scale-95"
-                                  title="Approve as Sana Zeba Bakshi"
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedRecordForApproval(item);
-                                    setShowApprovalModal(true);
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-[11px] transition active:scale-95"
-                                  title="Reject Expense"
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            )}
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isPending && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveExpense(item)}
+                                    className="px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-800 text-white font-bold text-[11px] transition shadow-xs active:scale-95"
+                                    title="Approve as Sana Zeba Bakshi"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedRecordForApproval(item);
+                                      setShowApprovalModal(true);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-[11px] transition active:scale-95"
+                                    title="Reject Expense"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setRecordToDelete(item)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition active:scale-95"
+                                title={`Delete ${item.type === 'expense' ? 'Expense' : 'Income'} Record`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1347,27 +1387,37 @@ export function AccountingWorkspace() {
                         </span>
                       </div>
 
-                      {isPending && (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedRecordForApproval(item);
-                              setShowApprovalModal(true);
-                            }}
-                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:text-rose-700 text-xs font-bold"
-                          >
-                            Reject
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleApproveExpense(item)}
-                            className="px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-xs"
-                          >
-                            Approve
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {isPending && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedRecordForApproval(item);
+                                setShowApprovalModal(true);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:text-rose-700 text-xs font-bold"
+                            >
+                              Reject
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApproveExpense(item)}
+                              className="px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-xs"
+                            >
+                              Approve
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setRecordToDelete(item)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition active:scale-95"
+                          title={`Delete ${item.type === 'expense' ? 'Expense' : 'Income'} Record`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1450,6 +1500,14 @@ export function AccountingWorkspace() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRecordToDelete(item)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition active:scale-95"
+                        title="Delete Expense Record"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -2198,6 +2256,102 @@ export function AccountingWorkspace() {
                 className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-xs active:scale-95"
               >
                 Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE CONFIRMATION */}
+      {recordToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] my-auto animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-between shrink-0 rounded-t-2xl">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <Trash2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">
+                    Delete {recordToDelete.type === 'expense' ? 'Expense' : 'Income'} Record
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-mono">ID: {recordToDelete.id}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={deleteLoading}
+                onClick={() => setRecordToDelete(null)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg transition"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Are you sure you want to permanently delete this {recordToDelete.type === 'expense' ? 'expense record' : 'income entry'} from the company accounting ledger?
+              </p>
+
+              {/* Record Summary Card */}
+              <div className="p-4 rounded-xl bg-slate-50 space-y-2 text-xs">
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-slate-500 shrink-0">Cost Head:</span>
+                  <span className="font-bold text-slate-900 text-right leading-snug break-words">{recordToDelete.title}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-500">
+                  <span>Category:</span>
+                  <span className="font-semibold text-slate-800">{recordToDelete.category}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-500">
+                  <span>Payee / Source:</span>
+                  <span className="font-semibold text-slate-800 truncate max-w-[200px]">{recordToDelete.paid_to_or_from || 'Direct Expense'}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-500">
+                  <span>Transaction Date:</span>
+                  <span className="font-mono text-slate-700">{recordToDelete.transaction_date}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-500 pt-2 border-t border-slate-200/80">
+                  <span className="font-bold text-slate-700">Amount:</span>
+                  <span className="font-mono font-black text-rose-700 text-base">
+                    ₹{Number(recordToDelete.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Warning Alert */}
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                <p className="text-[11px] leading-relaxed">
+                  <strong>Permanent Action:</strong> This record will be deleted from the database. Financial ledger summaries, P&L calculations, and PDF financial reports will be recalculated immediately.
+                </p>
+              </div>
+            </div>
+
+            {/* Sticky Footer */}
+            <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-end gap-2 shrink-0 rounded-b-2xl">
+              <button
+                type="button"
+                disabled={deleteLoading}
+                onClick={() => setRecordToDelete(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-200/80 hover:bg-slate-300 text-slate-700 text-xs font-bold transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteLoading}
+                onClick={handleDeleteRecord}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-xs active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {deleteLoading ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-white" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5 text-white" />
+                )}
+                <span>{deleteLoading ? 'Deleting...' : 'Delete Permanently'}</span>
               </button>
             </div>
           </div>
