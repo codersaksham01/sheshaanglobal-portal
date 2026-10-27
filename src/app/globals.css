@@ -35,26 +35,15 @@ body {
 }
 
 .portal-os {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(241, 245, 249, 0.96)),
-    linear-gradient(135deg, rgba(14, 165, 233, 0.08), transparent 31%),
-    linear-gradient(315deg, rgba(16, 185, 129, 0.08), transparent 28%),
-    #f3f6fa;
+  background: #f8fafc;
   color: #0f172a;
   position: relative;
+  min-height: 100vh;
+  width: 100%;
 }
 
 .portal-os::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(15, 23, 42, 0.026) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.026) 1px, transparent 1px);
-  background-size: 40px 40px;
-  mask-image: linear-gradient(180deg, rgba(0,0,0,0.7), transparent 72%);
-  z-index: 0;
+  display: none !important;
 }
 
 .auth-os {
@@ -182,47 +171,37 @@ body {
 
 .portal-glass,
 .portal-topbar,
-.portal-workspace,
 .portal-card,
 .metric-tile {
-  border: 1px solid rgba(203, 213, 225, 0.78);
+  border: none !important;
   background: var(--portal-surface);
-  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.075);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
 }
 
 .portal-glass,
 .portal-topbar,
-.portal-workspace,
 .portal-card {
   border-radius: 14px;
 }
 
 .portal-topbar {
-  background:
-    linear-gradient(90deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94)),
-    linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.42));
-  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.075);
+  background: #ffffff;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
 }
 
 .portal-workspace {
   position: relative;
-  overflow: hidden;
-  contain: layout paint;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94));
-  border-color: rgba(203, 213, 225, 0.9);
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  width: 100% !important;
 }
 
 .portal-workspace::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: linear-gradient(90deg, #0ea5e9, #10b981, #f59e0b);
-  opacity: 0.7;
-  pointer-events: none;
+  display: none !important;
 }
 
 .smart-hero {
@@ -945,9 +924,9 @@ body.dark .portal-workspace,
 body.dark .portal-card,
 body.dark .metric-tile,
 body.dark .portal-mobile-dock {
-  border-color: rgba(255, 255, 255, 0.08);
+  border: none !important;
   background: rgba(15, 23, 42, 0.76);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.24);
 }
 
 body.dark .portal-topbar {
@@ -1165,4 +1144,21 @@ body.dark .cell-editing { background: rgba(2,132,199,0.1); }
   height: 100%; border-radius: 4px;
   transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1),
               background-color 300ms ease;
+}
+
+/* ── Global Full-Page Borderless Modern Standard ─────────────── */
+.portal-workspace,
+.portal-workspace > div,
+.portal-workspace .portal-card,
+.portal-card,
+.portal-topbar,
+.portal-glass,
+.portal-command-strip {
+  border: none !important;
+}
+
+.portal-os,
+.portal-shell {
+  width: 100% !important;
+  max-width: 100% !important;
 }

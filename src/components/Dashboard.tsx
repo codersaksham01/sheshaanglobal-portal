@@ -35,6 +35,7 @@ import { CrmTable } from './crm/CrmTable';
 import { CrmKanban } from './crm/CrmKanban';
 import { LeadInspectorDrawer } from './crm/LeadInspectorDrawer';
 import { LetterheadGenerator } from './LetterheadGenerator';
+import { AccountingWorkspace } from './accounting/AccountingWorkspace';
 import { SuppliersWorkspace } from './suppliers/SuppliersWorkspace';
 import { CrmLead, CrmStage } from '../lib/types/crm';
 import { useCallback } from 'react';
@@ -89,6 +90,7 @@ import {
   ArrowRight,
   TrendingUp,
   Users,
+  Receipt,
   X
 } from 'lucide-react';
 
@@ -188,7 +190,7 @@ const getQuoteItemQuantityLabel = (item: QuoteItem) => (
     : `${Number(item.quantity || 0).toLocaleString()} kg`
 );
 
-type TabKey = 'overview' | 'crm' | 'potentialBuyers' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'teamChat' | 'templates' | 'generateResponses' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'auditLog' | 'manager' | 'letterhead';
+type TabKey = 'overview' | 'crm' | 'potentialBuyers' | 'dataCleanup' | 'phoneCleanup' | 'phoneReachout' | 'quotes' | 'accounting' | 'teamChat' | 'templates' | 'generateResponses' | 'blogs' | 'tasks' | 'accounts' | 'shipments' | 'documents' | 'products' | 'vendors' | 'freight' | 'rates' | 'analytics' | 'users' | 'auditLog' | 'manager' | 'letterhead';
 type QuoteSortKey = 'created_desc' | 'created_asc' | 'value_desc' | 'value_asc' | 'buyer_asc' | 'status_asc';
 type ImportSummary = { buyers: number; leads: number; activities: number; tasks: number; skipped: number; message: string; skippedList?: string[] };
 type ImportProgress = { label: string; processed: number; total: number } | null;
@@ -5190,6 +5192,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
       { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, count: leads.length },
       { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, count: potentialBuyerLeads.length },
       { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, count: quotes.length },
+      { key: 'accounting', label: 'Accounting & Expenses', icon: <Receipt className="h-4 w-4" /> },
       { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, count: templates.length },
       { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" /> },
       { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" /> },
@@ -5228,7 +5231,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
   const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'quotes'].includes(item.key)).slice(0, 4), [navItems]);
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['products', 'vendors'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['users'].includes(item.key)) }
   ], [navItems]);
@@ -5784,7 +5787,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
 
           <section className={`relative z-10 flex-1 ${
             isSidebarMinimized ? 'lg:ml-[76px]' : 'lg:ml-[304px]'
-          } space-y-4 min-w-0 p-3 lg:p-5 xl:p-6 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
+          } min-w-0 p-3 sm:p-5 lg:p-6 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
             {/* Top Global Sync Progress Bar */}
             {loading && (
               <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-sky-400 via-indigo-500 to-emerald-400 z-50 animate-pulse shadow-[0_0_12px_rgba(14,165,233,0.8)]" />
@@ -5806,20 +5809,20 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               </div>
             )}
 
-            <div className="lg:hidden sticky top-2 z-30 portal-glass overflow-hidden animate-fade-up">
-              <div className="px-3 py-2 flex items-center justify-between gap-3">
+            <div className="lg:hidden sticky top-2 z-30 bg-white/95 backdrop-blur-md rounded-2xl shadow-sm mb-3 overflow-hidden animate-fade-up">
+              <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowNotifications(false);
                     setShowMobileMenu(true);
                   }}
-                  className="h-10 w-10 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-sm active:scale-95 transition hover:bg-slate-800"
+                  className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm active:scale-95 transition hover:bg-slate-800"
                   aria-label="Open menu"
                 >
                   <Menu className="h-5 w-5" />
                 </button>
-                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-white shadow-xs">
                   <Image src="/logo.png" alt="Sheshaan Global logo" width={40} height={40} className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -5830,7 +5833,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                 <button
                   type="button"
                   onClick={() => setShowNotifications((value) => !value)}
-                  className="relative h-10 w-10 rounded-md border border-slate-200 bg-white text-slate-700 flex items-center justify-center active:scale-95 transition hover:bg-slate-50"
+                  className="relative h-10 w-10 rounded-xl bg-white text-slate-700 flex items-center justify-center shadow-xs active:scale-95 transition hover:bg-slate-50"
                   aria-label="Open notifications"
                 >
                   <Bell className="h-5 w-5" />
@@ -5901,9 +5904,9 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               </div>
             </div>
 
-            <div key={activeTab} className="portal-workspace p-3 sm:p-5 lg:p-6 min-w-0 animate-panel-in">
+            <div key={activeTab} className="w-full min-w-0 animate-panel-in">
               {!hasAccessToActiveTab ? (
-                <div className="flex flex-col items-center justify-center p-12 text-center bg-slate-50 rounded-xl border border-slate-200/60 shadow-inner animate-fade-in my-6">
+                <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl shadow-sm animate-fade-in my-6">
                   <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center border border-red-100 mb-4 animate-pulse">
                     <Lock className="h-6 w-6 text-red-500" />
                   </div>
@@ -9317,6 +9320,10 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
 
           {activeTab === 'letterhead' && (
             <LetterheadGenerator />
+          )}
+
+          {activeTab === 'accounting' && (
+            <AccountingWorkspace />
           )}
                 </>
               )}

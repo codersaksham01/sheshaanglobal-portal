@@ -28,7 +28,8 @@ import {
   Search,
   Bell,
   Sparkles,
-  Users
+  Users,
+  Receipt
 } from 'lucide-react';
 
 const PanelLeftClose = ({ className }: { className?: string }) => (
@@ -301,6 +302,7 @@ export function PortalLayoutContent({
     { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, href: '/crm', count: badgeCounts.crm ?? quickCounts.leads },
     { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, href: '/potential-buyers', count: badgeCounts.potentialBuyers },
     { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, href: '/quotes', count: badgeCounts.quotes ?? quickCounts.quotes },
+    { key: 'accounting', label: 'Accounting & Expenses', icon: <Receipt className="h-4 w-4" />, href: '/accounting', count: badgeCounts.accounting },
     { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, href: '/templates', count: badgeCounts.templates },
     { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" />, href: '/generate-responses' },
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
@@ -319,7 +321,7 @@ export function PortalLayoutContent({
     {
       label: 'Command',
       items: authorizedNavItems.filter((item) =>
-        ['overview', 'crm', 'quotes', 'templates', 'generateResponses', 'letterhead'].includes(item.key)
+        ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead'].includes(item.key)
       )
     },
     {
@@ -374,25 +376,25 @@ export function PortalLayoutContent({
             }}
           />
 
-          {/* Main Content Workspace Column */}
+          {/* Main Content Workspace Column: Full Page, Borderless, Natural Spacing */}
           <section className={`relative z-10 flex-1 ${
             isSidebarMinimized ? 'lg:ml-[76px]' : 'lg:ml-[304px]'
-          } space-y-4 min-w-0 p-3 lg:p-5 xl:p-6 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
+          } min-w-0 p-3 sm:p-5 lg:p-6 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
             {/* Mobile Header Bar */}
-            <div className="lg:hidden sticky top-2 z-30 portal-glass overflow-hidden animate-fade-up">
-              <div className="px-3 py-2 flex items-center justify-between gap-3">
+            <div className="lg:hidden sticky top-2 z-30 bg-white/95 backdrop-blur-md rounded-2xl shadow-sm mb-3 overflow-hidden animate-fade-up">
+              <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowNotifications(false);
                     setShowMobileMenu(true);
                   }}
-                  className="h-10 w-10 rounded-md bg-slate-900 text-white flex items-center justify-center shadow-sm active:scale-95 transition hover:bg-slate-800"
+                  className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm active:scale-95 transition hover:bg-slate-800"
                   aria-label="Open menu"
                 >
                   <Menu className="h-5 w-5" />
                 </button>
-                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white">
+                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-white shadow-xs">
                   <Image src="/logo.png" alt="Sheshaan Global logo" width={40} height={40} className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -403,7 +405,7 @@ export function PortalLayoutContent({
                 <button
                   type="button"
                   onClick={() => setShowNotifications((value) => !value)}
-                  className="relative h-10 w-10 rounded-md border border-slate-200 bg-white text-slate-700 flex items-center justify-center active:scale-95 transition hover:bg-slate-50"
+                  className="relative h-10 w-10 rounded-xl bg-white text-slate-700 flex items-center justify-center shadow-xs active:scale-95 transition hover:bg-slate-50"
                   aria-label="Open notifications"
                 >
                   <Bell className="h-5 w-5" />
@@ -448,8 +450,8 @@ export function PortalLayoutContent({
               </div>
             )}
 
-            {/* Workspace Main Area */}
-            <main className="portal-workspace p-3 sm:p-5 lg:p-6 min-w-0 animate-panel-in">
+            {/* Workspace Main Area: Full Width, Edge-to-Edge */}
+            <main className="w-full min-w-0 animate-panel-in">
               {children}
             </main>
           </section>

@@ -3,9 +3,9 @@ import type { AppUser } from './types';
 export type PortalRole = AppUser['role'];
 
 export const roleTabs: Record<PortalRole, readonly string[]> = {
-  Admin: ['overview', 'crm', 'potentialBuyers', 'quotes', 'templates', 'generateResponses', 'letterhead', 'products', 'vendors', 'users'],
+  Admin: ['overview', 'crm', 'potentialBuyers', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead', 'products', 'vendors', 'users'],
   Sales: ['overview', 'crm', 'potentialBuyers', 'quotes', 'templates', 'generateResponses', 'letterhead', 'products'],
-  Accounts: ['overview', 'quotes', 'letterhead'],
+  Accounts: ['overview', 'quotes', 'accounting', 'letterhead'],
   Operations: ['overview', 'products', 'vendors', 'letterhead']
 };
 
@@ -15,6 +15,7 @@ const tableArea: Record<string, string> = {
   activities: 'crm',
   quotes: 'quotes',
   quote_items: 'quotes',
+  accounting_transactions: 'accounting',
   blogs: 'blogs',
   message_templates: 'templates',
   tasks: 'tasks',

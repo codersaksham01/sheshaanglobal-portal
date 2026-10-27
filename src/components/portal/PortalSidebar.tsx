@@ -16,7 +16,8 @@ import {
   ChevronDown,
   RefreshCw,
   Edit2,
-  Check
+  Check,
+  Receipt
 } from 'lucide-react';
 import { canAccessTab, PortalRole } from '../../lib/permissions';
 import { TAB_ROUTES } from '../../lib/portalDataStore';
@@ -166,6 +167,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
     { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, href: '/crm', count: badgeCounts.crm },
     { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, href: '/potential-buyers', count: badgeCounts.potentialBuyers },
     { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, href: '/quotes', count: badgeCounts.quotes },
+    { key: 'accounting', label: 'Accounting & Expenses', icon: <Receipt className="h-4 w-4" />, href: '/accounting', count: badgeCounts.accounting },
     { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, href: '/templates', count: badgeCounts.templates },
     { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" />, href: '/generate-responses' },
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
@@ -175,7 +177,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
   ], [badgeCounts]);
 
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['products', 'vendors'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['users'].includes(item.key)) }
   ], [navItems]);

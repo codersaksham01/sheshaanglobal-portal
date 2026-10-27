@@ -515,3 +515,44 @@ export interface ShipmentExtended {
   port_of_discharge?: string;
   free_days?: number; // detention-free days at destination port
 }
+
+export type TransactionType = 'expense' | 'income';
+export type ExpenseStatus = 'pending_approval' | 'approved' | 'rejected';
+
+export interface AccountingRecord {
+  id: string;
+  type: TransactionType;
+  title: string;
+  description?: string;
+  category: string;
+  amount: number;
+  currency: 'INR' | 'USD';
+  payment_method: string;
+  reference_number?: string;
+  transaction_date: string; // YYYY-MM-DD
+  paid_to_or_from: string;
+  vendor_id?: string;
+  client_id?: string;
+  logged_by_name: string;
+  logged_by_email: string;
+  status: ExpenseStatus;
+  approved_by_name?: string;
+  approved_by_email?: string;
+  approval_date?: string;
+  approval_notes?: string;
+  requires_otp: boolean;
+  otp_verified?: boolean;
+  otp_verified_at?: string;
+  receipt_url?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AccountingSummary {
+  totalIncome: number;
+  totalExpenses: number;
+  netProfit: number;
+  pendingApprovalsCount: number;
+  pendingApprovalsAmount: number;
+  categoryBreakdown: { category: string; total: number; count: number; percentage: number }[];
+}

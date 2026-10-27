@@ -4,7 +4,7 @@ import { firebaseApp, isFirebaseConfigured } from './firebaseClient';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const portalTables = ['clients', 'vendors', 'supplier_agreements', 'products', 'freight_presets', 'quotes', 'quote_items', 'blogs', 'leads', 'inquiries', 'inquiry_quotations', 'inquiry_follow_ups', 'inquiry_attachments', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users', 'activity_logs', 'team_messages'] as const;
+const portalTables = ['clients', 'vendors', 'supplier_agreements', 'products', 'freight_presets', 'quotes', 'quote_items', 'blogs', 'leads', 'inquiries', 'inquiry_quotations', 'inquiry_follow_ups', 'inquiry_attachments', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users', 'activity_logs', 'team_messages', 'accounting_transactions'] as const;
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 const localDbStorageKey = 'crixy_portal_db';
 const maxLocalDbCacheBytes = 1_500_000;

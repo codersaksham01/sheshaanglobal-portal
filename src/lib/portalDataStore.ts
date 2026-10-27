@@ -19,7 +19,8 @@ import type {
   BlogPost,
   AppUser,
   ActivityLog,
-  TeamMessage
+  TeamMessage,
+  AccountingRecord
 } from './types';
 
 export interface PortalDataCache {
@@ -43,6 +44,7 @@ export interface PortalDataCache {
   users: AppUser[];
   activityLogs: ActivityLog[];
   teamMessages: TeamMessage[];
+  accountingTransactions: AccountingRecord[];
   lastFetched: number;
 }
 
@@ -51,6 +53,7 @@ export const TAB_ROUTES: Record<string, string> = {
   crm: '/crm',
   potentialBuyers: '/potential-buyers',
   quotes: '/quotes',
+  accounting: '/accounting',
   templates: '/templates',
   generateResponses: '/generate-responses',
   letterhead: '/letterhead',
@@ -103,6 +106,7 @@ export function setPortalCache(patch: Partial<PortalDataCache>): void {
       users: [],
       activityLogs: [],
       teamMessages: [],
+      accountingTransactions: [],
       lastFetched: Date.now(),
       ...patch
     };
@@ -148,7 +152,7 @@ export async function fetchAllPortalData(options?: { force?: boolean }): Promise
       let qData: any[] = [], cData: any[] = [], vData: any[] = [], pData: any[] = [], fData: any[] = [];
       let lData: any[] = [], inquiryData: any[] = [], inquiryQuotationData: any[] = [], inquiryFollowUpData: any[] = [];
       let aData: any[] = [], rData: any[] = [], iData: any[] = [], sData: any[] = [], dData: any[] = [];
-      let tData: any[] = [], mtData: any[] = [], bData: any[] = [], uData: any[] = [], logData: any[] = [], chatData: any[] = [];
+      let tData: any[] = [], mtData: any[] = [], bData: any[] = [], uData: any[] = [], logData: any[] = [], chatData: any[] = [], accData: any[] = [];
 
       let usedBatch = false;
       if (isMock && typeof window !== 'undefined') {
@@ -183,6 +187,7 @@ export async function fetchAllPortalData(options?: { force?: boolean }): Promise
               uData = allDb.app_users || [];
               logData = allDb.activity_logs || [];
               chatData = allDb.team_messages || [];
+              accData = allDb.accounting_transactions || [];
               usedBatch = true;
             }
           }
@@ -210,7 +215,8 @@ export async function fetchAllPortalData(options?: { force?: boolean }): Promise
           supabase.from('blogs').select('*').order('updated_at', { ascending: false }),
           supabase.from('app_users').select('*').order('name'),
           supabase.from('activity_logs').select('*').order('created_at', { ascending: false }),
-          supabase.from('team_messages').select('*').order('created_at', { ascending: false })
+          supabase.from('team_messages').select('*').order('created_at', { ascending: false }),
+          supabase.from('accounting_transactions').select('*').order('transaction_date', { ascending: false })
         ]);
         qData = results[0].data || [];
         cData = results[1].data || [];
@@ -232,6 +238,7 @@ export async function fetchAllPortalData(options?: { force?: boolean }): Promise
         uData = results[17].data || [];
         logData = results[18].data || [];
         chatData = results[19].data || [];
+        accData = results[20].data || [];
       }
 
       const activityLeadIds = new Set((aData || []).map((act: any) => act.lead_id).filter(Boolean));
@@ -280,6 +287,7 @@ export async function fetchAllPortalData(options?: { force?: boolean }): Promise
         users: uData || [],
         activityLogs: logData || [],
         teamMessages: chatData || [],
+        accountingTransactions: accData || [],
         lastFetched: Date.now()
       };
 
