@@ -6,10 +6,7 @@ import { sessionCookieName, verifySessionToken } from '../../../lib/serverSessio
 const isAuthorized = (req: NextRequest) => {
   if (process.env.NODE_ENV !== 'production') return true;
   if (!process.env.APP_LOGIN_PASSWORD) return true;
-  if (verifySessionToken(req.cookies.get(sessionCookieName)?.value)) return true;
-  const actorEmail = req.headers.get('x-portal-actor-email');
-  if (actorEmail && actorEmail.includes('@')) return true;
-  return false;
+  return verifySessionToken(req.cookies.get(sessionCookieName)?.value);
 };
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 

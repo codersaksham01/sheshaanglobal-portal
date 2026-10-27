@@ -1,18 +1,18 @@
 'use client';
 
 import React from 'react';
-import { AuthGate } from '../../components/AuthGate';
-import { AppErrorBoundary } from '../../components/AppErrorBoundary';
-import { Dashboard } from '../../components/Dashboard';
+import { PortalLayout } from '../../components/portal/PortalLayout';
+import { AccountingWorkspace } from '../../components/accounting/AccountingWorkspace';
+import { Receipt } from 'lucide-react';
 
 export default function AccountingPage() {
   return (
-    <main className="min-h-screen bg-white">
-      <AuthGate>
-        <AppErrorBoundary>
-          <Dashboard initialTab="accounting" />
-        </AppErrorBoundary>
-      </AuthGate>
-    </main>
+    <PortalLayout
+      activeTab="accounting"
+      pageTitle="Corporate Expenses & Accounts"
+      pageIcon={<Receipt className="h-4 w-4" />}
+    >
+      <AccountingWorkspace />
+    </PortalLayout>
   );
 }

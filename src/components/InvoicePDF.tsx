@@ -280,6 +280,59 @@ const styles = StyleSheet.create({
     fontSize: 7.2,
     lineHeight: 1.35
   },
+  signaturesBlock: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    marginBottom: 6
+  },
+  signatureCard: {
+    width: '49%',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 6,
+    padding: 7,
+    backgroundColor: '#ffffff'
+  },
+  signatureCardRole: {
+    fontSize: 6.8,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginBottom: 3
+  },
+  signatureSignLine: {
+    height: 40,
+    borderBottomWidth: 0.75,
+    borderBottomColor: '#cbd5e1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    marginBottom: 4
+  },
+  signatureImage: {
+    width: 78,
+    height: 35,
+    objectFit: 'contain'
+  },
+  stampImage: {
+    width: 70,
+    height: 30,
+    objectFit: 'contain',
+    opacity: 0.95
+  },
+  signatureName: {
+    fontSize: 7.5,
+    fontWeight: 'bold',
+    color: '#0f172a'
+  },
+  signatureCompany: {
+    fontSize: 6.2,
+    color: '#64748b',
+    marginTop: 1
+  },
   footer: {
     position: 'absolute',
     bottom: 14,
@@ -419,6 +472,28 @@ export const InvoicePDF = ({
         <View style={styles.note} wrap={false}>
           <Text style={{ fontWeight: 'bold', color: '#0f172a', marginBottom: 3 }}>Settlement Reference: {invoice.invoice_number}</Text>
           <Text>Payment should be made as per agreed commercial terms. Please mention invoice number {invoice.invoice_number} in the bank transfer reference. This document is generated from Sheshaan Global Admin Portal and should be matched against the quote, shipment, and payment tracker before release of final documents.</Text>
+        </View>
+
+        {/* Dual Execution & Attestation Block */}
+        <View style={styles.signaturesBlock} wrap={false}>
+          <View style={styles.signatureCard}>
+            <Text style={styles.signatureCardRole}>Accepted & Confirmed By Buyer</Text>
+            <View style={[styles.signatureSignLine, { borderStyle: 'dashed', justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 6.5, color: '#94a3b8', fontStyle: 'italic' }}>Authorized Buyer Signature & Official Stamp</Text>
+            </View>
+            <Text style={styles.signatureName}>{client?.contact_name || 'Authorized Signatory'}</Text>
+            <Text style={styles.signatureCompany}>{client?.company_name || 'Buyer Representative'}</Text>
+          </View>
+
+          <View style={styles.signatureCard}>
+            <Text style={styles.signatureCardRole}>For Sheshaan Global (Exporter / Seller)</Text>
+            <View style={styles.signatureSignLine}>
+              <Image src="/signature.png" style={styles.signatureImage} />
+              <Image src="/stamp.png" style={styles.stampImage} />
+            </View>
+            <Text style={styles.signatureName}>Sana Zeba Bakshi</Text>
+            <Text style={styles.signatureCompany}>Proprietor & CEO, Sheshaan Global</Text>
+          </View>
         </View>
 
         <View style={styles.footer} fixed>

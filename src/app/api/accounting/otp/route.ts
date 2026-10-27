@@ -12,8 +12,8 @@ interface OtpEntry {
 // In-memory OTP store (keyed by target phone)
 const otpStore: Map<string, OtpEntry> = new Map();
 
-const TARGET_PHONE = '+91 81499 09546';
-const ADMIN_NAME = 'Sana Zeba Bakshi';
+const TARGET_PHONE = process.env.ACCOUNTING_OTP_PHONE || '+91 81499 09546';
+const ADMIN_NAME = process.env.ACCOUNTING_ADMIN_NAME || 'Sana Zeba Bakshi';
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,7 +43,11 @@ export async function POST(req: NextRequest) {
         attempts: 0
       });
 
-      console.log(`[EXPENSE OTP DISPATCH] Target: ${TARGET_PHONE} (${ADMIN_NAME}) | Code: ${code} | Amount: ₹${numAmount.toLocaleString('en-IN')}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[EXPENSE OTP DISPATCH] Target: ${TARGET_PHONE} (${ADMIN_NAME}) | Code: ${code} | Amount: ₹${numAmount.toLocaleString('en-IN')}`);
+      } else {
+        console.log(`[EXPENSE OTP DISPATCH] Target: ${TARGET_PHONE} (${ADMIN_NAME}) | Amount: ₹${numAmount.toLocaleString('en-IN')}`);
+      }
 
       const cleanPhone = TARGET_PHONE.replace(/\D/g, ''); // 918149909546
       const last10Digits = cleanPhone.slice(-10); // 8149909546

@@ -212,16 +212,17 @@ const styles = StyleSheet.create({
   signatureImages: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12
+    gap: 10
   },
   stamp: {
-    width: 58,
-    height: 58,
-    objectFit: 'contain'
+    width: 72,
+    height: 30,
+    objectFit: 'contain',
+    opacity: 0.95
   },
   signature: {
-    width: 86,
-    height: 38,
+    width: 82,
+    height: 36,
     objectFit: 'contain'
   }
 });

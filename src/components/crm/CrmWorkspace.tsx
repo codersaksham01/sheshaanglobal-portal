@@ -869,8 +869,8 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
               </button>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-40">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+            <div className="relative flex-1 min-w-[130px] sm:w-40 sm:flex-none">
               <select
                 aria-label="Filter Country"
                 value={crmCountryFilter}
@@ -884,7 +884,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
               <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
             </div>
 
-            <div className="relative w-44">
+            <div className="relative flex-1 min-w-[140px] sm:w-44 sm:flex-none">
               <select
                 aria-label="Filter Queue"
                 value={crmQueueFilter || 'All'}
@@ -904,7 +904,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
               <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
             </div>
 
-            <div className="relative w-44">
+            <div className="relative flex-1 min-w-[140px] sm:w-44 sm:flex-none">
               <select
                 aria-label="Sort leads"
                 value={crmSortKey}
@@ -921,11 +921,11 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
             </div>
 
             {/* View Mode Toggle */}
-            <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-50 h-10">
+            <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-50 h-10 flex-1 sm:flex-none justify-center">
               <button
                 type="button"
                 onClick={() => setCrmViewMode('table')}
-                className={`px-3 py-1.5 rounded-md font-bold text-xs transition-all ${
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md font-bold text-xs transition-all text-center ${
                   crmViewMode === 'table' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -934,18 +934,18 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
               <button
                 type="button"
                 onClick={() => setCrmViewMode('kanban')}
-                className={`px-3 py-1.5 rounded-md font-bold text-xs transition-all ${
+                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md font-bold text-xs transition-all text-center ${
                   crmViewMode === 'kanban' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                Kanban Board
+                Kanban
               </button>
             </div>
 
             <button
               type="button"
               onClick={() => openNewLeadDrawer('Manual Entry')}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white transition hover:bg-slate-800"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white transition hover:bg-slate-800 w-full sm:w-auto"
             >
               <Plus className="h-4 w-4" />
               Add Lead

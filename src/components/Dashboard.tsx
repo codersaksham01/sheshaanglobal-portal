@@ -5229,7 +5229,10 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const isSyncing = loading || importingBuyers;
   const appBusy = (!initialDataLoaded && loading) || importingBuyers;
   const importProgressPercent = importProgress ? Math.min(100, Math.round((importProgress.processed / Math.max(importProgress.total, 1)) * 100)) : 0;
-  const mobilePrimaryNav = useMemo(() => navItems.filter((item) => ['overview', 'crm', 'potentialBuyers', 'quotes'].includes(item.key)).slice(0, 4), [navItems]);
+  const mobilePrimaryNav = useMemo(() => {
+    const order = ['overview', 'crm', 'quotes', 'accounting'];
+    return order.map((key) => navItems.find((item) => item.key === key)).filter(Boolean) as (typeof navItems);
+  }, [navItems]);
   const navGroups = useMemo(() => [
     { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['products', 'vendors'].includes(item.key)) },
@@ -6241,7 +6244,96 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                       fxRateLoading={fxRateLoading}
                     />
                   )}
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                {/* Mobile Quotes Card List (< md) */}
+                <div className="md:hidden space-y-2.5">
+                  <div className="flex items-center justify-between px-1 text-[11px] font-bold text-slate-500">
+                    <span>{filteredQuotes.length} quotes</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingQuoteId(null);
+                        navigateToTab('quotes');
+                      }}
+                      className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 font-extrabold text-xs"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      New Quote
+                    </button>
+                  </div>
+                  {filteredQuotes.map((q) => (
+                    <div
+                      key={q.id}
+                      onClick={() => setEditingQuoteId(q.id)}
+                      className="bg-white rounded-xl border border-slate-200/90 p-3.5 shadow-xs space-y-2.5 active:scale-[0.99] transition cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              {q.quote_number}
+                            </span>
+                            <StatusBadge status={q.status} />
+                          </div>
+                          <h4 className="font-extrabold text-sm text-slate-900 truncate mt-1.5">
+                            {q.client?.company_name || 'Unassigned'}
+                          </h4>
+                          {q.client?.destination_port && (
+                            <p className="text-[11px] text-slate-500 font-medium truncate mt-0.5">
+                              Port: {q.client.destination_port}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Total CIF</span>
+                          <span className="font-mono font-black text-sm text-sky-600 block mt-0.5">
+                            {formatQuoteCurrency(quoteValue(q), q.currency || 'INR')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons Strip */}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingQuoteId(q.id)}
+                          className="flex-1 h-8 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 transition active:scale-95"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => createInvoiceFromQuote(q)}
+                          className="h-8 px-2.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold inline-flex items-center justify-center gap-1 transition"
+                          title="Create Invoice"
+                        >
+                          <FileCheck2 className="h-3.5 w-3.5" />
+                          <span>Invoice</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => createShipmentFromQuote(q)}
+                          className="h-8 px-2.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-xs font-bold inline-flex items-center justify-center gap-1 transition"
+                          title="Create Shipment"
+                        >
+                          <Ship className="h-3.5 w-3.5" />
+                          <span>Ship</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteQuote(q.id)}
+                          className="h-8 w-8 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 inline-flex items-center justify-center transition"
+                          title="Delete Quote"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Quotes Table (>= md) */}
+                <div className="hidden md:block overflow-x-auto rounded-lg border border-slate-200">
                   <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{filteredQuotes.length} quotes</span>
                     <div className="flex items-center gap-2">
@@ -6254,7 +6346,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                       ))}
                     </div>
                   </div>
-                  <table className={`data-grid density-${rowDensity}`}>
+                  <table className={`data-grid density-${rowDensity} min-w-[850px]`}>
                     <thead>
                       <tr>
                         <th className="p-3 w-8"><input type="checkbox" onChange={e => setSelectedQuoteIds(e.target.checked ? filteredQuotes.map(q => q.id) : [])} checked={selectedQuoteIds.length === filteredQuotes.length && filteredQuotes.length > 0} className="rounded" /></th>
@@ -8697,7 +8789,19 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                             </div>
                             <div className="mt-6 border-t border-slate-300 pt-3 text-[9px] text-slate-500">
                               <p>Declaration: We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.</p>
-                              <div className="flex justify-between mt-4 font-black text-slate-900"><span>For SHESHAAN GLOBAL PVT LTD</span><span className="border-t border-slate-400 pt-1 w-32 text-center text-[9px]">Authorized Signatory</span></div>
+                              <div className="flex justify-between items-end mt-4 font-black text-slate-900">
+                                <div>
+                                  <span className="block text-[10px]">For SHESHAAN GLOBAL PVT LTD</span>
+                                  <span className="text-[8px] text-slate-500 font-semibold block mt-0.5">Sana Zeba Bakshi · Proprietor & CEO</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/signature.png" alt="Signature" className="h-9 w-auto object-contain" />
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/stamp.png" alt="Stamp" className="h-9 w-auto object-contain opacity-90 -rotate-1" />
+                                  <span className="border-t border-slate-400 pt-1 w-28 text-center text-[9px] block">Authorized Signatory</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -8724,7 +8828,19 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                                 <tr className="border-t-2 border-slate-900 font-black"><td colSpan={2} className="py-2">TOTAL</td><td className="text-right py-2">{totalWt.toFixed(0)} kg</td><td className="text-right py-2">{(totalWt * 1.02).toFixed(0)} kg</td></tr>
                               </tbody>
                             </table>
-                            <div className="flex justify-between mt-6 font-black text-slate-900 text-[9px]"><span>For SHESHAAN GLOBAL PVT LTD</span><span className="border-t border-slate-400 pt-1 w-32 text-center">Authorized Signatory</span></div>
+                            <div className="flex justify-between items-end mt-6 font-black text-slate-900 text-[9px]">
+                              <div>
+                                <span className="block text-[10px]">For SHESHAAN GLOBAL PVT LTD</span>
+                                <span className="text-[8px] text-slate-500 font-semibold block mt-0.5">Sana Zeba Bakshi · Proprietor & CEO</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src="/signature.png" alt="Signature" className="h-9 w-auto object-contain" />
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src="/stamp.png" alt="Stamp" className="h-9 w-auto object-contain opacity-90 -rotate-1" />
+                                <span className="border-t border-slate-400 pt-1 w-28 text-center block">Authorized Signatory</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
@@ -8741,7 +8857,18 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                               <div className="grid grid-cols-2 gap-4"><div><strong>Vessel / Flight:</strong> {shipment?.vessel_name || '—'}</div><div><strong>Port of Loading:</strong> {q?.loading_port || '—'}</div></div>
                             </div>
                             <div className="mt-8 border-t border-slate-300 pt-4 text-[9px] text-slate-500">Declaration: The undersigned hereby declares that the above details and statements are correct; that all the goods were produced in India.</div>
-                            <div className="flex justify-between mt-6 font-black text-slate-900 text-[9px]"><span>Exporter Signature & Stamp</span><span className="border-t border-slate-400 pt-1 w-40 text-center">Chamber / APEDA Endorsement</span></div>
+                            <div className="flex justify-between items-end mt-6 font-black text-slate-900 text-[9px]">
+                              <div>
+                                <div className="flex items-center gap-3 mb-1">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/signature.png" alt="Signature" className="h-9 w-auto object-contain" />
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/stamp.png" alt="Stamp" className="h-9 w-auto object-contain opacity-90 -rotate-1" />
+                                </div>
+                                <span>Exporter Signature & Stamp</span>
+                              </div>
+                              <span className="border-t border-slate-400 pt-1 w-40 text-center">Chamber / APEDA Endorsement</span>
+                            </div>
                           </div>
                         </div>
 
@@ -8793,7 +8920,18 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                               <div><strong>Special Instructions:</strong> {q?.logistics_specs?.storage_condition || 'Store in cool, dry place. Handle with care.'}</div>
                               <div><strong>Freight Terms:</strong> {q?.payment_terms || 'Prepaid'} · {q?.shipment_mode || 'Sea Freight'}</div>
                             </div>
-                            <div className="flex justify-between mt-8 font-black text-slate-900 text-[9px]"><span>Sheshaan Global — Authorized Representative</span><span className="border-t border-slate-400 pt-1 w-40 text-center">Date: {today}</span></div>
+                            <div className="flex justify-between items-end mt-8 font-black text-slate-900 text-[9px]">
+                              <div>
+                                <div className="flex items-center gap-3 mb-1">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/signature.png" alt="Signature" className="h-9 w-auto object-contain" />
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/stamp.png" alt="Stamp" className="h-9 w-auto object-contain opacity-90 -rotate-1" />
+                                </div>
+                                <span>Sheshaan Global — Authorized Representative</span>
+                              </div>
+                              <span className="border-t border-slate-400 pt-1 w-40 text-center">Date: {today}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -8949,9 +9087,18 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                               <div className="border-t pt-4 text-[9px] text-slate-500">
                                 <p className="font-bold">Declaration:</p>
                                 <p>We declare that this invoice shows the actual value of the goods and that all particulars are true and correct.</p>
-                                <div className="mt-4 flex justify-between items-center font-sans font-bold text-slate-900">
-                                  <span>For SHESHAAN GLOBAL PVT LTD</span>
-                                  <span className="border-t border-slate-400 pt-1 w-32 text-center">Authorized Signatory</span>
+                                <div className="mt-4 flex justify-between items-end font-sans font-bold text-slate-900">
+                                  <div>
+                                    <span className="block text-[10px]">For SHESHAAN GLOBAL PVT LTD</span>
+                                    <span className="text-[8px] text-slate-500 font-semibold block mt-0.5">Sana Zeba Bakshi · Proprietor & CEO</span>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src="/signature.png" alt="Signature" className="h-9 w-auto object-contain" />
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src="/stamp.png" alt="Stamp" className="h-9 w-auto object-contain opacity-90 -rotate-1" />
+                                    <span className="border-t border-slate-400 pt-1 w-28 text-center text-[9px] block">Authorized Signatory</span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -9029,15 +9176,24 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                                 </tbody>
                               </table>
 
-                              <div className="border-t pt-4 flex justify-between items-center font-sans font-bold text-slate-900">
-                                <span>For SHESHAAN GLOBAL PVT LTD</span>
-                                <button
-                                  type="button"
-                                  onClick={() => window.print()}
-                                  className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded font-sans text-[9px]"
-                                >
-                                  Print / Export Document
-                                </button>
+                              <div className="border-t pt-4 flex justify-between items-end font-sans font-bold text-slate-900">
+                                <div>
+                                  <span className="block text-[10px]">For SHESHAAN GLOBAL PVT LTD</span>
+                                  <span className="text-[8px] text-slate-500 font-semibold block mt-0.5">Sana Zeba Bakshi · Proprietor & CEO</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/signature.png" alt="Signature" className="h-9 w-auto object-contain" />
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src="/stamp.png" alt="Stamp" className="h-9 w-auto object-contain opacity-90 -rotate-1" />
+                                  <button
+                                    type="button"
+                                    onClick={() => window.print()}
+                                    className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded font-sans text-[9px]"
+                                  >
+                                    Print / Export Document
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           );
@@ -9448,7 +9604,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               className={`min-h-14 rounded-lg flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 ${activeTab === item.key ? 'bg-slate-900 text-white' : 'text-slate-500'}`}
             >
               {item.icon}
-              <span className="leading-none">{item.key === 'overview' ? 'Home' : item.key === 'crm' ? 'CRM' : item.key === 'quotes' ? 'Quotes' : 'Tasks'}</span>
+              <span className="leading-none">{item.key === 'overview' ? 'Home' : item.key === 'crm' ? 'CRM' : item.key === 'quotes' ? 'Quotes' : item.key === 'accounting' ? 'Accounts' : item.label}</span>
             </button>
           ))}
           <button
@@ -9496,8 +9652,14 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                 autoFocus
                 delay={80}
               />
-              <button type="button" onClick={() => setCommandOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <kbd className="text-[10px] font-black bg-slate-100 border px-1.5 py-0.5 rounded">ESC</kbd>
+              <button
+                type="button"
+                onClick={() => setCommandOpen(false)}
+                className="h-7 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center gap-1 transition text-xs font-bold"
+                aria-label="Close command console"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline text-[10px] text-slate-400">ESC</span>
               </button>
             </div>
 
@@ -9605,7 +9767,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               ))}
             </div>
 
-            <div className="p-3 border-t border-slate-100 bg-slate-50 flex gap-2">
+            <div className="p-3 border-t border-slate-100 bg-slate-50 flex gap-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
               <input
                 type="text"
                 placeholder="Ask copilot..."
@@ -9810,30 +9972,69 @@ const TwoColumnManager = ({
   onSubmit: (e: React.FormEvent) => void;
   onCancel: () => void;
   scrollableForm?: boolean;
-}) => (
-  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div className="portal-card p-5 h-fit space-y-4 lg:sticky lg:top-24">
-      <h3 className="font-black text-slate-900 text-[11px] uppercase tracking-wider border-b border-slate-200 pb-2">{formTitle}</h3>
-      <form onSubmit={onSubmit} className="space-y-3.5 text-xs">
-        <div className={scrollableForm ? 'max-h-[52vh] overflow-y-auto pr-2 space-y-3.5 scroll-smooth' : 'space-y-3.5'}>
-          {form}
-        </div>
-        <div className="flex gap-2 pt-2">
-          <button type="submit" className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg shadow transition flex items-center justify-center gap-1.5 active:scale-98">
-            <Plus className="h-4 w-4" />
-            {isEditing ? 'Update' : 'Save'}
+}) => {
+  const [mobileFormOpen, setMobileFormOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isEditing) setMobileFormOpen(true);
+  }, [isEditing]);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Mobile Form Toggle Button */}
+      {!isEditing && (
+        <div className="lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileFormOpen((v) => !v)}
+            className="w-full flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white font-extrabold text-xs text-slate-800 shadow-xs active:bg-slate-50 transition"
+          >
+            <span className="flex items-center gap-2">
+              <Plus className="h-4 w-4 text-sky-600" />
+              {formTitle}
+            </span>
+            <span className="text-[10px] text-sky-600 uppercase font-black">
+              {mobileFormOpen ? 'Hide Form ▲' : 'Open Form ▼'}
+            </span>
           </button>
-          {isEditing && (
-            <button type="button" onClick={onCancel} className="px-3.5 py-2.5 bg-white border border-slate-300 text-slate-600 font-bold rounded-lg transition hover:bg-slate-50 active:scale-98">
-              Cancel
+        </div>
+      )}
+
+      {/* Form Panel: Collapsible on mobile unless editing, always visible on lg */}
+      <div className={`portal-card p-4 sm:p-5 h-fit space-y-4 lg:sticky lg:top-24 ${!isEditing && !mobileFormOpen ? 'hidden lg:block' : 'block'}`}>
+        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+          <h3 className="font-black text-slate-900 text-[11px] uppercase tracking-wider">{formTitle}</h3>
+          {!isEditing && (
+            <button
+              type="button"
+              onClick={() => setMobileFormOpen(false)}
+              className="lg:hidden text-slate-400 hover:text-slate-600 text-xs font-bold"
+            >
+              Close
             </button>
           )}
         </div>
-      </form>
+        <form onSubmit={onSubmit} className="space-y-3.5 text-xs">
+          <div className={scrollableForm ? 'max-h-[52vh] overflow-y-auto pr-2 space-y-3.5 scroll-smooth' : 'space-y-3.5'}>
+            {form}
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button type="submit" className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg shadow transition flex items-center justify-center gap-1.5 active:scale-98">
+              <Plus className="h-4 w-4" />
+              {isEditing ? 'Update' : 'Save'}
+            </button>
+            {isEditing && (
+              <button type="button" onClick={onCancel} className="px-3.5 py-2.5 bg-white border border-slate-300 text-slate-600 font-bold rounded-lg transition hover:bg-slate-50 active:scale-98">
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+      <div className="lg:col-span-2 space-y-4 min-w-0">{children}</div>
     </div>
-    <div className="lg:col-span-2 space-y-4">{children}</div>
-  </div>
-);
+  );
+};
 
 const useBufferedText = (value: string, onChange: (value: string) => void, delay = 140) => {
   const [draft, setDraft] = React.useState(value);
@@ -10088,7 +10289,7 @@ const DataTable = ({ headers, children, pageSize = 8 }: { headers: string[]; chi
   if (rows.length === 0) {
     return (
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm scroll-fade">
-        <table className="w-full text-left border-collapse text-xs">
+        <table className="w-full min-w-[600px] text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
               {headers.map((header) => <th key={header} className="p-3.5 whitespace-nowrap">{header}</th>)}
@@ -10107,7 +10308,7 @@ const DataTable = ({ headers, children, pageSize = 8 }: { headers: string[]; chi
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm scroll-fade">
-        <table className="w-full text-left border-collapse text-xs">
+        <table className="w-full min-w-[600px] text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
               {headers.map((header) => <th key={header} className="p-3.5 whitespace-nowrap">{header}</th>)}
@@ -10117,7 +10318,7 @@ const DataTable = ({ headers, children, pageSize = 8 }: { headers: string[]; chi
         </table>
       </div>
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border border-slate-200 bg-white px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 border border-slate-200 bg-white px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 shadow-sm text-center sm:text-left">
           <span>Showing <strong className="text-slate-900">{startIndex + 1}</strong> to <strong className="text-slate-900">{Math.min(startIndex + pageSize, rows.length)}</strong> of <strong className="text-slate-900">{rows.length}</strong> records</span>
           <div className="flex gap-2">
             <button

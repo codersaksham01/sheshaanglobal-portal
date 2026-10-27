@@ -131,15 +131,15 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operat
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
               Your export operating plan is ready: buyers, quotations, collections, freight, documents, and shipments are prioritized for today.
             </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" onClick={() => onNavigate('crm')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-center text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)]">
+            <div className="mt-5 flex flex-col sm:flex-row flex-wrap gap-2">
+              <button type="button" onClick={() => onNavigate('crm')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-center text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)] w-full sm:w-auto">
                 <Target className="h-4 w-4" /> Open CRM pipeline
               </button>
-              <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-center text-xs font-extrabold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-center text-xs font-extrabold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 w-full sm:w-auto">
                 <Sparkles className="h-4 w-4" /> {busy ? 'Automation running' : 'Run automation'}
               </button>
             </div>
-            <div className="portal-stagger mt-5 grid gap-2 sm:grid-cols-3">
+            <div className="portal-stagger mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2">
               {executionLanes.map((lane) => (
                 <button
                   key={lane.label}
@@ -187,7 +187,7 @@ export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operat
         </div>
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-5" aria-label="Business command center">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3" aria-label="Business command center">
         {commandMetrics.map((metric) => (
           <button
             key={metric.label}

@@ -126,17 +126,17 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
   const isNewLead = lead.id.startsWith('new-');
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end items-start overflow-y-auto p-2 sm:p-3 pointer-events-none" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex justify-end items-end sm:items-start overflow-y-auto sm:p-3 pointer-events-none" role="dialog" aria-modal="true">
       {/* Background glass overlay */}
       <div
-        className="fixed inset-0 bg-slate-950/5 transition-opacity pointer-events-auto"
+        className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity pointer-events-auto"
         onClick={onClose}
       />
 
       {/* Drawer Body Panel */}
       <div
         ref={drawerRef}
-        className="relative w-full max-w-[360px] lg:max-w-[400px] max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-1.5rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col z-50 animate-fade-left pointer-events-auto"
+        className="relative w-full sm:max-w-[420px] max-h-[92vh] sm:max-h-[calc(100vh-1.5rem)] overflow-hidden rounded-t-2xl sm:rounded-xl border border-slate-200 bg-white shadow-2xl flex flex-col z-50 animate-fade-left pointer-events-auto"
       >
         {/* Header */}
         <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-950 text-white">
@@ -458,7 +458,7 @@ const LeadInspectorDrawerComponent: React.FC<LeadInspectorDrawerProps> = ({
             </div>
           </div>
         </div>
-        <div className="shrink-0 border-t border-slate-200 bg-white p-3">
+        <div className="shrink-0 border-t border-slate-200 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
           {error && (
             <div className="mb-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-700">
               {error}

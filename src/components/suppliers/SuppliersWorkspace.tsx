@@ -32,8 +32,6 @@ import {
   Check,
   ExternalLink
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import { supabase } from '../../lib/supabaseClient';
 import { getPortalCache, setPortalCache } from '../../lib/portalDataStore';
 import { Vendor, SupplierAgreement, AgreementProductItem } from '../../lib/types';
@@ -572,6 +570,10 @@ export function SuppliersWorkspace() {
     showToast('Rendering high-resolution PDF document...');
 
     try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf')
+      ]);
       const element = previewRef.current;
       const canvas = await html2canvas(element, {
         scale: 2,
@@ -1966,7 +1968,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                 </div>
 
                 {/* SCALED VIEWER CANVAS */}
-                <div className="w-full overflow-auto border border-slate-200 rounded-2xl p-4 bg-slate-200/50 shadow-inner flex justify-center max-h-[82vh]">
+                <div className="w-full overflow-x-auto overflow-y-auto border border-slate-200 rounded-2xl p-2 sm:p-4 bg-slate-200/50 shadow-inner flex justify-start sm:justify-center max-h-[82vh] touch-pan-x scrollbar-thin">
                   <div
                     style={{
                       transform: `scale(${previewZoom})`,

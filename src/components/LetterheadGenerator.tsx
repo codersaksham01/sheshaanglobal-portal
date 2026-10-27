@@ -13,8 +13,6 @@ import {
   Printer,
   FileCheck
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 
 export const LetterheadGenerator: React.FC = () => {
   // 1. State for editable letterhead fields
@@ -60,6 +58,10 @@ export const LetterheadGenerator: React.FC = () => {
     if (!previewRef.current) return;
     setGeneratingPdf(true);
     try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf')
+      ]);
       const canvas = await html2canvas(previewRef.current, {
         scale: 3, // Ultra-high resolution capture for printing
         useCORS: true,
@@ -97,6 +99,7 @@ export const LetterheadGenerator: React.FC = () => {
     if (!previewRef.current) return;
     setGeneratingPng(true);
     try {
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(previewRef.current, {
         scale: 3,
         useCORS: true,
@@ -130,6 +133,7 @@ export const LetterheadGenerator: React.FC = () => {
     if (!previewRef.current) return;
     setGeneratingJpg(true);
     try {
+      const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(previewRef.current, {
         scale: 3,
         useCORS: true,
@@ -362,7 +366,7 @@ export const LetterheadGenerator: React.FC = () => {
             <span>794px × 1123px (Print-Ready)</span>
           </div>
 
-          <div className="w-full overflow-auto border border-slate-200 rounded-xl p-4 bg-slate-100/60 shadow-inner flex justify-center max-h-[85vh]">
+          <div className="w-full overflow-x-auto overflow-y-auto border border-slate-200 rounded-xl p-2 sm:p-4 bg-slate-100/60 shadow-inner flex justify-start lg:justify-center max-h-[85vh] touch-pan-x scrollbar-thin">
             {/* The Locked A4 Page Container */}
             <div 
               ref={previewRef}
@@ -509,34 +513,35 @@ export const LetterheadGenerator: React.FC = () => {
                   </div>
 
                   {/* Sign-off details block */}
-                  <div className="mt-12 text-left self-start relative">
-                    <p className="text-[11.5px] text-slate-600 mb-2">Yours sincerely,</p>
+                  <div className="mt-8 text-left self-start relative">
+                    <p className="text-[11.5px] text-slate-600 mb-1.5">Yours sincerely,</p>
                     
-                    {/* CEO Signature Graphic */}
-                    {showSignature ? (
-                      <div className="h-12 my-1 relative select-none flex items-end">
+                    {/* CEO Signature & Official Rubber Stamp Side-by-Side */}
+                    <div className="flex items-center gap-6 my-2 select-none">
+                      {showSignature ? (
+                        <div className="h-14 relative flex items-center">
+                          <img 
+                            src="/signature.png" 
+                            alt="CEO Signature" 
+                            className="h-14 w-auto object-contain select-none"
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-10 w-28 border-b border-dashed border-slate-400" />
+                      )}
+
+                      <div className="relative flex items-center">
                         <img 
-                          src="/signature.png" 
-                          alt="CEO Signature" 
-                          className="h-14 w-auto object-contain select-none -mb-1"
+                          src="/stamp.png" 
+                          alt="Official Sheshaan Stamp" 
+                          className="h-12 w-auto object-contain opacity-[0.93] -rotate-[1.5deg]"
                         />
                       </div>
-                    ) : (
-                      <div className="h-8 select-none" />
-                    )}
+                    </div>
 
                     <p className="text-[12px] font-black text-slate-900 leading-none mt-1">{senderName || 'Sana Zeba Bakshi'}</p>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1.5">{senderPosition || 'CEO'}</p>
                     <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5 select-none">Sheshaan Global</p>
-                    
-                    {/* Official Rubber Stamp */}
-                    <div className="mt-3 select-none">
-                      <img 
-                        src="/stamp.png" 
-                        alt="Official Sheshaan Stamp" 
-                        className="h-11 w-auto object-contain opacity-[0.93] -rotate-[1.5deg]"
-                      />
-                    </div>
                   </div>
                 </div>
               </div>

@@ -1,18 +1,18 @@
 'use client';
 
 import React from 'react';
-import { AuthGate } from '../../components/AuthGate';
-import { AppErrorBoundary } from '../../components/AppErrorBoundary';
-import { Dashboard } from '../../components/Dashboard';
+import { PortalLayout } from '../../components/portal/PortalLayout';
+import { ProductsWorkspace } from '../../components/products/ProductsWorkspace';
+import { Package } from 'lucide-react';
 
-export default function Page() {
+export default function ProductsPage() {
   return (
-    <main className="min-h-screen bg-slate-50">
-      <AuthGate>
-        <AppErrorBoundary>
-          <Dashboard initialTab="products" />
-        </AppErrorBoundary>
-      </AuthGate>
-    </main>
+    <PortalLayout
+      activeTab="products"
+      pageTitle="Products & SKU Catalog"
+      pageIcon={<Package className="h-4 w-4" />}
+    >
+      <ProductsWorkspace />
+    </PortalLayout>
   );
 }

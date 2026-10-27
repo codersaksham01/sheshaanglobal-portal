@@ -266,7 +266,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
   }
 
   return (
-    <div className="auth-os min-h-screen flex items-center justify-center p-4">
+    <div className="auth-os min-h-screen flex items-center justify-center p-3 sm:p-4 py-6 sm:py-8 mobile-safe-bottom mobile-safe-top">
       <div className="grid w-full max-w-5xl gap-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-stretch">
         <section className="hidden overflow-hidden rounded-2xl border border-white/10 bg-white/8 p-7 text-white shadow-2xl backdrop-blur-xl lg:flex lg:flex-col lg:justify-between">
           <div>
@@ -296,7 +296,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
           </div>
         </section>
 
-        <form onSubmit={requestMode ? handleAccessRequest : handleLogin} className="auth-card w-full rounded-2xl p-6 sm:p-7 space-y-5">
+        <form onSubmit={requestMode ? handleAccessRequest : handleLogin} className="auth-card w-full rounded-2xl p-5 sm:p-7 space-y-4 sm:space-y-5">
           <div className="flex items-center gap-3">
             <div className="h-14 w-14 rounded-2xl bg-white text-slate-900 flex items-center justify-center border border-slate-200 overflow-hidden shadow-sm">
               <Image src="/logo.png" alt="Sheshaan Global logo" width={56} height={56} className="h-full w-full object-contain" />

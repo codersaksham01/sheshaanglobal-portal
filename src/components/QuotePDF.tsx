@@ -718,23 +718,26 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   signatureSignLine: {
-    width: '80%',
-    height: 40,
+    width: '92%',
+    height: 38,
     borderBottomWidth: 0.75,
     borderBottomColor: '#CBD5E1',
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 4,
+    marginVertical: 3,
+    gap: 8,
   },
   signatureImage: {
-    width: 80,
-    height: 35,
+    width: 76,
+    height: 34,
     objectFit: 'contain',
   },
   stampImage: {
-    width: 50,
-    height: 50,
+    width: 68,
+    height: 30,
     objectFit: 'contain',
+    opacity: 0.95,
   },
   signatureTextName: {
     fontFamily: 'ArialCustom',
@@ -1579,6 +1582,34 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           </View>
         </View>
 
+        {/* SIGNATURES BLOCK (Shown on Page 1 when Details Page is disabled) */}
+        {!showDetailsPage && showSignatureBlock && (
+          <View style={styles.signaturesGrid} wrap={false}>
+            <View style={styles.signatureBox}>
+              <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller)</Text>
+              <View style={styles.signatureSignLine}>
+                {showCeoSignature && (
+                  <Image src="/signature.png" style={styles.signatureImage} />
+                )}
+                <Image src="/stamp.png" style={styles.stampImage} />
+              </View>
+              <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
+              <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
+            </View>
+
+            <View style={styles.signatureBox}>
+              <Text style={styles.signatureRoleLabel}>
+                {documentType === 'packing_list' ? 'Received & Audited By Buyer' : 'Accepted & Confirmed By Buyer'}{"\n"}(Buyer Order Confirmation)
+              </Text>
+              <View style={[styles.signatureSignLine, { borderStyle: 'dashed' }]} />
+              <Text style={styles.signatureTextName}>Authorized Buyer Signature & Stamp</Text>
+              <Text style={styles.signatureTextCompany}>
+                {[client.contact_name, client.company_name].filter(Boolean).join(' / ') || 'Authorized Buyer Representative'}
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Footer */}
         <View style={styles.footer} wrap={false}>
           <View style={styles.footerCol1}>
@@ -1776,12 +1807,10 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                   {showCeoSignature && (
                     <Image src="/signature.png" style={styles.signatureImage} />
                   )}
+                  <Image src="/stamp.png" style={styles.stampImage} />
                 </View>
                 <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
                 <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
-                <View style={{ marginTop: 4, alignItems: 'center' }}>
-                  <Image src="/stamp.png" style={styles.stampImage} />
-                </View>
               </View>
 
               <View style={styles.signatureBox}>

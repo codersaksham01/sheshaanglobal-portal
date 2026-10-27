@@ -1,3 +1,4 @@
+/* eslint-disable jsx-a11y/alt-text */
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image, Svg, Path, Line, Circle, Font } from '@react-pdf/renderer';
 import { AccountingRecord, AccountingSummary } from '../../lib/types';
@@ -391,13 +392,13 @@ const styles = StyleSheet.create({
     objectFit: 'contain',
   },
   stampImage: {
-    width: 44,
-    height: 44,
+    width: 65,
+    height: 26,
     objectFit: 'contain',
     position: 'absolute',
-    right: 8,
-    top: -4,
-    opacity: 0.88,
+    right: 4,
+    top: 2,
+    opacity: 0.92,
   },
   signatureTextName: {
     fontFamily: 'ArialCustom',
@@ -725,7 +726,7 @@ export const AccountingReportPDF: React.FC<AccountingReportPDFProps> = ({
         </View>
 
         {/* Dual Signature Block */}
-        <View style={styles.signaturesGrid}>
+        <View style={styles.signaturesGrid} wrap={false}>
           <View style={styles.signatureBox}>
             <Text style={styles.signatureRoleLabel}>PREPARED & VERIFIED BY</Text>
             <View style={styles.signatureSignLine}>

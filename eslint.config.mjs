@@ -16,7 +16,8 @@ const config = [
     rules: {
       'react-hooks/exhaustive-deps': 'off',
       'react-hooks/immutability': 'off',
-      'react-hooks/set-state-in-effect': 'off'
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/purity': 'off'
     }
   },
   {

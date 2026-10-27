@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import {
   TrendingUp,
@@ -41,11 +42,10 @@ import {
 import { supabase } from '../../lib/supabaseClient';
 import { getPortalCache, setPortalCache, fetchAllPortalData } from '../../lib/portalDataStore';
 import { AccountingRecord, AccountingSummary, ExpenseStatus, TransactionType } from '../../lib/types';
-import { AccountingReportPDF } from './AccountingReportPDF';
 
-// Dynamic PDF Viewer for browser-safe rendering
-const PDFViewer = dynamic(
-  () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
+// Dynamic PDF components for browser-safe lazy rendering
+const AccountingReportPDFViewer = dynamic(
+  () => import('./AccountingReportPDFViewer'),
   {
     ssr: false,
     loading: () => (
@@ -239,6 +239,17 @@ export function AccountingWorkspace() {
   const [recordToDelete, setRecordToDelete] = useState<AccountingRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Client hydration state for React Portal
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const renderModal = (modalNode: React.ReactNode) => {
+    if (!mounted || typeof document === 'undefined') return null;
+    return createPortal(modalNode, document.body);
+  };
+
   // Expense Form State
   const [expenseForm, setExpenseForm] = useState({
     title: '',
@@ -264,6 +275,26 @@ export function AccountingWorkspace() {
     transaction_date: new Date().toISOString().slice(0, 10),
     description: ''
   });
+
+  // Prevent background page scrolling when any modal is open
+  useEffect(() => {
+    const isAnyModalOpen =
+      showExpenseModal ||
+      showIncomeModal ||
+      showOtpModal ||
+      showApprovalModal ||
+      !!recordToDelete;
+
+    if (isAnyModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showExpenseModal, showIncomeModal, showOtpModal, showApprovalModal, recordToDelete]);
 
   // OTP State
   const [otpCode, setOtpCode] = useState('');
@@ -781,9 +812,12 @@ export function AccountingWorkspace() {
     if (downloadingPdf) return;
     setDownloadingPdf(true);
     try {
-      const { pdf } = await import('@react-pdf/renderer');
+      const [{ pdf }, { AccountingReportPDF: RawAccountingReportPDF }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./AccountingReportPDF')
+      ]);
       const blob = await pdf(
-        <AccountingReportPDF
+        <RawAccountingReportPDF
           records={records}
           summary={summary}
           dateRangeLabel="Financial Statement 2026"
@@ -1637,25 +1671,23 @@ export function AccountingWorkspace() {
           </div>
 
           <div className="w-full h-[520px] sm:h-[680px] lg:h-[820px] bg-slate-100 rounded-xl overflow-hidden">
-            <PDFViewer width="100%" height="100%" className="border-0">
-              <AccountingReportPDF
-                records={records}
-                summary={summary}
-                dateRangeLabel="Financial Statement 2026"
-                generatedBy="Accounts & Finance Department"
-                reportRef={`SG-ACCR-${new Date().getFullYear()}-${String(records.length).padStart(4, '0')}`}
-              />
-            </PDFViewer>
+            <AccountingReportPDFViewer
+              records={records}
+              summary={summary}
+              dateRangeLabel="Financial Statement 2026"
+              generatedBy="Accounts & Finance Department"
+              reportRef={`SG-ACCR-${new Date().getFullYear()}-${String(records.length).padStart(4, '0')}`}
+            />
           </div>
         </div>
       )}
 
-      {/* MODAL: LOG EXPENSE (Viewport Adaptive, Sticky Header & Footer, Borderless) */}
-      {showExpenseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] my-auto animate-in zoom-in-95 duration-150">
+      {/* MODAL: LOG EXPENSE (Viewport Adaptive, Sticky Header & Footer, Responsive) */}
+      {showExpenseModal && renderModal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="px-5 sm:px-6 py-4 flex items-center justify-between bg-slate-50 shrink-0 rounded-t-2xl">
+            <div className="px-5 py-3.5 sm:px-6 sm:py-4 flex items-center justify-between bg-slate-50 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="p-1.5 rounded-lg bg-blue-50 text-blue-900 font-bold shrink-0">
                   <ArrowUpRight className="h-4 w-4" />
@@ -1675,8 +1707,8 @@ export function AccountingWorkspace() {
             </div>
 
             {/* Scrollable Form Body */}
-            <form onSubmit={handleExpenseSubmit} className="flex flex-col flex-1 min-h-0">
-              <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+            <form onSubmit={handleExpenseSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="p-4 sm:p-5 space-y-3 sm:space-y-3.5 overflow-y-auto flex-1 overscroll-contain min-h-0">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Expense Title / Cost Head *</label>
                   <input
@@ -1685,7 +1717,7 @@ export function AccountingWorkspace() {
                     placeholder="e.g. Export Jute Packing Materials (325 Bags)"
                     value={expenseForm.title}
                     onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
+                    className="w-full px-3.5 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
                   />
                 </div>
 
@@ -1701,7 +1733,7 @@ export function AccountingWorkspace() {
                         placeholder="0.00"
                         value={expenseForm.amount}
                         onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-                        className="w-full pl-7 pr-3 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono font-bold transition"
+                        className="w-full pl-7 pr-3 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono font-bold transition"
                       />
                     </div>
                   </div>
@@ -1711,7 +1743,7 @@ export function AccountingWorkspace() {
                     <select
                       value={expenseForm.category}
                       onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}
-                      className="w-full px-3 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition"
+                      className="w-full px-3 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition"
                     >
                       {EXPENSE_CATEGORIES.map((c) => (
                         <option key={c} value={c}>{c}</option>
@@ -1721,7 +1753,7 @@ export function AccountingWorkspace() {
                 </div>
 
                 {parseFloat(expenseForm.amount) > 2000 && (
-                  <div className="p-3.5 rounded-xl bg-amber-50 flex items-start gap-2.5">
+                  <div className="p-3 rounded-xl bg-amber-50 flex items-start gap-2.5">
                     <Lock className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
                     <div className="text-[11px] text-amber-900 leading-relaxed">
                       <strong className="font-bold">Security Gate Notice:</strong> Amount exceeds ₹2,000 threshold.
@@ -1739,7 +1771,7 @@ export function AccountingWorkspace() {
                       placeholder="e.g. Nagpur Spice Processing Co."
                       value={expenseForm.paid_to_or_from}
                       onChange={(e) => setExpenseForm({ ...expenseForm, paid_to_or_from: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
+                      className="w-full px-3.5 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
                     />
                   </div>
 
@@ -1748,7 +1780,7 @@ export function AccountingWorkspace() {
                     <select
                       value={expenseForm.payment_method}
                       onChange={(e) => setExpenseForm({ ...expenseForm, payment_method: e.target.value })}
-                      className="w-full px-3 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition"
+                      className="w-full px-3 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition"
                     >
                       {PAYMENT_METHODS.map((m) => (
                         <option key={m} value={m}>{m}</option>
@@ -1765,7 +1797,7 @@ export function AccountingWorkspace() {
                       required
                       value={expenseForm.transaction_date}
                       onChange={(e) => setExpenseForm({ ...expenseForm, transaction_date: e.target.value })}
-                      className="w-full px-3 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono transition"
+                      className="w-full px-3 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono transition"
                     />
                   </div>
 
@@ -1776,7 +1808,7 @@ export function AccountingWorkspace() {
                       placeholder="e.g. NEFT-9876543210"
                       value={expenseForm.reference_number}
                       onChange={(e) => setExpenseForm({ ...expenseForm, reference_number: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono transition"
+                      className="w-full px-3.5 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono transition"
                     />
                   </div>
                 </div>
@@ -1788,13 +1820,13 @@ export function AccountingWorkspace() {
                     placeholder="Details of expense, batch reference, or business purpose..."
                     value={expenseForm.description}
                     onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
+                    className="w-full px-3.5 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
                   />
                 </div>
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-end gap-2 shrink-0 rounded-b-2xl">
+              <div className="px-5 py-3 sm:px-6 sm:py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowExpenseModal(false)}
@@ -1825,19 +1857,19 @@ export function AccountingWorkspace() {
       )}
 
       {/* MODAL: OTP VERIFICATION (> ₹2,000 THRESHOLD) */}
-      {showOtpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] my-auto animate-in zoom-in-95 duration-150">
+      {showOtpModal && renderModal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="p-5 sm:p-6 text-center bg-slate-50 shrink-0 rounded-t-2xl">
-              <div className="h-12 w-12 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center mx-auto mb-3 shadow-xs font-bold">
-                <Lock className="h-6 w-6 text-blue-900" />
+            <div className="p-4 sm:p-5 text-center bg-slate-50 shrink-0 border-b border-slate-100">
+              <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center mx-auto mb-2 shadow-xs font-bold">
+                <Lock className="h-5 w-5 sm:h-6 sm:w-6 text-blue-900" />
               </div>
-              <h3 className="text-base font-black text-slate-900">Expense Security Verification</h3>
+              <h3 className="text-sm sm:text-base font-black text-slate-900">Expense Security Verification</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
                 Disbursements exceeding ₹2,000 mandate OTP authorization sent to Sheshaan Global admin device.
               </p>
-              <div className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-50 text-xs font-mono font-bold text-blue-950">
+              <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-xs font-mono font-bold text-blue-950">
                 <Smartphone className="h-3.5 w-3.5 text-blue-900" />
                 <span>{TARGET_PHONE}</span>
                 <span className="text-[10px] text-slate-500 font-sans">({ADMIN_NAME})</span>
@@ -1845,7 +1877,7 @@ export function AccountingWorkspace() {
             </div>
 
             {/* Scrollable Body */}
-            <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+            <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto flex-1 overscroll-contain min-h-0">
               {pendingExpenseData && (
                 <div className="p-3.5 rounded-xl bg-slate-50 space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-500">
@@ -1923,7 +1955,7 @@ export function AccountingWorkspace() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold hover:bg-emerald-100 transition text-[11px]"
                         >
-                          <span>Send: "I allow callmebot to send me messages"</span>
+                          <span>Send: &quot;I allow callmebot to send me messages&quot;</span>
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       </li>
@@ -2000,7 +2032,7 @@ export function AccountingWorkspace() {
               </div>
 
               <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
-                <span>Didn't receive SMS?</span>
+                <span>Didn&apos;t receive SMS?</span>
                 <button
                   type="button"
                   disabled={otpTimer > 0 || otpLoading}
@@ -2015,7 +2047,7 @@ export function AccountingWorkspace() {
             </div>
 
             {/* Sticky Footer */}
-            <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-end gap-2 shrink-0 rounded-b-2xl">
+            <div className="px-5 py-3 sm:px-6 sm:py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -2045,11 +2077,11 @@ export function AccountingWorkspace() {
       )}
 
       {/* MODAL: LOG INCOME */}
-      {showIncomeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] my-auto animate-in zoom-in-95 duration-150">
+      {showIncomeModal && renderModal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="px-5 sm:px-6 py-4 flex items-center justify-between bg-slate-50 shrink-0 rounded-t-2xl">
+            <div className="px-5 py-3.5 sm:px-6 sm:py-4 flex items-center justify-between bg-slate-50 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 font-bold shrink-0">
                   <ArrowDownLeft className="h-4 w-4" />
@@ -2069,8 +2101,8 @@ export function AccountingWorkspace() {
             </div>
 
             {/* Scrollable Form Body */}
-            <form onSubmit={handleIncomeSubmit} className="flex flex-col flex-1 min-h-0">
-              <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+            <form onSubmit={handleIncomeSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="p-4 sm:p-5 space-y-3 sm:space-y-3.5 overflow-y-auto flex-1 overscroll-contain min-h-0">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Income Title / Purpose *</label>
                   <input
@@ -2079,7 +2111,7 @@ export function AccountingWorkspace() {
                     placeholder="e.g. Export Wire Remittance for Khor Fakkan SG-2026-0001"
                     value={incomeForm.title}
                     onChange={(e) => setIncomeForm({ ...incomeForm, title: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
+                    className="w-full px-3.5 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
                   />
                 </div>
 
@@ -2095,7 +2127,7 @@ export function AccountingWorkspace() {
                         placeholder="0.00"
                         value={incomeForm.amount}
                         onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })}
-                        className="w-full pl-7 pr-3 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono font-bold transition"
+                        className="w-full pl-7 pr-3 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono font-bold transition"
                       />
                     </div>
                   </div>
@@ -2105,7 +2137,7 @@ export function AccountingWorkspace() {
                     <select
                       value={incomeForm.category}
                       onChange={(e) => setIncomeForm({ ...incomeForm, category: e.target.value })}
-                      className="w-full px-3 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition"
+                      className="w-full px-3 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition"
                     >
                       {INCOME_CATEGORIES.map((c) => (
                         <option key={c} value={c}>{c}</option>
@@ -2123,7 +2155,7 @@ export function AccountingWorkspace() {
                       placeholder="e.g. BusyExim Private Limited, UAE"
                       value={incomeForm.paid_to_or_from}
                       onChange={(e) => setIncomeForm({ ...incomeForm, paid_to_or_from: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
+                      className="w-full px-3.5 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
                     />
                   </div>
 
@@ -2132,7 +2164,7 @@ export function AccountingWorkspace() {
                     <select
                       value={incomeForm.payment_method}
                       onChange={(e) => setIncomeForm({ ...incomeForm, payment_method: e.target.value })}
-                      className="w-full px-3 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition"
+                      className="w-full px-3 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-medium transition"
                     >
                       {PAYMENT_METHODS.map((m) => (
                         <option key={m} value={m}>{m}</option>
@@ -2149,7 +2181,7 @@ export function AccountingWorkspace() {
                       required
                       value={incomeForm.transaction_date}
                       onChange={(e) => setIncomeForm({ ...incomeForm, transaction_date: e.target.value })}
-                      className="w-full px-3 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono transition"
+                      className="w-full px-3 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono transition"
                     />
                   </div>
 
@@ -2160,7 +2192,7 @@ export function AccountingWorkspace() {
                       placeholder="e.g. SWIFT-FIRCF-778811"
                       value={incomeForm.reference_number}
                       onChange={(e) => setIncomeForm({ ...incomeForm, reference_number: e.target.value })}
-                      className="w-full px-3.5 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono transition"
+                      className="w-full px-3.5 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 font-mono transition"
                     />
                   </div>
                 </div>
@@ -2172,13 +2204,13 @@ export function AccountingWorkspace() {
                     placeholder="Details of remittance advice, invoice reference, bank charges..."
                     value={incomeForm.description}
                     onChange={(e) => setIncomeForm({ ...incomeForm, description: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
+                    className="w-full px-3.5 py-2 sm:py-2.5 bg-slate-100/70 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900 transition"
                   />
                 </div>
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-end gap-2 shrink-0 rounded-b-2xl">
+              <div className="px-5 py-3 sm:px-6 sm:py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowIncomeModal(false)}
@@ -2200,11 +2232,11 @@ export function AccountingWorkspace() {
       )}
 
       {/* MODAL: REJECT EXPENSE REMARKS */}
-      {showApprovalModal && selectedRecordForApproval && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] my-auto animate-in zoom-in-95 duration-150">
+      {showApprovalModal && selectedRecordForApproval && renderModal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-between shrink-0 rounded-t-2xl">
+            <div className="px-5 py-3.5 sm:px-6 sm:py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between shrink-0">
               <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                 <XCircle className="h-4 w-4 text-rose-600" />
                 Reject Expense Disbursement
@@ -2212,14 +2244,14 @@ export function AccountingWorkspace() {
               <button
                 type="button"
                 onClick={() => setShowApprovalModal(false)}
-                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg transition shrink-0"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {/* Scrollable Body */}
-            <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+            <div className="p-4 sm:p-6 space-y-3.5 overflow-y-auto flex-1 overscroll-contain min-h-0">
               <p className="text-xs text-slate-600 leading-relaxed">
                 You are rejecting the expense voucher for{' '}
                 <strong className="text-slate-900 font-bold">{selectedRecordForApproval.title}</strong> (₹
@@ -2242,7 +2274,7 @@ export function AccountingWorkspace() {
             </div>
 
             {/* Sticky Footer */}
-            <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-end gap-2 shrink-0 rounded-b-2xl">
+            <div className="px-5 py-3 sm:px-6 sm:py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowApprovalModal(false)}
@@ -2263,17 +2295,17 @@ export function AccountingWorkspace() {
       )}
 
       {/* MODAL: DELETE CONFIRMATION */}
-      {recordToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] my-auto animate-in zoom-in-95 duration-150">
+      {recordToDelete && renderModal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] my-auto overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-between shrink-0 rounded-t-2xl">
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+            <div className="px-5 py-3.5 sm:px-6 sm:py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-8 w-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                   <Trash2 className="h-4 w-4" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-900">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black text-slate-900 truncate">
                     Delete {recordToDelete.type === 'expense' ? 'Expense' : 'Income'} Record
                   </h3>
                   <span className="text-[10px] text-slate-400 font-mono">ID: {recordToDelete.id}</span>
@@ -2283,20 +2315,20 @@ export function AccountingWorkspace() {
                 type="button"
                 disabled={deleteLoading}
                 onClick={() => setRecordToDelete(null)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg transition"
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg transition shrink-0"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {/* Scrollable Body */}
-            <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 overscroll-contain">
+            <div className="p-4 sm:p-6 space-y-3.5 overflow-y-auto flex-1 overscroll-contain min-h-0">
               <p className="text-xs text-slate-600 leading-relaxed">
                 Are you sure you want to permanently delete this {recordToDelete.type === 'expense' ? 'expense record' : 'income entry'} from the company accounting ledger?
               </p>
 
               {/* Record Summary Card */}
-              <div className="p-4 rounded-xl bg-slate-50 space-y-2 text-xs">
+              <div className="p-3.5 sm:p-4 rounded-xl bg-slate-50 space-y-2 text-xs">
                 <div className="flex justify-between items-start gap-2">
                   <span className="text-slate-500 shrink-0">Cost Head:</span>
                   <span className="font-bold text-slate-900 text-right leading-snug break-words">{recordToDelete.title}</span>
@@ -2331,7 +2363,7 @@ export function AccountingWorkspace() {
             </div>
 
             {/* Sticky Footer */}
-            <div className="px-5 sm:px-6 py-4 bg-slate-50 flex items-center justify-end gap-2 shrink-0 rounded-b-2xl">
+            <div className="px-5 py-3 sm:px-6 sm:py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0">
               <button
                 type="button"
                 disabled={deleteLoading}

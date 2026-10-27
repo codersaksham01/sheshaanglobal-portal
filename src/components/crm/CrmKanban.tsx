@@ -53,7 +53,7 @@ const CrmKanbanCardComponent: React.FC<CrmKanbanCardProps> = ({
             <p className="text-[10px] text-slate-500 truncate mt-0.5">{lead.product_interest || 'General Commodity'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition duration-150">
+        <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition duration-150">
           <button
             type="button"
             onClick={() => onEditLead(lead)}
@@ -234,17 +234,25 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-7 gap-3.5 items-start">
-      {COLUMNS.map((col) => {
-        const colLeads = leadsByColumn.get(col.id) || [];
+    <div className="space-y-2">
+      <div className="md:hidden flex items-center justify-between text-[11px] font-bold text-slate-500 px-1 py-1">
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse" />
+          Swipe stages horizontally →
+        </span>
+        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{leads.length} leads</span>
+      </div>
+      <div className="flex overflow-x-auto snap-x snap-mandatory pb-4 gap-3.5 items-start md:grid md:grid-cols-3 xl:grid-cols-7 md:overflow-x-visible no-scrollbar touch-pan-x px-0.5">
+        {COLUMNS.map((col) => {
+          const colLeads = leadsByColumn.get(col.id) || [];
 
-        return (
-          <div
-            key={col.id}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, col.id)}
-            className={`rounded-xl border border-slate-200 border-t-4 p-3 min-h-[500px] flex flex-col ${col.color}`}
-          >
+          return (
+            <div
+              key={col.id}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, col.id)}
+              className={`w-[84vw] max-w-[320px] shrink-0 snap-center md:w-auto md:max-w-none md:shrink rounded-xl border border-slate-200 border-t-4 p-3 min-h-[420px] md:min-h-[500px] flex flex-col ${col.color}`}
+            >
             <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
               <div className="flex items-center gap-1.5 min-w-0">
                 <input
@@ -293,6 +301,7 @@ const CrmKanbanComponent: React.FC<CrmKanbanProps> = ({
           </div>
         );
       })}
+      </div>
     </div>
   );
 };

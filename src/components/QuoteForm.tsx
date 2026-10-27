@@ -2,12 +2,19 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { supabase } from '../lib/supabaseClient';
 import { Client, Product, Quote, QuoteItem, ShipperDetails, LogisticsSpecs, FreightPreset, BankDetails, CostBreakdownNotes } from '../lib/types';
 import { AlertTriangle, CheckCircle2, Plus, Trash2, Save, Eye, ArrowLeft, Loader2, Download, ShieldCheck } from 'lucide-react';
-import { QuotePDF } from './QuotePDF';
 import dynamic from 'next/dynamic';
 
-const PDFViewer = dynamic(
-  () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
-  { ssr: false }
+const QuotePDFViewer = dynamic(
+  () => import('./QuotePDFViewer'),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex flex-col items-center justify-center p-8 text-slate-400 h-[650px] bg-slate-50 border border-slate-200 rounded">
+        <Loader2 className="h-6 w-6 animate-spin text-sky-600 mb-2" />
+        <span className="text-xs font-semibold">Generating document preview...</span>
+      </div>
+    )
+  }
 );
 
 
@@ -1551,9 +1558,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     if (downloadingPdf) return;
     setDownloadingPdf(true);
     try {
-      const { pdf } = await import('@react-pdf/renderer');
+      const [{ pdf }, { QuotePDF: RawQuotePDF }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./QuotePDF')
+      ]);
       const blob = await pdf(
-        <QuotePDF quote={tempQuoteForPDF} documentType={previewDocType} />
+        <RawQuotePDF quote={tempQuoteForPDF} documentType={previewDocType} />
       ).toBlob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -2877,9 +2887,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             
             <div className="hidden md:block flex-1 p-2 h-[650px] lg:h-auto">
               <PdfPreviewBoundary key={`${previewDocType}-${quoteNumber}`}>
-                <PDFViewer width="100%" height="100%" className="border border-slate-300 rounded shadow-sm bg-slate-50">
-                  <QuotePDF quote={deferredTempQuoteForPDF} documentType={previewDocType} />
-                </PDFViewer>
+                <QuotePDFViewer quote={deferredTempQuoteForPDF} documentType={previewDocType} />
               </PdfPreviewBoundary>
             </div>
           </div>
