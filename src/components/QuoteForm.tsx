@@ -114,6 +114,14 @@ const isMissingOptionalQuoteColumnError = (error: unknown) => {
     || message.includes('show_ocean_freight')
     || message.includes('show_insurance_charge')
     || message.includes('cost_breakdown_notes')
+    || message.includes('packing_list')
+    || message.includes('invoice_number')
+    || message.includes('po_number')
+    || message.includes('vessel_name')
+    || message.includes('container_number')
+    || message.includes('seal_number')
+    || message.includes('bl_number')
+    || message.includes('notify_party')
     || message.includes('schema cache');
 };
 const formatItemBasis = (item: QuoteItem) => {
@@ -270,7 +278,12 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     address: 'Plot No. 1459, Opp. M.A.K. Azad Urdu School, Aasinagar, Nagpur - 440017, Maharashtra, India',
     contact_name: 'Sana Zeba Bakshi (CEO)',
     contact_email: 'info@sheshaanglobal.com',
-    tax_id: 'GST | APEDA | FSSAI'
+    phone: '+91 81499 09546',
+    iec_number: '0312098433',
+    gstin: '27AAAAA1111A1Z1',
+    signatory_name: 'Sana Zeba Bakshi',
+    signatory_title: 'Proprietor & CEO',
+    tax_id: 'GST: 27AAAAA1111A1Z1 | IEC: 0312098433'
   };
 
   const defaultBankDetails: BankDetails = {
@@ -432,6 +445,28 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [showOceanFreight, setShowOceanFreight] = useState(true);
   const [showInsuranceCharge, setShowInsuranceCharge] = useState(true);
 
+  // Packing List & Shipping Logistics States
+  const [packingListNumber, setPackingListNumber] = useState('');
+  const [packingListDate, setPackingListDate] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [poNumber, setPoNumber] = useState('');
+  const [contractNumber, setContractNumber] = useState('');
+  const [shipmentRef, setShipmentRef] = useState('');
+  const [bookingNumber, setBookingNumber] = useState('');
+  const [notifyParty, setNotifyParty] = useState('');
+  const [notifyPartyDetails, setNotifyPartyDetails] = useState('');
+  const [finalDestination, setFinalDestination] = useState('');
+  const [vesselName, setVesselName] = useState('');
+  const [containerNumber, setContainerNumber] = useState('');
+  const [sealNumber, setSealNumber] = useState('');
+  const [blNumber, setBlNumber] = useState('');
+  const [totalCbm, setTotalCbm] = useState<number | ''>('');
+  const [marksNumbers, setMarksNumbers] = useState('');
+  const [signatoryName, setSignatoryName] = useState('Sana Zeba Bakshi');
+  const [signatoryDesignation, setSignatoryDesignation] = useState('Proprietor & CEO');
+  const [placeOfIssue, setPlaceOfIssue] = useState('Nagpur, Maharashtra, India');
+
   // Page 2 Lists States
   const [includedScope, setIncludedScope] = useState<string[]>([]);
   const [excludedScope, setExcludedScope] = useState<string[]>([]);
@@ -557,6 +592,26 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     showOriginCharges,
     showOceanFreight,
     showInsuranceCharge,
+    packingListNumber,
+    packingListDate,
+    invoiceNumber,
+    invoiceDate,
+    poNumber,
+    contractNumber,
+    shipmentRef,
+    bookingNumber,
+    notifyParty,
+    notifyPartyDetails,
+    finalDestination,
+    vesselName,
+    containerNumber,
+    sealNumber,
+    blNumber,
+    totalCbm,
+    marksNumbers,
+    signatoryName,
+    signatoryDesignation,
+    placeOfIssue,
     includedScope,
     excludedScope,
     docList,
@@ -612,6 +667,26 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setShowOriginCharges(draft.showOriginCharges ?? true);
     setShowOceanFreight(draft.showOceanFreight ?? true);
     setShowInsuranceCharge(draft.showInsuranceCharge ?? true);
+    setPackingListNumber((draft as any).packingListNumber || '');
+    setPackingListDate((draft as any).packingListDate || '');
+    setInvoiceNumber((draft as any).invoiceNumber || '');
+    setInvoiceDate((draft as any).invoiceDate || '');
+    setPoNumber((draft as any).poNumber || '');
+    setContractNumber((draft as any).contractNumber || '');
+    setShipmentRef((draft as any).shipmentRef || '');
+    setBookingNumber((draft as any).bookingNumber || '');
+    setNotifyParty((draft as any).notifyParty || '');
+    setNotifyPartyDetails((draft as any).notifyPartyDetails || '');
+    setFinalDestination((draft as any).finalDestination || '');
+    setVesselName((draft as any).vesselName || '');
+    setContainerNumber((draft as any).containerNumber || '');
+    setSealNumber((draft as any).sealNumber || '');
+    setBlNumber((draft as any).blNumber || '');
+    setTotalCbm((draft as any).totalCbm !== undefined ? (draft as any).totalCbm : '');
+    setMarksNumbers((draft as any).marksNumbers || '');
+    setSignatoryName((draft as any).signatoryName || 'Sana Zeba Bakshi');
+    setSignatoryDesignation((draft as any).signatoryDesignation || 'Proprietor & CEO');
+    setPlaceOfIssue((draft as any).placeOfIssue || 'Nagpur, Maharashtra, India');
     setIncludedScope(draft.includedScope || []);
     setExcludedScope(draft.excludedScope || []);
     setDocList(draft.docList || []);
@@ -710,6 +785,26 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setShowOriginCharges(true);
       setShowOceanFreight(true);
       setShowInsuranceCharge(true);
+      setPackingListNumber('');
+      setPackingListDate('');
+      setInvoiceNumber('');
+      setInvoiceDate('');
+      setPoNumber('');
+      setContractNumber('');
+      setShipmentRef('');
+      setBookingNumber('');
+      setNotifyParty('');
+      setNotifyPartyDetails('');
+      setFinalDestination('');
+      setVesselName('');
+      setContainerNumber('');
+      setSealNumber('');
+      setBlNumber('');
+      setTotalCbm('');
+      setMarksNumbers('');
+      setSignatoryName('Sana Zeba Bakshi');
+      setSignatoryDesignation('Proprietor & CEO');
+      setPlaceOfIssue('Nagpur, Maharashtra, India');
       
       setIncludedScope([]);
       setExcludedScope([]);
@@ -772,6 +867,26 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     showOriginCharges,
     showOceanFreight,
     showInsuranceCharge,
+    packingListNumber,
+    packingListDate,
+    invoiceNumber,
+    invoiceDate,
+    poNumber,
+    contractNumber,
+    shipmentRef,
+    bookingNumber,
+    notifyParty,
+    notifyPartyDetails,
+    finalDestination,
+    vesselName,
+    containerNumber,
+    sealNumber,
+    blNumber,
+    totalCbm,
+    marksNumbers,
+    signatoryName,
+    signatoryDesignation,
+    placeOfIssue,
     includedScope,
     excludedScope,
     docList,
@@ -877,6 +992,67 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         setDocList(q.included_docs || []);
         setSpecMap(q.logistics_specs || blankLogisticsSpecs);
         setCommercialTerms(q.commercial_terms || []);
+
+        // Populate packing list and logistics fields
+        setPackingListNumber(q.packing_list_number || '');
+        setPackingListDate(q.packing_list_date || '');
+        setInvoiceNumber(q.invoice_number || '');
+        setInvoiceDate(q.invoice_date || '');
+        setPoNumber(q.po_number || '');
+        setContractNumber(q.contract_number || '');
+        setShipmentRef(q.shipment_ref || '');
+        setBookingNumber(q.booking_number || '');
+        setNotifyParty(q.notify_party || '');
+        setNotifyPartyDetails(q.notify_party_details || '');
+        setFinalDestination(q.final_destination || '');
+        setVesselName(q.vessel_name || '');
+        setContainerNumber(q.container_number || '');
+        setSealNumber(q.seal_number || '');
+        setBlNumber(q.bl_number || '');
+        setTotalCbm(q.total_cbm !== undefined ? q.total_cbm : '');
+        setMarksNumbers(q.marks_numbers || '');
+        setSignatoryName(q.signatory_name || 'Sana Zeba Bakshi');
+        setSignatoryDesignation(q.signatory_designation || 'Proprietor & CEO');
+        setPlaceOfIssue(q.place_of_issue || 'Nagpur, Maharashtra, India');
+
+        // Look up any matching shipment records to enrich logistics fields if currently blank
+        try {
+          const { data: shipRecord } = await supabase
+            .from('shipments')
+            .select('*')
+            .eq('quote_id', id)
+            .maybeSingle();
+
+          if (shipRecord) {
+            if (!q.booking_number && shipRecord.booking_number) setBookingNumber(shipRecord.booking_number);
+            if (!q.vessel_name && shipRecord.vessel_name) setVesselName(shipRecord.vessel_name);
+            if (!q.container_number && shipRecord.container_number) setContainerNumber(shipRecord.container_number);
+            if (!q.seal_number && shipRecord.seal_number) setSealNumber(shipRecord.seal_number);
+            if (!q.bl_number && shipRecord.bl_number) setBlNumber(shipRecord.bl_number);
+          }
+        } catch {
+          // ignore optional enrichment
+        }
+
+        // Look up any matching invoice record to enrich invoice number/date if blank
+        try {
+          const { data: invRecord } = await supabase
+            .from('invoices')
+            .select('*')
+            .eq('quote_id', id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (invRecord && !q.invoice_number) {
+            setInvoiceNumber(invRecord.invoice_number);
+            if (invRecord.created_at && !q.invoice_date) {
+              setInvoiceDate(invRecord.created_at.slice(0, 10));
+            }
+          }
+        } catch {
+          // ignore optional enrichment
+        }
       }
       restoreDraft();
     } catch (err) {
@@ -1211,7 +1387,26 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         show_origin_charges: showOriginCharges,
         show_ocean_freight: showOceanFreight,
         show_insurance_charge: showInsuranceCharge,
-        
+        packing_list_number: packingListNumber || undefined,
+        packing_list_date: packingListDate || undefined,
+        invoice_number: invoiceNumber || undefined,
+        invoice_date: invoiceDate || undefined,
+        po_number: poNumber || undefined,
+        contract_number: contractNumber || undefined,
+        shipment_ref: shipmentRef || undefined,
+        booking_number: bookingNumber || undefined,
+        notify_party: notifyParty || undefined,
+        notify_party_details: notifyPartyDetails || undefined,
+        final_destination: finalDestination || undefined,
+        vessel_name: vesselName || undefined,
+        container_number: containerNumber || undefined,
+        seal_number: sealNumber || undefined,
+        bl_number: blNumber || undefined,
+        total_cbm: totalCbm !== '' ? Number(totalCbm) : undefined,
+        marks_numbers: marksNumbers || undefined,
+        signatory_name: signatoryName || undefined,
+        signatory_designation: signatoryDesignation || undefined,
+        place_of_issue: placeOfIssue || undefined,
         included_responsibilities: includedScope,
         excluded_responsibilities: excludedScope,
         included_docs: docList,
@@ -1222,7 +1417,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       };
 
       let quoteResultId = quoteId;
-      const legacyQuotePayload: Omit<typeof quotePayload, 'incoterm' | 'cost_breakdown_notes' | 'show_details_page' | 'show_cif_port_in_total' | 'show_signature_block' | 'show_ceo_signature' | 'show_origin_charges' | 'show_ocean_freight' | 'show_insurance_charge'> = {
+      const legacyQuotePayload: Record<string, any> = {
         quote_number: quotePayload.quote_number,
         client_id: quotePayload.client_id,
         currency: quotePayload.currency,
@@ -1307,14 +1502,25 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         package_cost_price: Number(item.package_cost_price || 0),
         hs_code: item.hs_code,
         packing_container: item.packing_container,
-        basis_of_calculation: item.basis_of_calculation || formatItemBasis(item)
+        basis_of_calculation: item.basis_of_calculation || formatItemBasis(item),
+        product_grade: item.product_grade || undefined,
+        packaging_type: item.packaging_type || undefined,
+        tare_weight: item.tare_weight !== undefined ? Number(item.tare_weight) : undefined,
+        gross_weight: item.gross_weight !== undefined ? Number(item.gross_weight) : undefined,
+        marks_numbers: item.marks_numbers || undefined,
+        cbm: item.cbm !== undefined ? Number(item.cbm) : undefined
       }));
 
-      const { error: itemsErr } = await supabase
+      let { error: itemsErr } = await supabase
         .from('quote_items')
         .insert(itemsPayload);
 
-      if (itemsErr) throw itemsErr;
+      if (itemsErr) {
+        // Fallback for legacy DB schema without optional commodity columns
+        const fallbackItemsPayload = itemsPayload.map(({ product_grade, packaging_type, tare_weight, gross_weight, marks_numbers, cbm, ...rest }: any) => rest);
+        const retryItems = await supabase.from('quote_items').insert(fallbackItemsPayload);
+        if (retryItems.error) throw itemsErr;
+      }
 
       // Update CRM lead stage to 'Quoted'
       if (quoteClient.id) {
@@ -1432,7 +1638,27 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     included_docs: docList,
     logistics_specs: specMap,
     commercial_terms: commercialTerms,
-    created_at: quoteId ? undefined : 'preview'
+    created_at: quoteId ? undefined : 'preview',
+    packing_list_number: packingListNumber || (quoteNumber ? `PL-${quoteNumber}` : undefined),
+    packing_list_date: packingListDate || undefined,
+    invoice_number: invoiceNumber || undefined,
+    invoice_date: invoiceDate || undefined,
+    po_number: poNumber || undefined,
+    contract_number: contractNumber || undefined,
+    shipment_ref: shipmentRef || undefined,
+    booking_number: bookingNumber || undefined,
+    notify_party: notifyParty || undefined,
+    notify_party_details: notifyPartyDetails || undefined,
+    final_destination: finalDestination || destinationPort || undefined,
+    vessel_name: vesselName || undefined,
+    container_number: containerNumber || undefined,
+    seal_number: sealNumber || undefined,
+    bl_number: blNumber || undefined,
+    total_cbm: totalCbm !== '' ? Number(totalCbm) : undefined,
+    marks_numbers: marksNumbers || undefined,
+    signatory_name: signatoryName || undefined,
+    signatory_designation: signatoryDesignation || undefined,
+    place_of_issue: placeOfIssue || undefined,
   }), [
     bankDetails,
     commercialNote,
@@ -1467,6 +1693,27 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     showOriginCharges,
     showOceanFreight,
     showInsuranceCharge,
+    packingListNumber,
+    packingListDate,
+    invoiceNumber,
+    invoiceDate,
+    poNumber,
+    contractNumber,
+    shipmentRef,
+    bookingNumber,
+    notifyParty,
+    notifyPartyDetails,
+    finalDestination,
+    destinationPort,
+    vesselName,
+    containerNumber,
+    sealNumber,
+    blNumber,
+    totalCbm,
+    marksNumbers,
+    signatoryName,
+    signatoryDesignation,
+    placeOfIssue,
     specMap,
     status,
     validityDays,
@@ -2277,6 +2524,81 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
                         className="w-full px-2 py-1 border rounded bg-white h-16 resize-none"
                       />
                     </div>
+
+                    {/* Packing List & Commodity Specifications */}
+                    <div className="rounded-lg border border-slate-200 bg-slate-100/70 p-2.5 space-y-2">
+                      <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                        <span>Packing List & Commodity Details</span>
+                        <span className="text-[9px] font-normal text-slate-500">Grades, packaging tare & marks</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-slate-500">Packaging Type</label>
+                          <FastInput
+                            type="text"
+                            value={item.packaging_type || item.packing_container || ''}
+                            onChange={(value) => handleUpdateLineItem(index, { packaging_type: value, packing_container: value })}
+                            placeholder="e.g. 50 kg PP Bags / Jute Bags"
+                            className="w-full px-2 py-1 border rounded bg-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500">Product Grade / Spec</label>
+                          <FastInput
+                            type="text"
+                            value={item.product_grade || ''}
+                            onChange={(value) => handleUpdateLineItem(index, { product_grade: value })}
+                            placeholder="e.g. Bold 40/50, Extra Clean"
+                            className="w-full px-2 py-1 border rounded bg-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500">Tare Weight/Pkg (kg)</label>
+                          <FastInput
+                            type="number"
+                            step="0.01"
+                            value={item.tare_weight || ''}
+                            onChange={(value) => handleUpdateLineItem(index, { tare_weight: parseFloat(value) || 0 })}
+                            placeholder="e.g. 0.15 (PP) or 0.60 (Jute)"
+                            className="w-full px-2 py-1 border rounded bg-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500">Gross Weight Override (kg)</label>
+                          <FastInput
+                            type="number"
+                            step="0.01"
+                            value={item.gross_weight || ''}
+                            onChange={(value) => handleUpdateLineItem(index, { gross_weight: parseFloat(value) || 0 })}
+                            placeholder="Auto: Net + Tare"
+                            className="w-full px-2 py-1 border rounded bg-white text-xs"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-slate-500">Line Marks & Numbers (Optional)</label>
+                          <FastInput
+                            type="text"
+                            value={item.marks_numbers || ''}
+                            onChange={(value) => handleUpdateLineItem(index, { marks_numbers: value })}
+                            placeholder="e.g. SG / BUSAN / 1-480"
+                            className="w-full px-2 py-1 border rounded bg-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500">Volume (CBM, Optional)</label>
+                          <FastInput
+                            type="number"
+                            step="0.01"
+                            value={item.cbm || ''}
+                            onChange={(value) => handleUpdateLineItem(index, { cbm: parseFloat(value) || 0 })}
+                            placeholder="e.g. 28.5"
+                            className="w-full px-2 py-1 border rounded bg-white text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2414,6 +2736,206 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
               </div>
             </div>
           </div>
+
+          {/* Packing List & Shipping Logistics Specifications */}
+          <details className="group border border-slate-200 rounded-lg" open={previewDocType === 'packing_list'}>
+            <summary className="flex justify-between items-center p-3 font-medium text-xs text-slate-700 bg-slate-50 cursor-pointer hover:bg-slate-100 list-none select-none">
+              <div className="flex items-center gap-2">
+                <span className="font-bold uppercase tracking-wider text-indigo-700">Packing List & Shipping Logistics Details</span>
+                <span className="text-[10px] text-slate-400 font-normal">(Invoice/PL No, Vessel, Container, Marks, Consignee)</span>
+              </div>
+              <span className="transition group-open:rotate-180">v</span>
+            </summary>
+            <div className="p-4 border-t border-slate-200 bg-white text-xs space-y-4">
+              <p className="text-[11px] text-slate-500">
+                Populates the Packing List PDF header, transport routing bar, consignee notify party, and authentication declaration. Missing optional fields will remain cleanly hidden.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Packing List Number</label>
+                  <FastInput
+                    type="text"
+                    value={packingListNumber}
+                    onChange={setPackingListNumber}
+                    placeholder={`e.g. PL-${quoteNumber || 'SG-2026-0001'}`}
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Packing List Date</label>
+                  <FastInput
+                    type="date"
+                    value={packingListDate}
+                    onChange={setPackingListDate}
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Commercial Invoice Number</label>
+                  <FastInput
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={setInvoiceNumber}
+                    placeholder="e.g. SG/INV/2026/089"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Invoice Date</label>
+                  <FastInput
+                    type="date"
+                    value={invoiceDate}
+                    onChange={setInvoiceDate}
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Buyer PO / Contract No.</label>
+                  <FastInput
+                    type="text"
+                    value={poNumber}
+                    onChange={setPoNumber}
+                    placeholder="e.g. PO-78921 / CT-409"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Shipment Ref / Booking No.</label>
+                  <FastInput
+                    type="text"
+                    value={shipmentRef || bookingNumber}
+                    onChange={(val) => {
+                      setShipmentRef(val);
+                      setBookingNumber(val);
+                    }}
+                    placeholder="e.g. BKG-992184"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Vessel / Carrier Flight</label>
+                  <FastInput
+                    type="text"
+                    value={vesselName}
+                    onChange={setVesselName}
+                    placeholder="e.g. MAERSK MC-KINNEY MOLLER"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Container Number</label>
+                  <FastInput
+                    type="text"
+                    value={containerNumber}
+                    onChange={setContainerNumber}
+                    placeholder="e.g. MSKU 904218-3 / 40' HC"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Container Seal Number</label>
+                  <FastInput
+                    type="text"
+                    value={sealNumber}
+                    onChange={setSealNumber}
+                    placeholder="e.g. ML-IN 8849201"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Bill of Lading (B/L) / AWB No.</label>
+                  <FastInput
+                    type="text"
+                    value={blNumber}
+                    onChange={setBlNumber}
+                    placeholder="e.g. MAEU 294019482"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Final Destination / Depot</label>
+                  <FastInput
+                    type="text"
+                    value={finalDestination}
+                    onChange={setFinalDestination}
+                    placeholder={destinationPort || "e.g. Rotterdam CFS, Netherlands"}
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Total Volume (CBM, optional)</label>
+                  <FastInput
+                    type="number"
+                    step="0.01"
+                    value={totalCbm}
+                    onChange={(val) => setTotalCbm(val ? parseFloat(val) : '')}
+                    placeholder="e.g. 58.4"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Default Package Marks & Numbers</label>
+                  <FastInput
+                    type="text"
+                    value={marksNumbers}
+                    onChange={setMarksNumbers}
+                    placeholder="e.g. SG / BUSAN / 1-480"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Place of Issue</label>
+                  <FastInput
+                    type="text"
+                    value={placeOfIssue}
+                    onChange={setPlaceOfIssue}
+                    placeholder="e.g. Nagpur, Maharashtra, India"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Notify Party Name</label>
+                  <FastInput
+                    type="text"
+                    value={notifyParty}
+                    onChange={setNotifyParty}
+                    placeholder="Same as Consignee or Logistics Agent"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Notify Party Address & Contact</label>
+                  <FastInput
+                    type="text"
+                    value={notifyPartyDetails}
+                    onChange={setNotifyPartyDetails}
+                    placeholder="Full address, contact email/phone of notify party"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Authorized Signatory Name</label>
+                  <FastInput
+                    type="text"
+                    value={signatoryName}
+                    onChange={setSignatoryName}
+                    placeholder="e.g. Sana Zeba Bakshi"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">Signatory Designation</label>
+                  <FastInput
+                    type="text"
+                    value={signatoryDesignation}
+                    onChange={setSignatoryDesignation}
+                    placeholder="e.g. Proprietor & CEO"
+                    className="w-full px-2 py-1.5 border rounded"
+                  />
+                </div>
+              </div>
+            </div>
+          </details>
 
           {/* Section 5: Invoice bank details */}
           <details className="group border border-slate-200 rounded-lg">

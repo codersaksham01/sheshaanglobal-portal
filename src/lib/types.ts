@@ -457,6 +457,36 @@ export interface Quote {
   logistics_specs?: LogisticsSpecs;
   commercial_terms?: string[];
   
+  // Packing List & Reference fields
+  packing_list_number?: string;
+  packing_list_date?: string;
+  invoice_number?: string;
+  invoice_date?: string;
+  po_number?: string;
+  contract_number?: string;
+  country_of_origin?: string;
+  shipment_ref?: string;
+  booking_number?: string;
+
+  // Importer & Consignee extended details
+  notify_party?: string;
+  notify_party_details?: string;
+
+  // Shipment & Logistics details
+  final_destination?: string;
+  vessel_name?: string;
+  container_number?: string;
+  seal_number?: string;
+  bl_number?: string;
+
+  // Totals & Declarations
+  total_cbm?: number;
+  marks_numbers?: string;
+  signatory_name?: string;
+  signatory_designation?: string;
+  place_of_issue?: string;
+  shipment?: ShipmentRecord;
+
   created_at?: string;
   updated_at?: string;
   client?: Client;
@@ -482,6 +512,15 @@ export interface QuoteItem {
   hs_code?: string;
   packing_container?: string; // e.g. "325 Jute Bags (40 kg Net / Bag)"
   basis_of_calculation?: string; // e.g. "Per kg (13,000 kg)"
+
+  // Packing List commodity parameters
+  product_grade?: string;
+  packaging_type?: string;
+  tare_weight?: number;
+  gross_weight?: number;
+  net_weight?: number;
+  marks_numbers?: string;
+  cbm?: number;
 }
 
 export interface ShipperDetails {
@@ -490,6 +529,12 @@ export interface ShipperDetails {
   contact_name: string;
   contact_email: string;
   tax_id?: string;
+  iec_number?: string;
+  gstin?: string;
+  phone?: string;
+  signatory_name?: string;
+  signatory_title?: string;
+  pan?: string;
 }
 
 export interface BankDetails {

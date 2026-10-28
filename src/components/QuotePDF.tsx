@@ -1,6 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image, Svg, Path, Line, Circle, Rect, Polyline, Font } from '@react-pdf/renderer';
-import { Quote, QuoteItem, BankDetails, CostBreakdownNotes } from '../lib/types';
+import { Quote, QuoteItem, BankDetails, CostBreakdownNotes, ShipperDetails } from '../lib/types';
 
 // Register fonts for crisp vector typography
 const isBrowser = typeof window !== 'undefined';
@@ -369,6 +369,16 @@ const styles = StyleSheet.create({
   colS2Qty: { width: '13%', textAlign: 'center' },
   colS2Price: { width: '11%', textAlign: 'center' },
   colS2Total: { width: '14%', textAlign: 'right', paddingRight: 6 },
+
+  // Section 2 Packing List Specific Table Columns
+  colPlSr: { width: '4%', textAlign: 'center' },
+  colPlMarks: { width: '12%', paddingLeft: 3 },
+  colPlDesc: { width: '27%', paddingLeft: 4 },
+  colPlHs: { width: '9%', textAlign: 'center' },
+  colPlPack: { width: '15%', textAlign: 'center' },
+  colPlNetUnit: { width: '10%', textAlign: 'center' },
+  colPlNetTotal: { width: '11%', textAlign: 'right', paddingRight: 4 },
+  colPlGrossTotal: { width: '12%', textAlign: 'right', paddingRight: 4 },
 
   // Grand Total Row
   grandTotalRow: {
@@ -845,6 +855,141 @@ const getItemNetWeight = (item: QuoteItem) => {
   return Number(item.quantity || 0);
 };
 
+export interface PackingLineComputation {
+  item: QuoteItem;
+  sr: number;
+  marks: string;
+  description: string;
+  grade?: string;
+  specBullets: string[];
+  hsCode: string;
+  packagingType: string;
+  packageCount: number;
+  netWeightPerPackage: number | null;
+  isUniformWeight: boolean;
+  totalNetWeight: number;
+  totalGrossWeight: number;
+  tareWeightPerPackage: number;
+  cbm?: number;
+}
+
+export function computePackingListLines(
+  items: QuoteItem[],
+  defaultMarks = 'SG / EXPORT'
+) {
+  let totalPackages = 0;
+  let totalNetWeight = 0;
+  let totalGrossWeight = 0;
+  let totalCbm = 0;
+
+  const lines: PackingLineComputation[] = items.map((item, index) => {
+    const descLines = (item.description || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const mainTitle = descLines[0] || item.sku || 'Export Commodity';
+    const specBullets = descLines.slice(1);
+    const grade = item.product_grade || undefined;
+
+    // Actual verified or entered net weight
+    let itemNetWeight: number;
+    if (item.net_weight !== undefined && Number(item.net_weight) > 0) {
+      itemNetWeight = Number(item.net_weight);
+    } else {
+      itemNetWeight = getItemNetWeight(item);
+    }
+
+    // Actual package count
+    let packageCount = Number(item.package_quantity || 0);
+    const nominalPkgWeight = Number(item.weight || 0);
+    if (packageCount <= 0 && nominalPkgWeight > 0 && itemNetWeight > 0) {
+      packageCount = Math.ceil(itemNetWeight / nominalPkgWeight);
+    }
+
+    // Weight calculation & uniformity validation
+    // Requirements:
+    // If all packages have identical weights, calculate total from actual package count & weight.
+    // If individual package weights vary, support actual total net weight (e.g. 26000 kg with 434 bags of nominal 60 kg).
+    // Never assume 434 x 60 kg = 26000 kg when 434 x 60 = 26040 kg.
+    let isUniformWeight = false;
+    let netWeightPerPackage: number | null = null;
+    if (packageCount > 0 && nominalPkgWeight > 0) {
+      const nominalProduct = packageCount * nominalPkgWeight;
+      if (Math.abs(nominalProduct - itemNetWeight) < 0.01) {
+        isUniformWeight = true;
+        netWeightPerPackage = nominalPkgWeight;
+      } else {
+        isUniformWeight = false;
+        netWeightPerPackage = nominalPkgWeight;
+      }
+    } else if (packageCount > 0 && itemNetWeight > 0) {
+      netWeightPerPackage = Number((itemNetWeight / packageCount).toFixed(2));
+      isUniformWeight = true;
+    }
+
+    // Packaging Type (e.g. jute bags, PP bags, cartons, drums)
+    const packagingType = (item.packaging_type?.trim()
+      || item.packing_container?.trim()
+      || 'Standard Export Bags');
+
+    // Gross weight (must include packaging and never assumed to equal net weight)
+    let itemGrossWeight: number;
+    let tarePerPkg = Number(item.tare_weight || 0);
+
+    if (item.gross_weight !== undefined && Number(item.gross_weight) > 0) {
+      itemGrossWeight = Number(item.gross_weight);
+      if (tarePerPkg <= 0 && packageCount > 0 && itemGrossWeight > itemNetWeight) {
+        tarePerPkg = (itemGrossWeight - itemNetWeight) / packageCount;
+      }
+    } else if (tarePerPkg > 0 && packageCount > 0) {
+      itemGrossWeight = itemNetWeight + (packageCount * tarePerPkg);
+    } else {
+      const lowerPack = packagingType.toLowerCase();
+      let defaultTare = 0.5;
+      if (lowerPack.includes('jute')) defaultTare = 0.6;
+      else if (lowerPack.includes('pp') || lowerPack.includes('poly')) defaultTare = 0.15;
+      else if (lowerPack.includes('carton') || lowerPack.includes('box')) defaultTare = 0.6;
+      else if (lowerPack.includes('drum')) defaultTare = 2.5;
+      else if (nominalPkgWeight > 0) defaultTare = Math.max(0.12, nominalPkgWeight * 0.015);
+
+      tarePerPkg = defaultTare;
+      const totalTare = packageCount > 0 ? (packageCount * tarePerPkg) : (itemNetWeight * 0.015);
+      itemGrossWeight = itemNetWeight + totalTare;
+    }
+
+    const marks = item.marks_numbers?.trim() || defaultMarks;
+    const lineCbm = Number(item.cbm || 0);
+
+    totalPackages += packageCount;
+    totalNetWeight += itemNetWeight;
+    totalGrossWeight += itemGrossWeight;
+    totalCbm += lineCbm;
+
+    return {
+      item,
+      sr: index + 1,
+      marks,
+      description: mainTitle,
+      grade,
+      specBullets,
+      hsCode: item.hs_code || '-',
+      packagingType,
+      packageCount,
+      netWeightPerPackage,
+      isUniformWeight,
+      totalNetWeight: itemNetWeight,
+      totalGrossWeight: itemGrossWeight,
+      tareWeightPerPackage: tarePerPkg,
+      cbm: lineCbm > 0 ? lineCbm : undefined
+    };
+  });
+
+  return {
+    lines,
+    totalPackages,
+    totalNetWeight,
+    totalGrossWeight,
+    totalCbm
+  };
+};
+
 const isAirFreightMode = (mode?: string) => (mode || '').toLowerCase().includes('air');
 const getFreightPdfLabels = (mode?: string) => {
   const isAir = isAirFreightMode(mode);
@@ -970,6 +1115,42 @@ const getLogoSrc = () => {
   return '/logo-opt.png';
 };
 
+const getSignatureSrc = () => {
+  if (typeof window !== 'undefined') {
+    return '/signature.png';
+  }
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const fullPath = path.resolve(process.cwd(), 'public', 'signature.png');
+    if (fs.existsSync(fullPath)) {
+      const b64 = fs.readFileSync(fullPath).toString('base64');
+      return `data:image/png;base64,${b64}`;
+    }
+  } catch {
+    // fallback
+  }
+  return '/signature.png';
+};
+
+const getStampSrc = () => {
+  if (typeof window !== 'undefined') {
+    return '/stamp.png';
+  }
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const fullPath = path.resolve(process.cwd(), 'public', 'stamp.png');
+    if (fs.existsSync(fullPath)) {
+      const b64 = fs.readFileSync(fullPath).toString('base64');
+      return `data:image/png;base64,${b64}`;
+    }
+  } catch {
+    // fallback
+  }
+  return '/stamp.png';
+};
+
 interface QuotePDFProps {
   quote: Quote;
   documentType: 'quotation' | 'invoice' | 'packing_list';
@@ -1054,12 +1235,15 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   const totalQty = lineItems.reduce((sum, item) => sum + getItemNetWeight(item), 0);
   const totalWeight = totalQty;
 
-  const defaultShipper = {
+  const defaultShipper: ShipperDetails = {
     company_name: 'Sheshaan Global',
     address: 'Plot No. 1459, Opp. M.A.K. Azad Urdu School,\nAasingar, Nagpur - 440017, Maharashtra, India',
     contact_name: 'Sana Zeba Bakshi (CEO)',
     contact_email: 'info@sheshaanglobal.com',
-    tax_id: 'GST | APEDA | FSSAI'
+    tax_id: 'GST: 27AAAAA1111A1Z1 | IEC: 0312098433 | PAN: AAECS1234F',
+    iec_number: '0312098433',
+    gstin: '27AAAAA1111A1Z1',
+    phone: '+91 81499 09546'
   };
 
   const defaultBankDetails: BankDetails = {
@@ -1071,7 +1255,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
     swift_code: 'SBININBBXXX'
   };
 
-  const shipper = quote.shipper_details || defaultShipper;
+  const shipper = { ...defaultShipper, ...(quote.shipper_details || {}) };
   const bankDetails = quote.bank_details || defaultBankDetails;
   const client = quote.client || {
     id: 'client-temp',
@@ -1095,6 +1279,42 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
   const incotermRaw = (quote.incoterm || '').trim();
   const incotermCode = incotermRaw.split(/[ (]/)[0].trim().toUpperCase() || 'FOB';
   const freightLabels = getFreightPdfLabels(quote.shipment_mode);
+
+  // Packing List specific computations & verified values
+  const plComputation = computePackingListLines(lineItems, quote.marks_numbers || 'SG / EXPORT');
+  const totalCbm = Number(quote.total_cbm || plComputation.totalCbm || 0);
+
+  const packingListNumber = quote.packing_list_number
+    ? (quote.packing_list_number.startsWith('PL-') ? quote.packing_list_number : `PL-${quote.packing_list_number}`)
+    : (quote.quote_number ? `PL-${quote.quote_number.replace(/^Q-/, '')}` : 'PL-SG-2026-1236');
+
+  const packingListDate = quote.packing_list_date || quote.created_at;
+
+  const vesselName = quote.vessel_name || quote.shipment?.vessel_name;
+  const containerNumber = quote.container_number || quote.shipment?.container_number;
+  const sealNumber = quote.seal_number || quote.shipment?.seal_number;
+  const blNumber = quote.bl_number || quote.shipment?.bl_number;
+  const hasTransportDetails = Boolean(vesselName || containerNumber || sealNumber || blNumber);
+
+  const finalDestination = quote.final_destination || destinationPort || '-';
+  const placeOfIssue = quote.place_of_issue || 'Nagpur, Maharashtra, India';
+  const signatoryName = quote.signatory_name || shipper.contact_name || 'Sana Zeba Bakshi';
+  const signatoryDesignation = quote.signatory_designation || shipper.signatory_title || 'Proprietor & CEO';
+
+  const shipperIec = shipper.iec_number
+    || (quote as any).iec_number
+    || (shipper.tax_id && shipper.tax_id.match(/IEC:?\s*([A-Z0-9]+)/i)?.[1])
+    || '';
+  const shipperGstin = shipper.gstin
+    || (quote as any).gstin
+    || (shipper.tax_id && shipper.tax_id.match(/GST(?:IN)?:?\s*([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})/i)?.[1])
+    || '';
+  const shipperPhone = shipper.phone || '+91 81499 09546';
+
+  const clientCountry = (client as unknown as Record<string, unknown>).country as string
+    || (quote as any).destination_country
+    || (destinationPort ? destinationPort.split(',').pop()?.trim() : '')
+    || '';
 
   const costNotes: CostBreakdownNotes = quote.cost_breakdown_notes || {};
 
@@ -1208,33 +1428,77 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           <View style={styles.headerDivider} />
           <View style={styles.headerRight}>
             <Text style={styles.quoteTitle}>{getDocumentTitle()}</Text>
-            <Text style={styles.refNumber}>REF: {quote.quote_number || 'SG-CIF-2026-1236'}</Text>
+            <Text style={styles.refNumber}>
+              {documentType === 'packing_list'
+                ? `REF: ${packingListNumber}`
+                : `REF: ${quote.quote_number || 'SG-CIF-2026-1236'}`}
+            </Text>
             <View style={styles.metaTable}>
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Date</Text>
                 <Text style={styles.metaColon}>:</Text>
-                <Text style={styles.metaVal}>{formatDate(quote.created_at)}</Text>
+                <Text style={styles.metaVal}>{formatDate(documentType === 'packing_list' ? packingListDate : quote.created_at)}</Text>
               </View>
-              <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Validity</Text>
-                <Text style={styles.metaColon}>:</Text>
-                <Text style={styles.metaVal}>{quote.validity_days ? `${quote.validity_days} Days` : '-'}</Text>
-              </View>
-              <View style={styles.metaRow}>
-                <Text style={styles.metaLabel}>Terms</Text>
-                <Text style={styles.metaColon}>:</Text>
-                <Text style={styles.metaVal}>{quote.payment_terms || '-'}</Text>
-              </View>
+              {documentType === 'packing_list' ? (
+                <>
+                  {quote.invoice_number ? (
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaLabel}>Inv No</Text>
+                      <Text style={styles.metaColon}>:</Text>
+                      <Text style={styles.metaVal}>
+                        {quote.invoice_number}
+                        {quote.invoice_date ? ` (${formatDate(quote.invoice_date)})` : ''}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {(quote.po_number || quote.contract_number) ? (
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaLabel}>{quote.po_number ? 'PO No' : 'Contract'}</Text>
+                      <Text style={styles.metaColon}>:</Text>
+                      <Text style={styles.metaVal}>{quote.po_number || quote.contract_number}</Text>
+                    </View>
+                  ) : null}
+                  {(quote.shipment_ref || quote.booking_number) ? (
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaLabel}>Ship Ref</Text>
+                      <Text style={styles.metaColon}>:</Text>
+                      <Text style={styles.metaVal}>{quote.shipment_ref || quote.booking_number}</Text>
+                    </View>
+                  ) : null}
+                  {quote.country_of_origin || quote.origin_country ? (
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaLabel}>Origin</Text>
+                      <Text style={styles.metaColon}>:</Text>
+                      <Text style={styles.metaVal}>{quote.country_of_origin || quote.origin_country}</Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaLabel}>Validity</Text>
+                    <Text style={styles.metaColon}>:</Text>
+                    <Text style={styles.metaVal}>{quote.validity_days ? `${quote.validity_days} Days` : '-'}</Text>
+                  </View>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaLabel}>Terms</Text>
+                    <Text style={styles.metaColon}>:</Text>
+                    <Text style={styles.metaVal}>{quote.payment_terms || '-'}</Text>
+                  </View>
+                </>
+              )}
             </View>
           </View>
         </View>
 
-        {/* 1. QUOTATION & PARTY DETAILS */}
+        {/* 1. QUOTATION & PARTY DETAILS / PACKING LIST & PARTY DETAILS */}
         <View style={styles.sectionBar}>
           <View style={styles.sectionBadge}>
             <Text style={styles.sectionBadgeText}>1.</Text>
           </View>
-          <Text style={styles.sectionTitleText}>QUOTATION & PARTY DETAILS</Text>
+          <Text style={styles.sectionTitleText}>
+            {documentType === 'packing_list' ? 'PACKING LIST & PARTY DETAILS' : 'QUOTATION & PARTY DETAILS'}
+          </Text>
         </View>
 
         {/* Party Row */}
@@ -1242,16 +1506,32 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           {/* Exporter */}
           <View style={styles.partyCard}>
             <View style={styles.partyHeaderBar}>
-              <Text style={styles.partyHeaderTitle}>EXPORTER / SELLER</Text>
+              <Text style={styles.partyHeaderTitle}>
+                {documentType === 'packing_list' ? 'EXPORTER / SHIPPER' : 'EXPORTER / SELLER'}
+              </Text>
             </View>
             <View style={styles.partyBody}>
               <Text style={styles.partyName}>{shipper.company_name}</Text>
               <Text style={styles.partyAddress}>{shipper.address}</Text>
               <View style={styles.partyDivider} />
+              {documentType === 'packing_list' && shipperIec ? (
+                <View style={styles.kvRow}>
+                  <Text style={styles.kvLabel}>IEC No</Text>
+                  <Text style={styles.kvColon}>:</Text>
+                  <Text style={styles.kvValue}>{shipperIec}</Text>
+                </View>
+              ) : null}
+              {documentType === 'packing_list' && shipperGstin ? (
+                <View style={styles.kvRow}>
+                  <Text style={styles.kvLabel}>GSTIN</Text>
+                  <Text style={styles.kvColon}>:</Text>
+                  <Text style={styles.kvValue}>{shipperGstin}</Text>
+                </View>
+              ) : null}
               <View style={styles.kvRow}>
                 <Text style={styles.kvLabel}>Contact</Text>
                 <Text style={styles.kvColon}>:</Text>
-                <Text style={styles.kvValue}>{shipper.contact_name}  |  +91 81499 09546</Text>
+                <Text style={styles.kvValue}>{shipper.contact_name}  |  {shipperPhone}</Text>
               </View>
               <View style={styles.kvRow}>
                 <Text style={styles.kvLabel}>Email</Text>
@@ -1269,12 +1549,21 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           {/* Buyer */}
           <View style={styles.partyCard}>
             <View style={styles.partyHeaderBar}>
-              <Text style={styles.partyHeaderTitle}>TO: BUYER / CONSIGNEE</Text>
+              <Text style={styles.partyHeaderTitle}>
+                {documentType === 'packing_list' ? 'CONSIGNEE / IMPORTER' : 'TO: BUYER / CONSIGNEE'}
+              </Text>
             </View>
             <View style={styles.partyBody}>
               <Text style={styles.partyName}>{client.company_name || '-'}</Text>
               <Text style={styles.partyAddress}>{clientAddress}</Text>
               <View style={styles.partyDivider} />
+              {clientCountry ? (
+                <View style={styles.kvRow}>
+                  <Text style={styles.kvLabel}>Country</Text>
+                  <Text style={styles.kvColon}>:</Text>
+                  <Text style={styles.kvValue}>{clientCountry}</Text>
+                </View>
+              ) : null}
               <View style={styles.kvRow}>
                 <Text style={styles.kvLabel}>Contact</Text>
                 <Text style={styles.kvColon}>:</Text>
@@ -1290,6 +1579,13 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
                 <Text style={styles.kvColon}>:</Text>
                 <Text style={styles.kvValue}>{destinationPort || '-'}</Text>
               </View>
+              {quote.notify_party ? (
+                <View style={styles.kvRow}>
+                  <Text style={styles.kvLabel}>Notify Party</Text>
+                  <Text style={styles.kvColon}>:</Text>
+                  <Text style={styles.kvValue}>{quote.notify_party}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
@@ -1307,7 +1603,7 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
             <View style={styles.shipmentIconBox}><GlobeIcon /></View>
             <View style={styles.shipmentContent}>
               <Text style={styles.shipmentLabel}>ORIGIN</Text>
-              <Text style={styles.shipmentVal}>{quote.origin_country || '-'}</Text>
+              <Text style={styles.shipmentVal}>{quote.country_of_origin || quote.origin_country || '-'}</Text>
             </View>
           </View>
           <View style={[styles.shipmentCol, { width: '19%' }]}>
@@ -1327,39 +1623,100 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           <View style={[styles.shipmentCol, { width: '18%' }]}>
             <View style={styles.shipmentIconBox}><ContainerIcon /></View>
             <View style={styles.shipmentContent}>
-              <Text style={styles.shipmentLabel}>SHIPMENT MODE</Text>
-              <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>{quote.shipment_mode || '-'}</Text>
+              <Text style={styles.shipmentLabel}>
+                {documentType === 'packing_list' ? 'FINAL DESTINATION' : 'SHIPMENT MODE'}
+              </Text>
+              <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>
+                {documentType === 'packing_list' ? finalDestination : (quote.shipment_mode || '-')}
+              </Text>
             </View>
           </View>
           <View style={[styles.shipmentColLast, { width: '20%' }]}>
             <View style={styles.shipmentIconBox}><DocIcon /></View>
             <View style={styles.shipmentContent}>
-              <Text style={styles.shipmentLabel}>PAYMENT TERMS</Text>
-              <Text style={[styles.shipmentVal, { fontSize: 5.2, fontFamily: 'ArialCustom' }]}>{quote.payment_terms || '-'}</Text>
+              <Text style={styles.shipmentLabel}>
+                {documentType === 'packing_list' ? 'SHIPMENT MODE' : 'PAYMENT TERMS'}
+              </Text>
+              <Text style={[styles.shipmentVal, { fontSize: 5.2, fontFamily: 'ArialCustom' }]}>
+                {documentType === 'packing_list' ? (quote.shipment_mode || 'FCL Ocean Cargo') : (quote.payment_terms || '-')}
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* 2. COMMERCIAL OFFER & SPECIFICATIONS */}
+        {/* Optional Transport Details Row for Packing List (rendered when available) */}
+        {documentType === 'packing_list' && hasTransportDetails && (
+          <View style={[styles.shipmentBar, { marginTop: -4 }]}>
+            {vesselName ? (
+              <View style={[styles.shipmentCol, { flex: 1 }]}>
+                <View style={styles.shipmentIconBox}><AnchorIcon /></View>
+                <View style={styles.shipmentContent}>
+                  <Text style={styles.shipmentLabel}>VESSEL / CARRIER</Text>
+                  <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>{vesselName}</Text>
+                </View>
+              </View>
+            ) : null}
+            {containerNumber ? (
+              <View style={[styles.shipmentCol, { flex: 1 }]}>
+                <View style={styles.shipmentIconBox}><ContainerIcon /></View>
+                <View style={styles.shipmentContent}>
+                  <Text style={styles.shipmentLabel}>CONTAINER NO.</Text>
+                  <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>{containerNumber}</Text>
+                </View>
+              </View>
+            ) : null}
+            {sealNumber ? (
+              <View style={[styles.shipmentCol, { flex: 1 }]}>
+                <View style={styles.shipmentIconBox}><BoxIcon /></View>
+                <View style={styles.shipmentContent}>
+                  <Text style={styles.shipmentLabel}>SEAL NO.</Text>
+                  <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>{sealNumber}</Text>
+                </View>
+              </View>
+            ) : null}
+            {blNumber ? (
+              <View style={[styles.shipmentColLast, { flex: 1 }]}>
+                <View style={styles.shipmentIconBox}><DocIcon /></View>
+                <View style={styles.shipmentContent}>
+                  <Text style={styles.shipmentLabel}>B/L NUMBER</Text>
+                  <Text style={[styles.shipmentVal, { fontSize: 5.6 }]}>{blNumber}</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        )}
+
+        {/* 2. COMMERCIAL OFFER & SPECIFICATIONS / EXPORT COMMODITY SPECIFICATIONS */}
         <View style={styles.sectionBar}>
           <View style={styles.sectionBadge}>
             <Text style={styles.sectionBadgeText}>2.</Text>
           </View>
           <Text style={styles.sectionTitleText}>
-            {documentType === 'packing_list' ? 'EXPORT GOODS SPECIFICATIONS' : 'COMMERCIAL OFFER & SPECIFICATIONS'}
+            {documentType === 'packing_list' ? 'EXPORT COMMODITY & PACKING SPECIFICATIONS' : 'COMMERCIAL OFFER & SPECIFICATIONS'}
           </Text>
         </View>
 
         {/* Section 2 Table */}
         <View style={styles.table}>
-          <View style={styles.tHeaderRow}>
-            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Sr]}>SR</Text>
-            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Desc]}>PRODUCT DESCRIPTION & SPECIFICATIONS</Text>
-            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Hs]}>HS CODE</Text>
-            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Pack]}>PACKING & CONTAINER</Text>
-            <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Qty]}>QUANTITY</Text>
-            {documentType !== 'packing_list' && (
+          <View style={styles.tHeaderRow} fixed>
+            {documentType === 'packing_list' ? (
               <>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colPlSr]}>SR</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colPlMarks]}>MARKS & NUMBERS</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colPlDesc]}>COMMODITY & SPECIFICATIONS</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colPlHs]}>HS CODE</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colPlPack]}>PACKAGING & PKGS</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colPlNetUnit]}>NET WT/PKG</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colPlNetTotal]}>NET WT (KG)</Text>
+                <Text style={[styles.tHeaderCol, styles.colPlGrossTotal]}>GROSS WT (KG)</Text>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Sr]}>SR</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Desc]}>PRODUCT DESCRIPTION & SPECIFICATIONS</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Hs]}>HS CODE</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Pack]}>PACKING & CONTAINER</Text>
+                <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Qty]}>QUANTITY</Text>
                 <Text style={[styles.tHeaderCol, styles.tHeaderColBorder, styles.colS2Price]}>UNIT PRICE ({currencySymbol})</Text>
                 <Text style={[styles.tHeaderCol, styles.colS2Total]}>TOTAL AMOUNT ({currencySymbol})</Text>
               </>
@@ -1367,55 +1724,129 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           </View>
 
           {/* Line items */}
-          {lineItems.map((item, index) => {
-            const pricingBasis = getItemPricingBasis(item);
-            const netWeight = getItemNetWeight(item);
-            const packageQuantity = getItemPackageQuantity(item);
-            const packageWeight = getItemPackageWeight(item);
-            const itemTotal = getItemSellTotal(item);
-            const unitPriceAmount = pricingBasis === 'package'
-              ? Number(item.package_unit_price || 0)
-              : Number(item.unit_price || 0);
-            const unitPriceBasis = pricingBasis === 'package' ? 'pkg' : 'kg';
-
-            const descLines = (item.description || '').split('\n').filter(Boolean);
-            const mainTitle = descLines[0] || 'Product';
-            const specBullets = descLines.slice(1);
-
-            return (
-              <View key={item.id || index} style={styles.tRow} wrap={false}>
-                <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Sr]}>{index + 1}</Text>
-                <View style={[styles.colS2Desc, styles.tCellBorder]}>
-                  <Text style={styles.tCellBold}>{mainTitle}</Text>
-                  {specBullets.map((b, bi) => (
-                    <Text key={bi} style={[styles.tCell, { fontSize: 5.5, color: '#64748B', marginTop: 1 }]}>
+          {documentType === 'packing_list' ? (
+            plComputation.lines.map((pLine) => (
+              <View key={pLine.item.id || pLine.sr} style={styles.tRow} wrap={false}>
+                <Text style={[styles.tCell, styles.tCellBorder, styles.colPlSr]}>{pLine.sr}</Text>
+                <View style={[styles.colPlMarks, styles.tCellBorder]}>
+                  <Text style={[styles.tCellBold, { fontSize: 6 }]}>{pLine.marks}</Text>
+                </View>
+                <View style={[styles.colPlDesc, styles.tCellBorder]}>
+                  <Text style={styles.tCellBold}>{pLine.description}</Text>
+                  {pLine.grade ? (
+                    <Text style={[styles.tCell, { fontSize: 5.3, color: C.navyMedium, fontWeight: 'bold', marginTop: 1 }]}>
+                      Grade: {pLine.grade}
+                    </Text>
+                  ) : null}
+                  {pLine.specBullets.map((b, bi) => (
+                    <Text key={bi} style={[styles.tCell, { fontSize: 5.3, color: '#64748B', marginTop: 1 }]}>
                       {b}
                     </Text>
                   ))}
                 </View>
-                <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Hs]}>{item.hs_code || '-'}</Text>
-                <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Pack]}>{item.packing_container || '-'}</Text>
-                <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Qty]}>
-                  {pricingBasis === 'package' && packageQuantity > 0
-                    ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} pkgs\n(${packageWeight} kg/pkg)`
-                    : `${new Intl.NumberFormat('en-US').format(netWeight)} kg\n(${(netWeight / 1000).toFixed(2)} MT)`}
+                <Text style={[styles.tCell, styles.tCellBorder, styles.colPlHs]}>{pLine.hsCode}</Text>
+                <View style={[styles.colPlPack, styles.tCellBorder, { alignItems: 'center' }]}>
+                  <Text style={styles.tCellBold}>
+                    {pLine.packageCount > 0 ? `${new Intl.NumberFormat('en-US').format(pLine.packageCount)} Pkgs` : '-'}
+                  </Text>
+                  <Text style={[styles.tCell, { fontSize: 5.2, color: '#64748B', textAlign: 'center' }]}>
+                    {pLine.packagingType}
+                  </Text>
+                </View>
+                <Text style={[styles.tCell, styles.tCellBorder, styles.colPlNetUnit]}>
+                  {pLine.isUniformWeight
+                    ? (pLine.netWeightPerPackage ? `${pLine.netWeightPerPackage} kg` : '-')
+                    : (pLine.netWeightPerPackage ? `${pLine.netWeightPerPackage} kg (Nom.)` : 'Variable')}
                 </Text>
-                {documentType !== 'packing_list' && (
-                  <>
-                    <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Price]}>
-                      {currencySymbol} {unitPriceAmount.toFixed(2)}{"\n"}/{unitPriceBasis}
-                    </Text>
-                    <Text style={[styles.tCellBold, styles.colS2Total, { fontSize: 7.5 }]}>
-                      {formatSection2Amount(itemTotal)}
-                    </Text>
-                  </>
-                )}
+                <View style={[styles.colPlNetTotal, styles.tCellBorder, { alignItems: 'flex-end' }]}>
+                  <Text style={styles.tCellBold}>
+                    {new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(pLine.totalNetWeight)} kg
+                  </Text>
+                  <Text style={[styles.tCell, { fontSize: 5.2, color: '#64748B' }]}>
+                    {(pLine.totalNetWeight / 1000).toFixed(2)} MT
+                  </Text>
+                </View>
+                <View style={[styles.colPlGrossTotal, { alignItems: 'flex-end' }]}>
+                  <Text style={styles.tCellBold}>
+                    {new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(pLine.totalGrossWeight)} kg
+                  </Text>
+                  <Text style={[styles.tCell, { fontSize: 5.2, color: '#64748B' }]}>
+                    {(pLine.totalGrossWeight / 1000).toFixed(2)} MT
+                  </Text>
+                </View>
               </View>
-            );
-          })}
+            ))
+          ) : (
+            lineItems.map((item, index) => {
+              const pricingBasis = getItemPricingBasis(item);
+              const netWeight = getItemNetWeight(item);
+              const packageQuantity = getItemPackageQuantity(item);
+              const packageWeight = getItemPackageWeight(item);
+              const itemTotal = getItemSellTotal(item);
+              const unitPriceAmount = pricingBasis === 'package'
+                ? Number(item.package_unit_price || 0)
+                : Number(item.unit_price || 0);
+              const unitPriceBasis = pricingBasis === 'package' ? 'pkg' : 'kg';
+
+              const descLines = (item.description || '').split('\n').filter(Boolean);
+              const mainTitle = descLines[0] || 'Product';
+              const specBullets = descLines.slice(1);
+
+              return (
+                <View key={item.id || index} style={styles.tRow} wrap={false}>
+                  <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Sr]}>{index + 1}</Text>
+                  <View style={[styles.colS2Desc, styles.tCellBorder]}>
+                    <Text style={styles.tCellBold}>{mainTitle}</Text>
+                    {specBullets.map((b, bi) => (
+                      <Text key={bi} style={[styles.tCell, { fontSize: 5.5, color: '#64748B', marginTop: 1 }]}>
+                        {b}
+                      </Text>
+                    ))}
+                  </View>
+                  <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Hs]}>{item.hs_code || '-'}</Text>
+                  <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Pack]}>{item.packing_container || '-'}</Text>
+                  <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Qty]}>
+                    {pricingBasis === 'package' && packageQuantity > 0
+                      ? `${new Intl.NumberFormat('en-US').format(packageQuantity)} pkgs\n(${packageWeight} kg/pkg)`
+                      : `${new Intl.NumberFormat('en-US').format(netWeight)} kg\n(${(netWeight / 1000).toFixed(2)} MT)`}
+                  </Text>
+                  <Text style={[styles.tCell, styles.tCellBorder, styles.colS2Price]}>
+                    {currencySymbol} {unitPriceAmount.toFixed(2)}{"\n"}/{unitPriceBasis}
+                  </Text>
+                  <Text style={[styles.tCellBold, styles.colS2Total, { fontSize: 7.5 }]}>
+                    {formatSection2Amount(itemTotal)}
+                  </Text>
+                </View>
+              );
+            })
+          )}
 
           {/* Grand Total Row */}
-          {documentType !== 'packing_list' && (
+          {documentType === 'packing_list' ? (
+            <View style={styles.grandTotalRow} wrap={false}>
+              <View style={[styles.grandTotalLeftCell, { width: '52%' }]}>
+                <Text style={styles.grandTotalLabel}>TOTAL SHIPMENT QUANTITY & PACKING</Text>
+              </View>
+              <View style={{ width: '15%', borderRightWidth: 0.75, borderRightColor: C.borderGrey, paddingVertical: 2, alignItems: 'center' }}>
+                <Text style={[styles.grandTotalVal, { textAlign: 'center', fontSize: 7 }]}>
+                  {plComputation.totalPackages > 0 ? `${new Intl.NumberFormat('en-US').format(plComputation.totalPackages)} Pkgs` : '-'}
+                </Text>
+              </View>
+              <View style={{ width: '10%', borderRightWidth: 0.75, borderRightColor: C.borderGrey, paddingVertical: 2, alignItems: 'center' }}>
+                <Text style={[styles.tCell, { textAlign: 'center', fontSize: 6.2, color: '#64748B' }]}>-</Text>
+              </View>
+              <View style={{ width: '11%', paddingRight: 4, borderRightWidth: 0.75, borderRightColor: C.borderGrey, paddingVertical: 2, alignItems: 'flex-end' }}>
+                <Text style={[styles.grandTotalVal, { fontSize: 7 }]}>
+                  {new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(plComputation.totalNetWeight)} kg
+                </Text>
+              </View>
+              <View style={{ width: '12%', paddingRight: 4, paddingVertical: 2, alignItems: 'flex-end' }}>
+                <Text style={[styles.grandTotalVal, { fontSize: 7 }]}>
+                  {new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(plComputation.totalGrossWeight)} kg
+                </Text>
+              </View>
+            </View>
+          ) : (
             <View style={styles.grandTotalRow} wrap={false}>
               <View style={styles.grandTotalLeftCell}>
                 <Text style={styles.grandTotalLabel}>GRAND TOTAL</Text>
@@ -1427,8 +1858,15 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
           )}
         </View>
 
-        {/* Amount in words box */}
-        {documentType !== 'packing_list' && (
+        {/* Amount in words / Packing Summary box */}
+        {documentType === 'packing_list' ? (
+          <View style={styles.wordsBox} wrap={false}>
+            <Text style={styles.wordsText}>
+              Total Cargo: {plComputation.totalPackages.toLocaleString()} {plComputation.totalPackages === 1 ? 'Package' : 'Packages'}  |  Total Net Weight: {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(plComputation.totalNetWeight)} KG ({(plComputation.totalNetWeight / 1000).toFixed(3)} MT)  |  Total Gross Weight: {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(plComputation.totalGrossWeight)} KG ({(plComputation.totalGrossWeight / 1000).toFixed(3)} MT)
+              {totalCbm > 0 ? `  |  Total Volume: ${totalCbm.toFixed(2)} CBM` : ''}
+            </Text>
+          </View>
+        ) : (
           <View style={styles.wordsBox} wrap={false}>
             <Text style={styles.wordsText}>
               Amount in Words: {numberToWords(itemsSubtotal, quote.currency)}
@@ -1542,70 +1980,133 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
               </View>
               <Text style={styles.sectionTitleText}>SHIPPING WEIGHT & VOLUMETRIC TOTALS</Text>
             </View>
-            <View style={[styles.shipmentBar, { padding: 8, justifyContent: 'space-between' }]}>
-              <View>
+            <View style={[styles.shipmentBar, { padding: 6, justifyContent: 'space-between', marginBottom: 6 }]}>
+              <View style={{ flex: 1, paddingHorizontal: 4 }}>
                 <Text style={styles.shipmentLabel}>TOTAL PACKAGES</Text>
-                <Text style={[styles.shipmentVal, { fontSize: 8 }]}>
-                  {lineItems.length === 1 && lineItems[0]?.packing_container ? lineItems[0].packing_container : 'Standard Export Bags/Cartons'}
+                <Text style={[styles.shipmentVal, { fontSize: 7.5 }]}>
+                  {new Intl.NumberFormat('en-US').format(plComputation.totalPackages)} Packages
+                </Text>
+                <Text style={{ fontSize: 5.2, color: '#64748B', marginTop: 1 }}>
+                  {plComputation.lines.length === 1 ? plComputation.lines[0]?.packagingType : 'Multiple Packaging Lines'}
                 </Text>
               </View>
-              <View>
-                <Text style={styles.shipmentLabel}>TOTAL ESTIMATED GROSS WEIGHT</Text>
-                <Text style={[styles.shipmentVal, { fontSize: 8 }]}>
-                  {new Intl.NumberFormat('en-US').format(totalWeight)} kg ({(totalWeight / 1000).toFixed(2)} MT)
+              <View style={{ width: 0.75, height: 26, backgroundColor: C.borderGrey, marginHorizontal: 3 }} />
+              <View style={{ flex: 1.1, paddingHorizontal: 4 }}>
+                <Text style={styles.shipmentLabel}>TOTAL NET WEIGHT</Text>
+                <Text style={[styles.shipmentVal, { fontSize: 7.5 }]}>
+                  {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(plComputation.totalNetWeight)} kg
+                </Text>
+                <Text style={{ fontSize: 5.2, color: '#64748B', marginTop: 1 }}>
+                  {(plComputation.totalNetWeight / 1000).toFixed(3)} Metric Tons
                 </Text>
               </View>
-              <View>
+              <View style={{ width: 0.75, height: 26, backgroundColor: C.borderGrey, marginHorizontal: 3 }} />
+              <View style={{ flex: 1.1, paddingHorizontal: 4 }}>
+                <Text style={styles.shipmentLabel}>TOTAL GROSS WEIGHT</Text>
+                <Text style={[styles.shipmentVal, { fontSize: 7.5 }]}>
+                  {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(plComputation.totalGrossWeight)} kg
+                </Text>
+                <Text style={{ fontSize: 5.2, color: '#64748B', marginTop: 1 }}>
+                  {(plComputation.totalGrossWeight / 1000).toFixed(3)} Metric Tons
+                </Text>
+              </View>
+              {totalCbm > 0 ? (
+                <>
+                  <View style={{ width: 0.75, height: 26, backgroundColor: C.borderGrey, marginHorizontal: 3 }} />
+                  <View style={{ flex: 0.9, paddingHorizontal: 4 }}>
+                    <Text style={styles.shipmentLabel}>TOTAL VOLUME</Text>
+                    <Text style={[styles.shipmentVal, { fontSize: 7.5 }]}>{totalCbm.toFixed(2)} CBM</Text>
+                    <Text style={{ fontSize: 5.2, color: '#64748B', marginTop: 1 }}>Cubic Metres</Text>
+                  </View>
+                </>
+              ) : null}
+              <View style={{ width: 0.75, height: 26, backgroundColor: C.borderGrey, marginHorizontal: 3 }} />
+              <View style={{ flex: 1.2, paddingHorizontal: 4 }}>
                 <Text style={styles.shipmentLabel}>CONTAINER SPECIFICATION</Text>
-                <Text style={[styles.shipmentVal, { fontSize: 8 }]}>{quote.shipment_mode || '20ft FCL Dry Container'}</Text>
+                <Text style={[styles.shipmentVal, { fontSize: 7.2 }]}>{quote.shipment_mode || '20ft FCL Dry Container'}</Text>
+                <Text style={{ fontSize: 5.2, color: '#64748B', marginTop: 1 }}>
+                  {containerNumber ? `No: ${containerNumber}` : 'Standard Shipping Container'}
+                </Text>
               </View>
             </View>
           </>
         )}
 
-        {/* Note Box */}
-        <View style={styles.noteBox} wrap={false}>
-          <View style={styles.noteLeftGroup}>
-            <View style={styles.noteIconBox}><DocIcon /></View>
-            <Text style={styles.noteTitle}>NOTE</Text>
-          </View>
-          <View style={styles.noteDivider} />
-          <View style={styles.noteRightTextGroup}>
-            {quote.commercial_note?.trim() ? (
-              <Text style={styles.noteTextLine}>
-                {quote.commercial_note}
+        {/* Note / Declaration Box */}
+        {documentType === 'packing_list' ? (
+          <View style={styles.noteBox} wrap={false}>
+            <View style={styles.noteLeftGroup}>
+              <View style={styles.noteIconBox}><DocIcon /></View>
+              <Text style={styles.noteTitle}>DECLARATION</Text>
+            </View>
+            <View style={styles.noteDivider} />
+            <View style={styles.noteRightTextGroup}>
+              <Text style={[styles.noteTextLine, { fontWeight: 'bold', color: C.navyDark }]}>
+                &quot;We hereby certify that the particulars stated above are true and correct and accurately describe the packing and physical contents of this shipment.&quot;
               </Text>
-            ) : null}
-            <Text style={styles.noteTextLine}>
-              This commercial structure is indicative and subject to final confirmation, availability of cargo, and standard export documentation.
-            </Text>
+              <Text style={[styles.noteTextLine, { marginTop: 2, fontSize: 5.4, color: '#64748B' }]}>
+                Place of Issue: {placeOfIssue}   |   Date of Issue: {formatDate(packingListDate)}
+              </Text>
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={styles.noteBox} wrap={false}>
+            <View style={styles.noteLeftGroup}>
+              <View style={styles.noteIconBox}><DocIcon /></View>
+              <Text style={styles.noteTitle}>NOTE</Text>
+            </View>
+            <View style={styles.noteDivider} />
+            <View style={styles.noteRightTextGroup}>
+              {quote.commercial_note?.trim() ? (
+                <Text style={styles.noteTextLine}>
+                  {quote.commercial_note}
+                </Text>
+              ) : null}
+              <Text style={styles.noteTextLine}>
+                This commercial structure is indicative and subject to final confirmation, availability of cargo, and standard export documentation.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* SIGNATURES BLOCK (Shown on Page 1 when Details Page is disabled) */}
         {!showDetailsPage && showSignatureBlock && (
           <View style={styles.signaturesGrid} wrap={false}>
             <View style={styles.signatureBox}>
-              <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller)</Text>
+              <Text style={styles.signatureRoleLabel}>
+                {`For ${shipper.company_name.toUpperCase()}\n(${documentType === 'packing_list' ? 'Exporter / Shipper' : 'Exporter / Seller'})`}
+              </Text>
               <View style={styles.signatureSignLine}>
                 {showCeoSignature && (
-                  <Image src="/signature.png" style={styles.signatureImage} />
+                  <Image src={getSignatureSrc()} style={styles.signatureImage} />
                 )}
-                <Image src="/stamp.png" style={styles.stampImage} />
+                <Image src={getStampSrc()} style={styles.stampImage} />
               </View>
-              <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
-              <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
+              <Text style={styles.signatureTextName}>{signatoryName}</Text>
+              <Text style={styles.signatureTextCompany}>{signatoryDesignation}, {shipper.company_name}</Text>
+              <Text style={{ fontSize: 5.2, color: '#64748B', marginTop: 1 }}>
+                Place: {placeOfIssue}  |  Date: {formatDate(packingListDate)}
+              </Text>
             </View>
 
             <View style={styles.signatureBox}>
               <Text style={styles.signatureRoleLabel}>
-                {documentType === 'packing_list' ? 'Received & Audited By Buyer' : 'Accepted & Confirmed By Buyer'}{"\n"}(Buyer Order Confirmation)
+                {documentType === 'packing_list'
+                  ? 'RECEIVED & VERIFIED BY CONSIGNEE\n(Port / Customs / Warehouse Clearance)'
+                  : 'Accepted & Confirmed By Buyer\n(Buyer Order Confirmation)'}
               </Text>
               <View style={[styles.signatureSignLine, { borderStyle: 'dashed' }]} />
-              <Text style={styles.signatureTextName}>Authorized Buyer Signature & Stamp</Text>
-              <Text style={styles.signatureTextCompany}>
-                {[client.contact_name, client.company_name].filter(Boolean).join(' / ') || 'Authorized Buyer Representative'}
+              <Text style={styles.signatureTextName}>
+                {documentType === 'packing_list' ? 'Authorized Consignee Signature & Stamp' : 'Authorized Buyer Signature & Stamp'}
               </Text>
+              <Text style={styles.signatureTextCompany}>
+                {[client.contact_name, client.company_name].filter(Boolean).join(' / ') || 'Authorized Representative'}
+              </Text>
+              {documentType === 'packing_list' ? (
+                <Text style={{ fontSize: 5.2, color: '#64748B', marginTop: 1 }}>
+                  Clearance Verification & Cargo Receipt
+                </Text>
+              ) : null}
             </View>
           </View>
         )}
@@ -1800,28 +2301,54 @@ export const QuotePDF: React.FC<QuotePDFProps> = ({ quote, documentType }) => {
 
           {/* SIGNATURES BLOCK */}
           {showSignatureBlock && (
-            <View style={styles.signaturesGrid} wrap={false}>
-              <View style={styles.signatureBox}>
-                <Text style={styles.signatureRoleLabel}>For Sheshaan Global{"\n"}(Exporter / Seller)</Text>
-                <View style={styles.signatureSignLine}>
-                  {showCeoSignature && (
-                    <Image src="/signature.png" style={styles.signatureImage} />
-                  )}
-                  <Image src="/stamp.png" style={styles.stampImage} />
+            <View wrap={false}>
+              {documentType === 'packing_list' && (
+                <View style={[styles.noteBox, { marginBottom: 6 }]} wrap={false}>
+                  <View style={styles.noteLeftGroup}>
+                    <View style={styles.noteIconBox}><DocIcon /></View>
+                    <Text style={styles.noteTitle}>DECLARATION</Text>
+                  </View>
+                  <View style={styles.noteDivider} />
+                  <View style={styles.noteRightTextGroup}>
+                    <Text style={[styles.noteTextLine, { fontWeight: 'bold', color: C.navyDark }]}>
+                      &quot;We hereby certify that the particulars stated above are true and correct and accurately describe the packing and physical contents of this shipment.&quot;
+                    </Text>
+                    <Text style={[styles.noteTextLine, { marginTop: 2, fontSize: 5.4, color: '#64748B' }]}>
+                      Place of Issue: {placeOfIssue}   |   Date of Issue: {formatDate(packingListDate)}   |   Doc: Packing List ({packingListNumber})
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.signatureTextName}>{shipper.contact_name}</Text>
-                <Text style={styles.signatureTextCompany}>Proprietor & CEO, {shipper.company_name}</Text>
-              </View>
+              )}
+              <View style={styles.signaturesGrid}>
+                <View style={styles.signatureBox}>
+                  <Text style={styles.signatureRoleLabel}>
+                    {documentType === 'packing_list' ? 'For Sheshaan Global\n(Authorized Signatory)' : 'For Sheshaan Global\n(Exporter / Seller)'}
+                  </Text>
+                  <View style={styles.signatureSignLine}>
+                    {showCeoSignature && (
+                      <Image src={getSignatureSrc()} style={styles.signatureImage} />
+                    )}
+                    <Image src={getStampSrc()} style={styles.stampImage} />
+                  </View>
+                  <Text style={styles.signatureTextName}>{signatoryName}</Text>
+                  <Text style={styles.signatureTextCompany}>{signatoryDesignation}, {shipper.company_name}</Text>
+                  {documentType === 'packing_list' && (
+                    <Text style={{ fontSize: 5.2, color: '#64748B', marginTop: 1 }}>
+                      Date: {formatDate(packingListDate)} • {placeOfIssue}
+                    </Text>
+                  )}
+                </View>
 
-              <View style={styles.signatureBox}>
-                <Text style={styles.signatureRoleLabel}>
-                  {documentType === 'packing_list' ? 'Received & Audited By Buyer' : 'Accepted & Confirmed By Buyer'}{"\n"}(Buyer Order Confirmation)
-                </Text>
-                <View style={[styles.signatureSignLine, { borderStyle: 'dashed' }]} />
-                <Text style={styles.signatureTextName}>Authorized Buyer Signature & Stamp</Text>
-                <Text style={styles.signatureTextCompany}>
-                  {[client.contact_name, client.company_name].filter(Boolean).join(' / ') || 'Authorized Buyer Representative'}
-                </Text>
+                <View style={styles.signatureBox}>
+                  <Text style={styles.signatureRoleLabel}>
+                    {documentType === 'packing_list' ? 'Received & Audited By Importer / Consignee' : 'Accepted & Confirmed By Buyer'}{"\n"}({documentType === 'packing_list' ? 'Consignee Verification' : 'Buyer Order Confirmation'})
+                  </Text>
+                  <View style={[styles.signatureSignLine, { borderStyle: 'dashed' }]} />
+                  <Text style={styles.signatureTextName}>Authorized Consignee Signature & Stamp</Text>
+                  <Text style={styles.signatureTextCompany}>
+                    {[client.contact_name, client.company_name].filter(Boolean).join(' / ') || 'Authorized Consignee Representative'}
+                  </Text>
+                </View>
               </View>
             </View>
           )}
