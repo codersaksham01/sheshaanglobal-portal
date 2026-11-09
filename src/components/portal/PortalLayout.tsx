@@ -30,6 +30,9 @@ import {
   Sparkles,
   Users,
   Receipt,
+  Clock,
+  ChevronRight,
+  RotateCcw,
   ArrowRight
 } from 'lucide-react';
 
@@ -69,6 +72,7 @@ const PanelLeftOpen = ({ className }: { className?: string }) => (
 import { AuthGate, usePortalIdentity } from '../AuthGate';
 import { AppErrorBoundary } from '../AppErrorBoundary';
 import { PortalSidebar } from './PortalSidebar';
+import { PortalTopNav } from './PortalTopNav';
 import { SystematicLoadingScreen } from '../SystematicLoadingScreen';
 import { canAccessTab, PortalRole } from '../../lib/permissions';
 import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
@@ -84,6 +88,67 @@ export type NavItemDef = {
 };
 
 export { TAB_ROUTES };
+
+function TradingClocks() {
+  const [times, setTimes] = useState<{ mumbai: string; dubai: string; london: string }>({
+    mumbai: '--:--',
+    dubai: '--:--',
+    london: '--:--'
+  });
+
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      setTimes({
+        mumbai: new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(now),
+        dubai: new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Dubai',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(now),
+        london: new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/London',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(now)
+      });
+    };
+    update();
+    const interval = setInterval(update, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="hidden xl:flex items-center gap-2.5 text-slate-600">
+      <div className="flex items-center gap-1 text-slate-400">
+        <Clock className="h-3 w-3 text-slate-400" />
+        <span className="text-[9.5px] uppercase font-bold tracking-wider">Trading Clocks:</span>
+      </div>
+      <div className="flex items-center gap-1 bg-slate-100/90 border border-slate-200 px-2 py-0.5 rounded text-[11px] font-mono shadow-2xs">
+        <span className="text-[9.5px] font-bold text-slate-500">MUMBAI</span>
+        <span className="font-bold text-slate-800">{times.mumbai}</span>
+        <span className="text-[8.5px] font-semibold text-slate-400">IST</span>
+      </div>
+      <div className="flex items-center gap-1 bg-slate-100/90 border border-slate-200 px-2 py-0.5 rounded text-[11px] font-mono shadow-2xs">
+        <span className="text-[9.5px] font-bold text-slate-500">DUBAI</span>
+        <span className="font-bold text-slate-800">{times.dubai}</span>
+        <span className="text-[8.5px] font-semibold text-slate-400">GST</span>
+      </div>
+      <div className="flex items-center gap-1 bg-slate-100/90 border border-slate-200 px-2 py-0.5 rounded text-[11px] font-mono shadow-2xs">
+        <span className="text-[9.5px] font-bold text-slate-500">LONDON</span>
+        <span className="font-bold text-slate-800">{times.london}</span>
+        <span className="text-[8.5px] font-semibold text-slate-400">GMT</span>
+      </div>
+    </div>
+  );
+}
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -356,43 +421,41 @@ export function PortalLayoutContent({
     <div className="portal-os relative min-h-screen pb-28 lg:pb-0">
       {/* Subtle Top Sync Indicator */}
       {isInitialSyncing && (
-        <div className="fixed top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-sky-400 via-indigo-500 to-emerald-400 z-50 animate-pulse pointer-events-none" />
+        <div className="fixed top-0 left-0 right-0 h-0.5 bg-sky-500 opacity-80 z-50 animate-pulse pointer-events-none" />
       )}
       <div className="portal-shell">
-        <div className="flex flex-col lg:flex-row">
-          {/* Desktop Fixed Sidebar */}
-          <PortalSidebar
-            currentTab={currentTab}
-            isMinimized={isSidebarMinimized}
-            onToggleMinimized={toggleSidebar}
-            onNavigate={(_key, href) => router.push(href)}
-            badgeCounts={{
-              ...badgeCounts,
-              crm: badgeCounts.crm ?? quickCounts.leads,
-              quotes: badgeCounts.quotes ?? quickCounts.quotes
-            }}
-            authEmail={authEmail}
-            currentRole={currentRole}
-            onNewQuote={() => router.push('/quotes?new=true')}
-            fxRate={fxRate}
-            fxRateLoading={fxRateLoading}
-            fxRateFetchedAt={fxRateFetchedAt}
-            fxRateSource={fxRateSource}
-            onRefreshFxRate={fetchMarketFxRate}
-            onSaveManualFxRate={(rate) => {
-              setFxRate(rate);
-              setFxRateSource('Manual');
-              setFxRateFetchedAt(new Date().toISOString());
-              localStorage.setItem('portal_fx_rate', rate.toString());
-            }}
-          />
+        {/* Desktop Top Navigation Bar (Shifted to top instead of sidebar) */}
+        <PortalTopNav
+          currentTab={currentTab}
+          onNavigate={(_key, href) => router.push(href)}
+          badgeCounts={{
+            ...badgeCounts,
+            crm: badgeCounts.crm ?? quickCounts.leads,
+            quotes: badgeCounts.quotes ?? quickCounts.quotes
+          }}
+          authEmail={authEmail}
+          currentRole={currentRole}
+          onNewQuote={() => router.push('/quotes?new=true')}
+          fxRate={fxRate}
+          fxRateLoading={fxRateLoading}
+          fxRateFetchedAt={fxRateFetchedAt}
+          fxRateSource={fxRateSource}
+          onRefreshFxRate={fetchMarketFxRate}
+          onSaveManualFxRate={(rate) => {
+            setFxRate(rate);
+            setFxRateSource('Manual');
+            setFxRateFetchedAt(new Date().toISOString());
+            localStorage.setItem('portal_fx_rate', rate.toString());
+          }}
+          onOpenCommand={() => setCommandOpen(true)}
+        />
+
+        <div className="flex flex-col w-full">
 
           {/* Main Content Workspace Column: Full Page, Borderless, Natural Spacing */}
-          <section className={`relative z-10 flex-1 ${
-            isSidebarMinimized ? 'lg:ml-[76px]' : 'lg:ml-[304px]'
-          } min-w-0 transition-[margin-left] duration-200 ease-out will-change-[margin-left]`}>
+          <section className="relative z-10 flex-1 w-full min-w-0">
             {/* Mobile Header Bar: Flush edge-to-edge, full width, 0 border gaps */}
-            <div className="lg:hidden sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs mb-0 overflow-hidden pt-[env(safe-area-inset-top,0px)]">
+            <div className="lg:hidden sticky top-0 z-30 w-full bg-[#091124] text-white border-b border-slate-800 shadow-md mb-0 overflow-hidden pt-[env(safe-area-inset-top,0px)]">
               <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 flex items-center justify-between gap-3">
                 <button
                   type="button"
@@ -400,27 +463,34 @@ export function PortalLayoutContent({
                     setShowNotifications(false);
                     setShowMobileMenu(true);
                   }}
-                  className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-sm active:scale-95 transition hover:bg-slate-800 shrink-0"
+                  className="h-9 w-9 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center shadow-sm active:scale-95 transition hover:bg-slate-700 shrink-0 cursor-pointer"
                   aria-label="Open menu"
                 >
-                  <Menu className="h-5 w-5" />
+                  <Menu className="h-4.5 w-4.5" />
                 </button>
-                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl bg-white shadow-xs">
-                  <Image src="/logo.png" alt="Sheshaan Global logo" width={40} height={40} className="h-full w-full object-contain" />
+                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-white border border-slate-700/80 p-0.5 shadow-xs flex items-center justify-center">
+                  <Image src="/logo.png" alt="Sheshaan Global logo" width={34} height={34} className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Sheshaan Global</p>
-                  <p className="text-sm font-extrabold text-slate-900 truncate">{propPageTitle || activeNavItem?.label || 'Workspace'}</p>
-                  <p className="text-[9px] font-bold uppercase tracking-wide text-sky-700">{portalBuildLabel}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[10px] uppercase font-bold tracking-wider text-sky-300">Sheshaan Global</p>
+                    <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-400/30">Enterprise</span>
+                  </div>
+                  <p className="text-xs sm:text-sm font-extrabold text-white truncate">{propPageTitle || activeNavItem?.label || 'Workspace'}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowNotifications((value) => !value)}
-                  className="relative h-10 w-10 rounded-xl bg-white text-slate-700 flex items-center justify-center shadow-xs active:scale-95 transition hover:bg-slate-50 shrink-0"
-                  aria-label="Open notifications"
-                >
-                  <Bell className="h-5 w-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <div className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono font-bold">
+                    <span>₹{fxRate.toFixed(2)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowNotifications((value) => !value)}
+                    className="relative h-9 w-9 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center shadow-xs active:scale-95 transition hover:bg-slate-700 shrink-0 cursor-pointer"
+                    aria-label="Open notifications"
+                  >
+                    <Bell className="h-4.5 w-4.5" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -738,63 +808,51 @@ export function PortalLayoutContent({
               </div>
             </nav>
 
-            {/* Desktop Top Header Bar */}
-            <header className="hidden lg:flex items-center justify-between px-8 py-3 bg-white/90 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-                  {propPageIcon || activeNavItem?.icon}
-                </div>
-                <div>
-                  <h2 className="text-sm font-black text-slate-900 leading-none">
-                    {propPageTitle || activeNavItem?.label || 'Trade Command'}
-                  </h2>
-                  <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">
-                    Sheshaan Global • Export Portal
-                  </p>
-                </div>
-              </div>
-
-              {/* Center Command Search Trigger */}
-              <button
-                type="button"
-                onClick={() => setCommandOpen(true)}
-                className="w-80 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50/80 hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-between text-xs font-semibold transition group shadow-2xs cursor-pointer"
-              >
-                <span className="flex items-center gap-2">
-                  <Search className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600" />
-                  <span>Search or jump to...</span>
-                </span>
-                <span className="text-[10px] font-mono font-bold text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs">
-                  Ctrl+K
-                </span>
-              </button>
-
-              {/* Right Strip */}
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={fetchMarketFxRate}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200/60 text-emerald-800 text-[11px] font-black hover:bg-emerald-100/60 transition"
-                  title="Click to refresh live USD/INR market rate"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>USD/INR ₹{fxRate.toFixed(2)}</span>
-                  <RefreshCw className={`h-2.5 w-2.5 text-emerald-600 ${fxRateLoading ? 'animate-spin' : ''}`} />
-                </button>
-
-                <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
-                  <div className="h-7 w-7 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-black">
-                    {(authEmail || 'A')[0].toUpperCase()}
-                  </div>
-                  <span className="text-xs font-bold text-slate-700 max-w-[120px] truncate">
-                    {authEmail || 'Admin'}
-                  </span>
-                </div>
-              </div>
-            </header>
-
             {/* Workspace Main Area: Full Width, Edge-to-Edge */}
-            <main className="w-full min-w-0 px-3 py-4 sm:p-6 lg:p-8 animate-panel-in">
+            {/* Corporate Context & Trading Clocks Subheader (Desktop) */}
+            <div className="hidden lg:block bg-white border-b border-slate-200/90 shadow-2xs">
+              <div className="max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-4">
+                {/* Left: Breadcrumbs & Current Workspace */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                    <span className="text-slate-400 hover:text-slate-700 cursor-pointer transition" onClick={() => router.push('/overview')}>
+                      Sheshaan Global
+                    </span>
+                    <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <span className="font-black text-slate-900 flex items-center gap-1.5">
+                      <span className="text-sky-600">{propPageIcon || activeNavItem?.icon}</span>
+                      <span>{propPageTitle || activeNavItem?.label || 'Overview'}</span>
+                    </span>
+                  </div>
+                  <span className="text-slate-300">|</span>
+                  {/* Database Sync Status Pill */}
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    <span>{dbType} Live Sync Active</span>
+                  </div>
+                </div>
+
+                {/* Right: Trading Clocks & Quick Sync */}
+                <div className="flex items-center gap-3 text-xs">
+                  <TradingClocks />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchMarketFxRate();
+                      router.refresh();
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 px-2.5 py-1 rounded-md border border-slate-200/80 transition cursor-pointer"
+                    title="Refresh data & live rates"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    <span>Sync</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Workspace Main Area: Structured Max-Width Container */}
+            <main className="max-w-[1600px] mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-6 animate-panel-in">
               {children}
             </main>
           </section>

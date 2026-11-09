@@ -66,27 +66,69 @@ const CrmMetric = ({
   value,
   helper,
   active,
-  onClick
+  onClick,
+  tone = 'slate'
 }: {
   label: string;
   value: string;
   helper: string;
   active?: boolean;
   onClick?: () => void;
-}) => (
-  <div
-    onClick={onClick}
-    className={`border rounded-xl p-3.5 transition duration-200 cursor-pointer select-none ${
-      active
-        ? 'bg-white/15 border-sky-400 shadow-md ring-1 ring-sky-400'
-        : 'bg-white/5 border-white/10 hover:bg-white/10'
-    }`}
-  >
-    <span className={`block text-[10px] font-bold uppercase tracking-wider ${active ? 'text-sky-300' : 'text-slate-400'}`}>{label}</span>
-    <span className="block text-xl font-extrabold text-white mt-1">{value}</span>
-    <span className={`block text-[10px] mt-1 ${active ? 'text-sky-300' : 'text-slate-400'}`}>{helper}</span>
-  </div>
-);
+  tone?: 'slate' | 'sky' | 'amber' | 'indigo' | 'emerald';
+}) => {
+  const tones = {
+    slate: {
+      idle: 'bg-gradient-to-br from-white to-slate-100/90 border-slate-300 hover:border-slate-400',
+      active: 'bg-slate-900 border-slate-900 text-white shadow-sm ring-2 ring-slate-900/20',
+      labelIdle: 'text-slate-600',
+      valueIdle: 'text-slate-950',
+      helperIdle: 'text-slate-500'
+    },
+    sky: {
+      idle: 'bg-gradient-to-br from-white to-sky-50/90 border-sky-200 hover:border-sky-400',
+      active: 'bg-sky-600 border-sky-600 text-white shadow-sm ring-2 ring-sky-600/20',
+      labelIdle: 'text-sky-700',
+      valueIdle: 'text-sky-950',
+      helperIdle: 'text-sky-600'
+    },
+    amber: {
+      idle: 'bg-gradient-to-br from-white to-amber-50/90 border-amber-200 hover:border-amber-400',
+      active: 'bg-amber-600 border-amber-600 text-white shadow-sm ring-2 ring-amber-600/20',
+      labelIdle: 'text-amber-800',
+      valueIdle: 'text-amber-950',
+      helperIdle: 'text-amber-700'
+    },
+    indigo: {
+      idle: 'bg-gradient-to-br from-white to-indigo-50/90 border-indigo-200 hover:border-indigo-400',
+      active: 'bg-indigo-600 border-indigo-600 text-white shadow-sm ring-2 ring-indigo-600/20',
+      labelIdle: 'text-indigo-700',
+      valueIdle: 'text-indigo-950',
+      helperIdle: 'text-indigo-600'
+    },
+    emerald: {
+      idle: 'bg-gradient-to-br from-white to-emerald-50/90 border-emerald-200 hover:border-emerald-400',
+      active: 'bg-emerald-600 border-emerald-600 text-white shadow-sm ring-2 ring-emerald-600/20',
+      labelIdle: 'text-emerald-800',
+      valueIdle: 'text-emerald-950',
+      helperIdle: 'text-emerald-700'
+    }
+  };
+
+  const t = tones[tone];
+
+  return (
+    <div
+      onClick={onClick}
+      className={`border rounded-xl p-3.5 transition duration-200 cursor-pointer select-none ${
+        active ? t.active : t.idle
+      }`}
+    >
+      <span className={`block text-[10px] font-black uppercase tracking-wider ${active ? 'text-white/80' : t.labelIdle}`}>{label}</span>
+      <span className={`block text-xl font-black mt-1 ${active ? 'text-white' : t.valueIdle}`}>{value}</span>
+      <span className={`block text-[10px] font-semibold mt-0.5 ${active ? 'text-white/80' : t.helperIdle}`}>{helper}</span>
+    </div>
+  );
+};
 
 export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps) {
   // Fast hydration from shared portal cache or sessionStorage for 0ms initial render
@@ -721,20 +763,20 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
         </div>
       )}
       {/* Dynamic Metric Grid */}
-      <div className="rounded-xl border border-slate-200 bg-slate-950 p-4 text-white shadow-sm">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs border-t-4 border-t-sky-600">
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-sky-300">Smart CRM Pipeline</p>
-            <h3 className="text-xl font-black">Lead Command OS</h3>
-            <p className="text-xs text-slate-300 mt-1 max-w-2xl">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">B2B Commodity Outreach</p>
+            <h3 className="text-lg font-bold text-slate-900 tracking-tight">CRM Pipeline & Buyers</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
               Real-time B2B commodity buyer pipeline. Click rows or cards to open the slide-over Workspace Inspector.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 text-slate-950">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => openNewLeadDrawer('Quick Add')}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg font-black hover:bg-emerald-400 transition text-xs shadow-sm shadow-emerald-950/20"
+              className="inline-flex items-center justify-center gap-2 px-3.5 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition text-xs shadow-xs active:scale-95"
             >
               <Plus className="h-4 w-4" />
               New Lead
@@ -744,7 +786,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
                 type="button"
                 onClick={() => setBuyerPdfExportReady(true)}
                 disabled={!buyerPdfRecords.length}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs disabled:opacity-40"
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition text-xs shadow-2xs disabled:opacity-40"
               >
                 <FileText className="h-4 w-4" />
                 Prepare PDF
@@ -760,7 +802,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
                   />
                 }
                 fileName={`sheshaan-crm-export-${new Date().toISOString().slice(0, 10)}.pdf`}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white/10 border border-white/15 text-white rounded-lg font-bold hover:bg-white/15 transition text-xs"
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition text-xs shadow-2xs"
               >
                 {({ loading: pdfLoading }) => (
                   <>
@@ -774,7 +816,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
               type="button"
               onClick={downloadBuyerExcelExport}
               disabled={!filteredCrmLeads.length}
-              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-emerald-500 text-white rounded-lg font-bold hover:bg-emerald-400 transition text-xs disabled:opacity-40"
+              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg font-semibold hover:bg-slate-50 transition text-xs shadow-2xs disabled:opacity-40"
             >
               <Download className="h-4 w-4" />
               Export Excel
@@ -790,6 +832,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
             helper="Leads in stages"
             active={crmQueueFilter === null}
             onClick={() => setCrmQueueFilter(null)}
+            tone="slate"
           />
           <CrmMetric
             label="Need Reach Out"
@@ -797,6 +840,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
             helper="Uncontacted"
             active={crmQueueFilter === 'Need Reach Out'}
             onClick={() => setCrmQueueFilter(crmQueueFilter === 'Need Reach Out' ? null : 'Need Reach Out')}
+            tone="sky"
           />
           <CrmMetric
             label="Follow-up Due"
@@ -804,6 +848,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
             helper="Overdue alerts"
             active={crmQueueFilter === 'Follow-up Due'}
             onClick={() => setCrmQueueFilter(crmQueueFilter === 'Follow-up Due' ? null : 'Follow-up Due')}
+            tone="amber"
           />
           <CrmMetric
             label="Next Follow-up"
@@ -811,6 +856,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
             helper="Scheduled outreach"
             active={crmQueueFilter === 'Next Follow-up'}
             onClick={() => setCrmQueueFilter(crmQueueFilter === 'Next Follow-up' ? null : 'Next Follow-up')}
+            tone="indigo"
           />
           <CrmMetric
             label="Waiting Reply"
@@ -818,12 +864,13 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
             helper="Awaiting response"
             active={crmQueueFilter === 'Waiting Reply'}
             onClick={() => setCrmQueueFilter(crmQueueFilter === 'Waiting Reply' ? null : 'Waiting Reply')}
+            tone="emerald"
           />
         </div>
       </div>
 
       {/* Quick Lead Capture Banner */}
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+      <div className="rounded-xl border border-emerald-200/90 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-sky-50/70 p-4 shadow-2xs">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Quick Lead Capture</p>

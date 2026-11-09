@@ -215,78 +215,100 @@ export function OverviewWorkspace() {
         onRunAutomation={loadData}
       />
 
-      {/* Primary KPI Grid */}
+      {/* Primary KPI Grid with Rich Color Accents */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Active Deals</span>
-            <TrendingUp className="h-4 w-4 text-sky-600" />
+        <div className="rounded-xl border border-sky-200/90 bg-gradient-to-br from-white via-white to-sky-50/80 p-4 shadow-2xs border-t-3 border-t-sky-500">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-500">Active Deals</span>
+            <div className="p-2 rounded-lg bg-sky-100 text-sky-700 shadow-2xs">
+              <TrendingUp className="h-4 w-4" />
+            </div>
           </div>
           <p className="mt-2 text-2xl font-black text-slate-900">{quotes.length}</p>
           <p className="mt-0.5 text-xs font-semibold text-slate-500">Total generated proposals</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Hot Prospects</span>
-            <KanbanSquare className="h-4 w-4 text-indigo-600" />
+        <div className="rounded-xl border border-indigo-200/90 bg-gradient-to-br from-white via-white to-indigo-50/80 p-4 shadow-2xs border-t-3 border-t-indigo-500">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-500">Hot Prospects</span>
+            <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700 shadow-2xs">
+              <KanbanSquare className="h-4 w-4" />
+            </div>
           </div>
           <p className="mt-2 text-2xl font-black text-slate-900">{analytics.hotLeadsCount}</p>
           <p className="mt-0.5 text-xs font-semibold text-slate-500">High priority buyers</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Pending Tasks</span>
-            <ClipboardList className="h-4 w-4 text-amber-600" />
+        <div className="rounded-xl border border-amber-200/90 bg-gradient-to-br from-white via-white to-amber-50/80 p-4 shadow-2xs border-t-3 border-t-amber-500">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-500">Pending Tasks</span>
+            <div className="p-2 rounded-lg bg-amber-100 text-amber-700 shadow-2xs">
+              <ClipboardList className="h-4 w-4" />
+            </div>
           </div>
           <p className="mt-2 text-2xl font-black text-slate-900">{analytics.overdueTasksCount}</p>
           <p className="mt-0.5 text-xs font-semibold text-slate-500">Operational actions</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[10px] font-black uppercase tracking-wider">Active Shipments</span>
-            <Ship className="h-4 w-4 text-teal-600" />
+        <div className="rounded-xl border border-teal-200/90 bg-gradient-to-br from-white via-white to-teal-50/80 p-4 shadow-2xs border-t-3 border-t-teal-500">
+          <div className="flex items-center justify-between">
+            <span className="text-[10.5px] font-black uppercase tracking-wider text-slate-500">Active Shipments</span>
+            <div className="p-2 rounded-lg bg-teal-100 text-teal-700 shadow-2xs">
+              <Ship className="h-4 w-4" />
+            </div>
           </div>
           <p className="mt-2 text-2xl font-black text-slate-900">{analytics.activeShipmentsCount}</p>
           <p className="mt-0.5 text-xs font-semibold text-slate-500">Sea / Air freight in transit</p>
         </div>
       </div>
 
-      {/* Snapshot Cards */}
+      {/* Snapshot Cards with Color Depth */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Commercial Pipeline Snapshot */}
-        <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="font-black text-slate-900 text-xs uppercase tracking-wider">
-              Financial Overview
-            </h3>
-            <Receipt className="h-4 w-4 text-slate-400" />
+        <div className="rounded-xl border border-emerald-200/90 bg-white p-5 shadow-xs space-y-3.5 border-t-3 border-t-emerald-500">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
+                <Receipt className="h-4 w-4" />
+              </span>
+              <h3 className="font-black text-slate-900 text-xs uppercase tracking-wider">
+                Financial Overview
+              </h3>
+            </div>
+            <span className="text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+              Live
+            </span>
           </div>
           <div className="space-y-2.5 text-xs">
-            <div className="flex items-center justify-between py-1 border-b border-slate-50">
-              <span className="text-slate-500 font-semibold">Total Quoted Value</span>
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+              <span className="text-slate-600 font-semibold">Total Quoted Value</span>
               <span className="font-mono font-black text-slate-900">{formatCurrency(analytics.totalQuoted)}</span>
             </div>
-            <div className="flex items-center justify-between py-1 border-b border-slate-50">
-              <span className="text-slate-500 font-semibold">Confirmed / Won Value</span>
-              <span className="font-mono font-black text-emerald-600">{formatCurrency(analytics.wonValue)}</span>
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200/60">
+              <span className="text-emerald-900 font-bold">Confirmed / Won Value</span>
+              <span className="font-mono font-black text-emerald-700">{formatCurrency(analytics.wonValue)}</span>
             </div>
-            <div className="flex items-center justify-between py-1 border-b border-slate-50">
-              <span className="text-slate-500 font-semibold">Pending Receivables</span>
-              <span className="font-mono font-black text-amber-600">{formatCurrency(analytics.pendingReceivables)}</span>
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-amber-50/70 border border-amber-200/60">
+              <span className="text-amber-900 font-bold">Pending Receivables</span>
+              <span className="font-mono font-black text-amber-700">{formatCurrency(analytics.pendingReceivables)}</span>
             </div>
           </div>
         </div>
 
         {/* Lead Stages Distribution */}
-        <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="font-black text-slate-900 text-xs uppercase tracking-wider">
-              CRM Pipeline Stages
-            </h3>
-            <Layers className="h-4 w-4 text-slate-400" />
+        <div className="rounded-xl border border-indigo-200/90 bg-white p-5 shadow-xs space-y-3.5 border-t-3 border-t-indigo-500">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+                <Layers className="h-4 w-4" />
+              </span>
+              <h3 className="font-black text-slate-900 text-xs uppercase tracking-wider">
+                CRM Pipeline Stages
+              </h3>
+            </div>
+            <span className="text-[10px] font-black uppercase bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
+              {leads.length} Leads
+            </span>
           </div>
           <div className="space-y-2 text-xs">
             {[
@@ -302,10 +324,10 @@ export function OverviewWorkspace() {
                 <div key={stage} className="space-y-1">
                   <div className="flex items-center justify-between text-[11px] font-bold">
                     <span className="text-slate-700">{stage}</span>
-                    <span className="text-slate-500">{count} ({pct}%)</span>
+                    <span className="text-slate-500 font-semibold">{count} ({pct}%)</span>
                   </div>
-                  <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
+                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div className={`h-full ${color} rounded-full transition-all duration-300`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );
@@ -314,57 +336,69 @@ export function OverviewWorkspace() {
         </div>
 
         {/* Quick Operations Shortcuts */}
-        <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="font-black text-slate-900 text-xs uppercase tracking-wider">
-              Quick Actions
-            </h3>
-            <Sparkles className="h-4 w-4 text-sky-600" />
+        <div className="rounded-xl border border-sky-200/90 bg-white p-5 shadow-xs space-y-3.5 border-t-3 border-t-sky-500">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-sky-100 text-sky-700">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <h3 className="font-black text-slate-900 text-xs uppercase tracking-wider">
+                Quick Actions
+              </h3>
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-2 text-xs">
             <button
               type="button"
               onClick={() => router.push('/quotes?new=true')}
-              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition text-left font-extrabold text-slate-900"
+              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-sky-50 hover:border-sky-300 transition text-left font-bold text-slate-800 group"
             >
-              <div className="flex items-center gap-2">
-                <FileCheck2 className="h-4 w-4 text-sky-600" />
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-sky-100 text-sky-700 group-hover:bg-sky-600 group-hover:text-white transition">
+                  <FileCheck2 className="h-3.5 w-3.5" />
+                </div>
                 <span>Create Export Quotation</span>
               </div>
-              <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+              <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-sky-600 group-hover:translate-x-0.5 transition" />
             </button>
             <button
               type="button"
               onClick={() => router.push('/crm')}
-              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition text-left font-extrabold text-slate-900"
+              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-indigo-50 hover:border-indigo-300 transition text-left font-bold text-slate-800 group"
             >
-              <div className="flex items-center gap-2">
-                <KanbanSquare className="h-4 w-4 text-indigo-600" />
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition">
+                  <KanbanSquare className="h-3.5 w-3.5" />
+                </div>
                 <span>Manage CRM Pipeline</span>
               </div>
-              <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+              <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition" />
             </button>
             <button
               type="button"
               onClick={() => router.push('/accounting')}
-              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition text-left font-extrabold text-slate-900"
+              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-emerald-50 hover:border-emerald-300 transition text-left font-bold text-slate-800 group"
             >
-              <div className="flex items-center gap-2">
-                <Receipt className="h-4 w-4 text-emerald-600" />
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition">
+                  <Receipt className="h-3.5 w-3.5" />
+                </div>
                 <span>Accounting & Expenses</span>
               </div>
-              <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+              <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition" />
             </button>
             <button
               type="button"
               onClick={() => router.push('/vendors')}
-              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition text-left font-extrabold text-slate-900"
+              className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-teal-50 hover:border-teal-300 transition text-left font-bold text-slate-800 group"
             >
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-teal-600" />
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-teal-100 text-teal-700 group-hover:bg-teal-600 group-hover:text-white transition">
+                  <Building2 className="h-3.5 w-3.5" />
+                </div>
                 <span>Suppliers & Agreements</span>
               </div>
-              <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+              <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-teal-600 group-hover:translate-x-0.5 transition" />
             </button>
           </div>
         </div>

@@ -209,7 +209,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
             }
           }}
           onMouseEnter={() => prefetchRoute('/overview')}
-          className="h-10 w-10 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-[0_16px_36px_rgba(14,165,233,0.22)] shrink-0 ring-1 ring-white/15 relative group cursor-pointer"
+          className="h-9 w-9 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-700/80 relative group cursor-pointer"
           title={isMinimized ? 'Click to expand navbar (Ctrl+B)' : 'Sheshaan Global Overview'}
         >
           <Image
@@ -263,8 +263,8 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
             }
           }}
           onMouseEnter={() => prefetchRoute('/quotes')}
-          className={`flex items-center justify-center bg-white text-slate-950 hover:bg-sky-50 active:bg-sky-100 font-black rounded-lg shadow-[0_14px_34px_rgba(255,255,255,0.12)] transition-all duration-200 overflow-hidden ${
-            isMinimized ? 'w-10 h-10 p-0 mx-auto' : 'w-full px-3 py-2.5 text-[11px] gap-2'
+          className={`flex items-center justify-center bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-bold rounded-lg shadow-xs transition-all duration-150 overflow-hidden ${
+            isMinimized ? 'w-10 h-10 p-0 mx-auto' : 'w-full px-3 py-2.5 text-xs gap-2'
           }`}
           title={isMinimized ? 'New Quote' : undefined}
           aria-label="New Quote"
@@ -315,7 +315,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
                         aria-label={item.label}
                         className={`h-10 w-10 flex items-center justify-center rounded-lg transition-all duration-150 relative ${
                           isActive
-                            ? 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/40 shadow-sm'
+                            ? 'bg-slate-800 text-white shadow-xs'
                             : 'text-slate-400 hover:bg-white/10 hover:text-white'
                         }`}
                       >
@@ -418,7 +418,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
                             : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
                         }`}
                       >
-                        {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
+                        {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-sky-500 rounded-r-sm" />}
                         <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
                         <span className="flex-1 truncate">Smart CRM</span>
                         {typeof item.count === 'number' && item.count > 0 && (
@@ -477,7 +477,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
                             : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
                         }`}
                       >
-                        {templatesActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
+                        {templatesActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-sky-500 rounded-r-sm" />}
                         <span className={`shrink-0 ${templatesActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
                         <span className="flex-1 truncate">Mail & Messages</span>
                         {typeof item.count === 'number' && item.count > 0 && (
@@ -530,7 +530,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
                         : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
                     }`}
                   >
-                    {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-400 rounded-r-full" />}
+                    {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-sky-500 rounded-r-sm" />}
                     <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
                     <span className="flex-1 truncate">{item.label}</span>
                     {typeof item.count === 'number' && item.count > 0 && (

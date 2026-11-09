@@ -240,8 +240,8 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
   if (checking) {
     return (
       <SystematicLoadingScreen
-        title="Opening Sheshaan Trade OS"
-        subtitle="Verifying secure cryptographic identity and enterprise credentials..."
+        title="Sheshaan Global"
+        subtitle="Verifying session and credentials..."
       />
     );
   }

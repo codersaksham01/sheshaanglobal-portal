@@ -2,7 +2,6 @@ import React from 'react';
 import {
   AlertTriangle,
   ArrowRight,
-  Bot,
   CheckCircle2,
   CircleDollarSign,
   Clock3,
@@ -13,7 +12,9 @@ import {
   Ship,
   Sparkles,
   Target,
-  Zap
+  Zap,
+  Building2,
+  Calendar
 } from 'lucide-react';
 
 export type SmartPortalTarget = 'crm' | 'quotes' | 'accounts' | 'shipments' | 'documents' | 'tasks';
@@ -58,205 +59,286 @@ interface SmartCommandCenterProps {
 
 const toneStyles: Record<SmartPortalInsight['tone'], { icon: React.ReactNode; accent: string; badge: string }> = {
   critical: {
-    icon: <AlertTriangle className="h-4 w-4" />,
+    icon: <AlertTriangle className="h-4 w-4 text-red-600" />,
     accent: 'border-l-red-500',
-    badge: 'bg-red-50 text-red-700'
+    badge: 'bg-red-100 text-red-700'
   },
   warning: {
-    icon: <Radar className="h-4 w-4" />,
+    icon: <Radar className="h-4 w-4 text-amber-600" />,
     accent: 'border-l-amber-500',
-    badge: 'bg-amber-50 text-amber-700'
+    badge: 'bg-amber-100 text-amber-700'
   },
   opportunity: {
-    icon: <Target className="h-4 w-4" />,
+    icon: <Target className="h-4 w-4 text-sky-600" />,
     accent: 'border-l-sky-500',
-    badge: 'bg-sky-50 text-sky-700'
+    badge: 'bg-sky-100 text-sky-700'
   },
   healthy: {
-    icon: <CheckCircle2 className="h-4 w-4" />,
+    icon: <CheckCircle2 className="h-4 w-4 text-emerald-600" />,
     accent: 'border-l-emerald-500',
-    badge: 'bg-emerald-50 text-emerald-700'
+    badge: 'bg-emerald-100 text-emerald-700'
   }
 };
 
-const healthTone = (score: number) => score >= 80 ? 'text-emerald-300' : score >= 60 ? 'text-amber-300' : 'text-red-300';
-const commandMetricTone: Record<SmartCommandMetric['tone'], string> = {
-  sky: 'border-sky-200 bg-sky-50 text-sky-800',
-  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  amber: 'border-amber-200 bg-amber-50 text-amber-800',
-  red: 'border-red-200 bg-red-50 text-red-800',
-  slate: 'border-slate-200 bg-slate-50 text-slate-800'
+const commandMetricTone: Record<SmartCommandMetric['tone'], { card: string; text: string; topBorder: string }> = {
+  sky: {
+    card: 'bg-gradient-to-br from-white via-white to-sky-50/90 border-sky-200 hover:border-sky-400 hover:shadow-sm',
+    text: 'text-sky-950',
+    topBorder: 'border-t-3 border-t-sky-500'
+  },
+  emerald: {
+    card: 'bg-gradient-to-br from-white via-white to-emerald-50/90 border-emerald-200 hover:border-emerald-400 hover:shadow-sm',
+    text: 'text-emerald-950',
+    topBorder: 'border-t-3 border-t-emerald-500'
+  },
+  amber: {
+    card: 'bg-gradient-to-br from-white via-white to-amber-50/90 border-amber-200 hover:border-amber-400 hover:shadow-sm',
+    text: 'text-amber-950',
+    topBorder: 'border-t-3 border-t-amber-500'
+  },
+  red: {
+    card: 'bg-gradient-to-br from-white via-white to-rose-50/90 border-rose-200 hover:border-rose-400 hover:shadow-sm',
+    text: 'text-rose-950',
+    topBorder: 'border-t-3 border-t-rose-500'
+  },
+  slate: {
+    card: 'bg-gradient-to-br from-white via-white to-slate-100/90 border-slate-300 hover:border-slate-400 hover:shadow-sm',
+    text: 'text-slate-900',
+    topBorder: 'border-t-3 border-t-slate-600'
+  }
 };
 
-export function SmartCommandCenter({ pulse, insights, busy, lastSyncedAt, operatorName, commandMetrics, onNavigate, onRunAutomation }: SmartCommandCenterProps) {
+export function SmartCommandCenter({
+  pulse,
+  insights,
+  busy,
+  lastSyncedAt,
+  operatorName,
+  commandMetrics,
+  onNavigate,
+  onRunAutomation
+}: SmartCommandCenterProps) {
   const visibleInsights = insights.slice(0, 5);
-  const firstName = (operatorName || 'Saksham').split(' ')[0] || 'Saksham';
+  const firstName = (operatorName || 'Trade Desk').split(' ')[0] || 'Trade Desk';
+
   const executionLanes = [
     {
-      label: 'Now',
+      label: 'Immediate Attention',
       value: pulse.urgentActions,
-      detail: 'Priority records waiting',
+      detail: 'Overdue buyer follow-ups',
       target: 'crm' as SmartPortalTarget,
-      tone: 'text-red-300'
+      cardStyle: 'bg-gradient-to-br from-white to-rose-50/90 border-rose-200 hover:bg-rose-100/70 hover:border-rose-300',
+      badgeStyle: 'bg-rose-100 text-rose-800',
+      tone: 'text-rose-700'
     },
     {
-      label: 'Next',
+      label: 'Active Pipeline',
       value: pulse.pipelineMomentum,
-      detail: 'Qualified buyers to move',
-      target: 'crm' as SmartPortalTarget,
-      tone: 'text-sky-200'
+      detail: 'Proposals under negotiation',
+      target: 'quotes' as SmartPortalTarget,
+      cardStyle: 'bg-gradient-to-br from-white to-sky-50/90 border-sky-200 hover:bg-sky-100/70 hover:border-sky-300',
+      badgeStyle: 'bg-sky-100 text-sky-800',
+      tone: 'text-sky-700'
     },
     {
-      label: 'Protect',
+      label: 'Receivables Risk',
       value: pulse.receivableRisk,
-      detail: 'Collection exposure',
+      detail: 'Pending invoice balance',
       target: 'accounts' as SmartPortalTarget,
-      tone: 'text-amber-200'
+      cardStyle: 'bg-gradient-to-br from-white to-amber-50/90 border-amber-200 hover:bg-amber-100/70 hover:border-amber-300',
+      badgeStyle: 'bg-amber-100 text-amber-800',
+      tone: 'text-amber-700'
     }
   ];
 
   return (
     <div className="space-y-4">
-      <section className="smart-hero overflow-hidden text-white">
-        <div className="portal-orbit" />
-        <div className="grid gap-5 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] xl:items-center">
+      {/* Executive Overview Card with Color Accents */}
+      <section className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-white to-sky-50/30 p-5 sm:p-6 shadow-xs border-t-4 border-t-sky-600">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-center">
           <div className="min-w-0">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-400/10 px-2.5 py-1 text-[10px] font-extrabold uppercase text-sky-200 ring-1 ring-sky-300/15">
-                <span className="h-2 w-2 rounded-full bg-sky-300 portal-live-dot" /> Personalized Workspace
+            <div className="mb-2 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-100 text-sky-900 text-[10px] font-black uppercase tracking-wider border border-sky-200/80">
+                <Building2 className="h-3 w-3 text-sky-700" />
+                Sheshaan Global • Export Command
               </span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400"><Bot className="h-3 w-3" /> Live operating signals prepared for you</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                <Calendar className="h-3 w-3 text-slate-400" />
+                {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
             </div>
-            <h2 className="max-w-3xl text-2xl font-extrabold leading-tight sm:text-3xl">Welcome back, {firstName}!</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-              Your export operating plan is ready: buyers, quotations, collections, freight, documents, and shipments are prioritized for today.
+
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Welcome back, {firstName}
+            </h2>
+            <p className="mt-1 text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed font-medium">
+              Consolidated export operations: buyer inquiries, active quotations, shipment tracking, and cash collection milestones.
             </p>
-            <div className="mt-5 flex flex-col sm:flex-row flex-wrap gap-2">
-              <button type="button" onClick={() => onNavigate('crm')} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-center text-xs font-extrabold text-slate-950 hover:bg-slate-100 shadow-[0_18px_44px_rgba(255,255,255,0.14)] w-full sm:w-auto">
-                <Target className="h-4 w-4" /> Open CRM pipeline
+
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => onNavigate('crm')}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white px-4 py-2 text-xs font-black transition shadow-xs active:scale-95 cursor-pointer"
+              >
+                <Target className="h-3.5 w-3.5" />
+                <span>Open CRM Pipeline</span>
               </button>
-              <button type="button" onClick={onRunAutomation} disabled={busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-center text-xs font-extrabold text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 w-full sm:w-auto">
-                <Sparkles className="h-4 w-4" /> {busy ? 'Automation running' : 'Run automation'}
+              <button
+                type="button"
+                onClick={onRunAutomation}
+                disabled={busy}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 text-xs font-bold transition shadow-2xs active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin text-sky-600' : 'text-slate-500'}`} />
+                <span>{busy ? 'Syncing...' : 'Sync Data'}</span>
               </button>
             </div>
-            <div className="portal-stagger mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+
+            {/* Quick Priority Lanes with Rich Card Fills */}
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               {executionLanes.map((lane) => (
                 <button
                   key={lane.label}
                   type="button"
                   onClick={() => onNavigate(lane.target)}
-                  className="rounded-xl border border-white/10 bg-white/[0.055] p-3 text-left hover:bg-white/[0.085]"
+                  className={`rounded-xl border p-3.5 text-left transition shadow-2xs ${lane.cardStyle}`}
                 >
-                  <span className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  <span className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-600">
                     {lane.label}
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    <ArrowRight className="h-3 w-3 text-slate-400" />
                   </span>
-                  <span className={`mt-1 block truncate text-lg font-black ${lane.tone}`}>{lane.value}</span>
-                  <span className="mt-0.5 block truncate text-[10px] font-semibold text-slate-400">{lane.detail}</span>
+                  <span className={`mt-2 block text-xl font-black ${lane.tone}`}>
+                    {lane.value}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-500">
+                    {lane.detail}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="min-w-0 border-t border-slate-800 pt-4 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
-            <div className="flex items-end justify-between gap-4">
+          {/* Right Pillar: Operational Health */}
+          <div className="border-t border-slate-200/80 pt-5 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0 space-y-3.5">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-extrabold uppercase text-slate-500">Operating health</p>
-                <p className={`mt-1 text-5xl font-black ${healthTone(pulse.healthScore)}`}>{pulse.healthScore}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Operational Health
+                </p>
+                <p className="text-3xl font-black text-slate-900 mt-0.5">
+                  {pulse.healthScore}%
+                </p>
               </div>
-              <Gauge className="h-10 w-10 text-slate-600" />
-            </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800" aria-label={`Operating health ${pulse.healthScore} percent`}>
-              <div className="h-full rounded-full bg-sky-400 transition-[width] duration-500" style={{ width: `${pulse.healthScore}%` }} />
-            </div>
-            <div className="mt-3 flex items-center justify-between text-[10px] text-slate-400">
-              <span>Last synchronized</span>
-              <span className="inline-flex min-w-0 items-center gap-1 text-right font-bold text-slate-300"><RefreshCw className={`h-3 w-3 shrink-0 ${busy ? 'animate-spin' : ''}`} /> <span className="truncate">{lastSyncedAt || 'Connecting'}</span></span>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-white/10 bg-white/[0.045] p-3">
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500"><Zap className="h-3.5 w-3.5 text-sky-300" /> Speed</div>
-                <p className="mt-1 text-sm font-black leading-5 text-white">Instant workspace switching</p>
+              <div className="h-11 w-11 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shadow-2xs">
+                <Gauge className="h-5 w-5" />
               </div>
-              <div className="rounded-xl border border-white/10 bg-white/[0.045] p-3">
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500"><Clock3 className="h-3.5 w-3.5 text-emerald-300" /> Focus</div>
-                <p className="mt-1 text-sm font-black leading-5 text-white">Next action first</p>
+            </div>
+
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 transition-all duration-500"
+                style={{ width: `${pulse.healthScore}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+              <span>Database status</span>
+              <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live ({lastSyncedAt || 'Active'})
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+              <div className="p-2.5 rounded-xl border border-sky-200/80 bg-sky-50/70">
+                <span className="text-[10px] uppercase font-bold text-sky-800 block">Active Leads</span>
+                <span className="text-xs font-black text-sky-950">{pulse.automationCoverage}% Enrolled</span>
+              </div>
+              <div className="p-2.5 rounded-xl border border-indigo-200/80 bg-indigo-50/70">
+                <span className="text-[10px] uppercase font-bold text-indigo-800 block">Freight</span>
+                <span className="text-xs font-black text-indigo-950">{pulse.activeShipments} Shipments</span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3" aria-label="Business command center">
-        {commandMetrics.map((metric) => (
-          <button
-            key={metric.label}
-            type="button"
-            onClick={() => onNavigate(metric.target)}
-            className={`min-w-0 rounded-xl border p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${commandMetricTone[metric.tone]}`}
-          >
-            <span className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide opacity-80">
-              {metric.label}
-              <ArrowRight className="h-3.5 w-3.5 shrink-0" />
-            </span>
-            <span className="mt-2 block truncate text-2xl font-black">{metric.value}</span>
-            <span className="mt-1 block text-[11px] font-semibold leading-4 opacity-75">{metric.detail}</span>
-          </button>
-        ))}
+      {/* Structured Metrics Row with Rich Color Accents */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" aria-label="Trade Metrics">
+        {commandMetrics.map((metric) => {
+          const tone = commandMetricTone[metric.tone];
+          return (
+            <button
+              key={metric.label}
+              type="button"
+              onClick={() => onNavigate(metric.target)}
+              className={`rounded-xl border p-4 text-left transition shadow-2xs ${tone.card} ${tone.topBorder}`}
+            >
+              <span className="flex items-center justify-between gap-2 text-[10.5px] font-black uppercase tracking-wider text-slate-500">
+                {metric.label}
+                <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+              </span>
+              <span className={`mt-2 block truncate text-2xl font-black ${tone.text}`}>{metric.value}</span>
+              <span className="mt-0.5 block text-xs font-semibold text-slate-600 truncate">{metric.detail}</span>
+            </button>
+          );
+        })}
       </section>
 
-      <section className="portal-stagger grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5" aria-label="Business pulse">
-        <PulseMetric icon={<AlertTriangle className="h-4 w-4" />} label="Urgent actions" value={String(pulse.urgentActions)} detail="Require attention" />
-        <PulseMetric icon={<Route className="h-4 w-4" />} label="Pipeline momentum" value={String(pulse.pipelineMomentum)} detail="Active qualified buyers" />
-        <PulseMetric icon={<CircleDollarSign className="h-4 w-4" />} label="Collection risk" value={pulse.receivableRisk} detail="Outstanding balance" />
-        <PulseMetric icon={<Sparkles className="h-4 w-4" />} label="Automation" value={`${pulse.automationCoverage}%`} detail="Active leads enrolled" />
-        <PulseMetric icon={<Ship className="h-4 w-4" />} label="Shipments" value={String(pulse.activeShipments)} detail="Currently in motion" className="col-span-2 lg:col-span-1" />
-      </section>
-
-      <section className="portal-card">
-        <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Recommended Next Actions */}
+      <section className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-3.5 bg-gradient-to-r from-slate-50 via-sky-50/30 to-slate-50">
           <div>
-            <p className="text-[10px] font-extrabold uppercase text-sky-700">Deterministic operating brief</p>
-            <h3 className="text-sm font-extrabold text-slate-950">Recommended next moves</h3>
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-sky-600" />
+              Priority Actions & Operations
+            </h3>
+            <p className="text-[11px] text-slate-500 font-medium">Automated signals from CRM, quotes, and accounts</p>
           </div>
-          <span className="text-[10px] font-semibold text-slate-500">Each recommendation includes the source signal</span>
+          <span className="text-[11px] font-black text-sky-800 bg-sky-100 px-2.5 py-0.5 rounded-full border border-sky-200">
+            {visibleInsights.length} Recommended
+          </span>
         </div>
+
         <div className="divide-y divide-slate-100">
           {visibleInsights.map((insight) => {
             const style = toneStyles[insight.tone];
             return (
-              <div key={insight.id} className={`portal-action-card grid gap-3 border-l-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${style.accent}`}>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`inline-flex h-7 w-7 items-center justify-center rounded ${style.badge}`}>{style.icon}</span>
-                    <p className="text-xs font-extrabold text-slate-900">{insight.title}</p>
+              <div
+                key={insight.id}
+                className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 hover:bg-slate-50/70 transition border-l-4 ${style.accent}`}
+              >
+                <div className="min-w-0 flex items-start gap-3">
+                  <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${style.badge}`}>
+                    {style.icon}
                   </div>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">{insight.detail}</p>
-                  <p className="mt-1 text-[10px] font-semibold text-slate-400">Signal: {insight.evidence}</p>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900">{insight.title}</h4>
+                    <p className="text-xs text-slate-600 mt-0.5 leading-snug font-medium">{insight.detail}</p>
+                    <p className="text-[10px] font-bold text-slate-400 mt-1">Source: {insight.evidence}</p>
+                  </div>
                 </div>
-                <button type="button" onClick={() => onNavigate(insight.target)} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-extrabold text-slate-800 hover:border-slate-300 hover:bg-slate-100">
-                  {insight.action} <ArrowRight className="h-3.5 w-3.5" />
+
+                <button
+                  type="button"
+                  onClick={() => onNavigate(insight.target)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-300 hover:text-sky-700 text-xs font-bold text-slate-700 shadow-2xs transition shrink-0 active:scale-95"
+                >
+                  <span>{insight.action}</span>
+                  <ArrowRight className="h-3 w-3 text-slate-400" />
                 </button>
               </div>
             );
           })}
           {!visibleInsights.length && (
-            <div className="flex items-center gap-3 px-4 py-6 text-sm text-slate-600">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" /> No operational exceptions need attention right now.
+            <div className="flex items-center gap-2 p-5 text-xs text-slate-500 font-semibold">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <span>All daily trade actions are up to date.</span>
             </div>
           )}
         </div>
       </section>
-    </div>
-  );
-}
-
-function PulseMetric({ icon, label, value, detail, className = '' }: { icon: React.ReactNode; label: string; value: string; detail: string; className?: string }) {
-  return (
-    <div className={`metric-tile min-w-0 p-3 ${className}`}>
-      <div className="flex items-center gap-2 text-slate-500">{icon}<span className="truncate text-[10px] font-extrabold uppercase">{label}</span></div>
-      <p className="mt-2 truncate text-xl font-black text-slate-950">{value}</p>
-      <p className="mt-0.5 truncate text-[10px] text-slate-500">{detail}</p>
     </div>
   );
 }
