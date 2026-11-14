@@ -234,6 +234,9 @@ interface QuoteFormProps {
   quoteId?: string | null;
   onSaveSuccess: () => void;
   onCancel: () => void;
+  initialDocumentType?: 'quotation' | 'invoice' | 'packing_list';
+  prefillBuyerId?: string;
+  prefillQuoteId?: string;
 }
 
 class PdfPreviewBoundary extends React.Component<
@@ -259,7 +262,7 @@ class PdfPreviewBoundary extends React.Component<
   }
 }
 
-export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, onCancel }) => {
+export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, onCancel, initialDocumentType, prefillBuyerId, prefillQuoteId }) => {
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
@@ -522,7 +525,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
 
   // Preview options
   const [showPreview, setShowPreview] = useState(false);
-  const [previewDocType, setPreviewDocType] = useState<'quotation' | 'invoice' | 'packing_list'>('quotation');
+  const [previewDocType, setPreviewDocType] = useState<'quotation' | 'invoice' | 'packing_list'>(initialDocumentType || 'quotation');
   const [selectedFreightPresetId, setSelectedFreightPresetId] = useState('');
 
   const draftKey = `crixy-quote-draft-${quoteId || 'new'}`;
@@ -816,6 +819,89 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       setDraftStatus('Ready');
     }
   }, [quoteId]);
+
+  // Pre-fill from an existing buyer when prefillBuyerId is provided (for new documents only)
+  useEffect(() => {
+    if (!prefillBuyerId || quoteId) return;
+    // Wait for clients to load, then auto-select the buyer
+    if (clients.length === 0) return;
+    const targetClient = clients.find((c) => c.id === prefillBuyerId);
+    if (targetClient) {
+      setSelectedClientId(targetClient.id);
+      setBuyerEntryMode('existing');
+      if (targetClient.destination_port) setDestinationPort(targetClient.destination_port);
+    }
+  }, [prefillBuyerId, clients, quoteId]);
+
+  // Pre-fill (clone) from an existing quote when prefillQuoteId is provided (for new documents only)
+  useEffect(() => {
+    if (!prefillQuoteId || quoteId) return;
+    let cancelled = false;
+
+    const cloneFromQuote = async () => {
+      try {
+        const { data: srcQuote, error } = await supabase
+          .from('quotes')
+          .select('*, client:clients(*), items:quote_items(*)')
+          .eq('id', prefillQuoteId)
+          .single();
+
+        if (error || !srcQuote || cancelled) return;
+
+        // Populate form fields from source quote (but keep the new quote number)
+        setSelectedClientId(srcQuote.client_id || '');
+        setCurrency(srcQuote.currency || 'INR');
+        setIncoterm(srcQuote.incoterm || '');
+        setOriginCountry(srcQuote.origin_country || '');
+        setLoadingPort(srcQuote.loading_port || '');
+        setDestinationPort(srcQuote.destination_port || (srcQuote.client as Client | undefined)?.destination_port || '');
+        setShipmentMode(srcQuote.shipment_mode || '');
+        setPaymentTerms(srcQuote.payment_terms || '');
+        setValidityDays(srcQuote.validity_days ? Number(srcQuote.validity_days) : '');
+        setPackagingCost(Number(srcQuote.packaging_cost) || 0);
+        setInlandHaulageCost(Number(srcQuote.inland_haulage_cost) || 0);
+        setCustomsClearanceCost(Number(srcQuote.customs_clearance_cost) || 0);
+        setFreightCost(Number(srcQuote.freight_cost) || 0);
+        setInsuranceCost(Number(srcQuote.insurance_cost) || 0);
+        setMarginPerKg(Number(srcQuote.margin_per_kg) || 0);
+        setInternalNotes(srcQuote.internal_notes || '');
+        if (srcQuote.shipper_details) setShipper(srcQuote.shipper_details as ShipperDetails);
+        setBankDetails((srcQuote.bank_details as BankDetails) || readDefaultBankDetails());
+        setCommercialNote(srcQuote.commercial_note || '');
+        setCostBreakdownNotes((srcQuote.cost_breakdown_notes as CostBreakdownNotes | undefined) || {
+          offered_goods: '',
+          origin_charges: '',
+          ocean_freight: '',
+          insurance: ''
+        });
+        setShowCifBreakdown(srcQuote.show_cif_breakdown ?? true);
+        setShowDetailsPage(srcQuote.show_details_page ?? true);
+        setShowCifPortInTotal(srcQuote.show_cif_port_in_total ?? false);
+        setShowSignatureBlock(srcQuote.show_signature_block ?? true);
+        setShowCeoSignature(srcQuote.show_ceo_signature !== false);
+        setShowOriginCharges(srcQuote.show_origin_charges ?? true);
+        setShowOceanFreight(srcQuote.show_ocean_freight ?? true);
+        setShowInsuranceCharge(srcQuote.show_insurance_charge ?? true);
+        // Clone line items without IDs (so new items are created on save)
+        const clonedItems = (srcQuote.items || []).map((item: any) => ({
+          ...item,
+          id: undefined,
+          quote_id: undefined,
+        }));
+        setLineItems(clonedItems);
+        setIncludedScope(srcQuote.included_responsibilities || []);
+        setExcludedScope(srcQuote.excluded_responsibilities || []);
+        setDocList(srcQuote.included_docs || []);
+        setSpecMap(srcQuote.logistics_specs || blankLogisticsSpecs);
+        setCommercialTerms(srcQuote.commercial_terms || []);
+      } catch (err) {
+        console.warn('Error cloning from source quote:', err);
+      }
+    };
+
+    cloneFromQuote();
+    return () => { cancelled = true; };
+  }, [prefillQuoteId, quoteId]);
 
   // Autosave reads the latest draft through a ref so close/navigation saves fresh state.
   useEffect(() => {
@@ -1844,7 +1930,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <ArrowLeft className="h-5 w-5" />
           </button>
           <h2 className="text-base sm:text-lg font-semibold flex flex-wrap items-center gap-2 min-w-0">
-            <span className="break-words">{quoteId ? `Edit Deal Details: ${quoteNumber}` : 'New Export Deal & PDF Maker'}</span>
+            <span className="break-words">{quoteId ? `Edit Deal Details: ${quoteNumber}` : `New ${documentLabelMap[previewDocType] || 'Export Deal'}`}</span>
             <span className={`text-xs px-2 py-0.5 rounded font-mono ${currency === 'INR' ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400'}`}>
               {currency} Mode
             </span>
@@ -2738,7 +2824,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
           </div>
 
           {/* Packing List & Shipping Logistics Specifications */}
-          <details className="group border border-slate-200 rounded-lg" open={previewDocType === 'packing_list'}>
+          <details className="group border border-slate-200 rounded-lg" open={previewDocType === 'packing_list' || previewDocType === 'invoice'}>
             <summary className="flex justify-between items-center p-3 font-medium text-xs text-slate-700 bg-slate-50 cursor-pointer hover:bg-slate-100 list-none select-none">
               <div className="flex items-center gap-2">
                 <span className="font-bold uppercase tracking-wider text-indigo-700">Packing List & Shipping Logistics Details</span>

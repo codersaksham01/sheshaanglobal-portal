@@ -17,7 +17,8 @@ import {
   RefreshCw,
   Edit2,
   Check,
-  Receipt
+  Receipt,
+  MessageCircle
 } from 'lucide-react';
 import { canAccessTab, PortalRole } from '../../lib/permissions';
 import { TAB_ROUTES } from '../../lib/portalDataStore';
@@ -173,11 +174,12 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
     { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, href: '/products', count: badgeCounts.products },
     { key: 'vendors', label: 'Suppliers Management', icon: <Building2 className="h-4 w-4" />, href: '/vendors', count: badgeCounts.vendors },
+    { key: 'teamChat', label: 'Team Chat', icon: <MessageCircle className="h-4 w-4" />, href: '/team-chat' },
     { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, href: '/users', count: badgeCounts.users }
   ], [badgeCounts]);
 
   const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead'].includes(item.key)) },
+    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead', 'teamChat'].includes(item.key)) },
     { label: 'Operations', items: navItems.filter((item) => ['products', 'vendors'].includes(item.key)) },
     { label: 'Admin', items: navItems.filter((item) => ['users'].includes(item.key)) }
   ], [navItems]);
@@ -193,7 +195,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
       data-sidebar="true"
       data-minimized={isMinimized ? 'true' : undefined}
       className={`portal-sidebar hidden lg:flex flex-col ${
-        isMinimized ? 'w-[76px]' : 'w-[304px]'
+        isMinimized ? 'w-[76px]' : 'w-[280px]'
       } h-screen fixed top-0 left-0 overflow-hidden z-40 transition-[width] duration-200 ease-out will-change-[width] select-none`}
     >
       {/* Brand Header */}
@@ -234,7 +236,7 @@ export const PortalSidebar: React.FC<PortalSidebarProps> = ({
           }`}
         >
           <h1 className="text-sm font-black text-white tracking-tight leading-none truncate">Sheshaan Global</h1>
-          <p className="text-[10px] text-sky-200/75 font-bold mt-1 uppercase tracking-wider truncate">Export Operations</p>
+          <p className="text-[9px] text-sky-200/75 font-bold mt-1 tracking-wide truncate">Import · Export · Trade Solutions</p>
         </div>
 
         {/* Minimize Button (visible only in expanded mode) */}

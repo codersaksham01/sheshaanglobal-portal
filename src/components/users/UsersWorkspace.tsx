@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { getPortalCache, setPortalCache } from '../../lib/portalDataStore';
-import { AppUser } from '../../lib/types';
+import { ActivityLog, AppUser } from '../../lib/types';
 
 const blankUser: Partial<AppUser> = {
   name: '',
@@ -33,6 +33,7 @@ export function UsersWorkspace() {
   const [users, setUsers] = useState<AppUser[]>(() => {
     return getPortalCache()?.users || [];
   });
+  const [auditLogs, setAuditLogs] = useState<ActivityLog[]>(() => getPortalCache()?.activityLogs || []);
   const [loading, setLoading] = useState(() => !getPortalCache()?.users?.length);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
@@ -48,10 +49,14 @@ export function UsersWorkspace() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const { data, error } = await supabase.from('app_users').select('*').order('name');
+      const [{ data, error }, { data: logs }] = await Promise.all([
+        supabase.from('app_users').select('*').order('name'),
+        supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(8)
+      ]);
       if (!error && data) {
         setUsers(data);
-        setPortalCache({ users: data });
+        setAuditLogs((logs || []) as ActivityLog[]);
+        setPortalCache({ users: data, activityLogs: (logs || []) as ActivityLog[] });
       }
     } catch (e) {
       console.warn('Failed to fetch users:', e);
@@ -85,6 +90,13 @@ export function UsersWorkspace() {
   const pendingUsers = useMemo(() => {
     return users.filter((u) => (u.status || (u.active ? 'Approved' : 'Pending')) === 'Pending');
   }, [users]);
+
+  const teamStats = useMemo(() => ({
+    total: users.length,
+    active: users.filter((u) => (u.status || (u.active ? 'Approved' : 'Pending')) === 'Approved').length,
+    admins: users.filter((u) => u.role === 'Admin').length,
+    pending: pendingUsers.length
+  }), [users, pendingUsers]);
 
   const handleOpenForm = (user?: AppUser) => {
     setEditingUser(user ? { ...user } : { ...blankUser });
@@ -191,6 +203,25 @@ export function UsersWorkspace() {
         </button>
       </div>
 
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        {[
+          { label: 'Team members', value: teamStats.total, note: 'Directory coverage', tone: 'text-violet-600 bg-violet-50' },
+          { label: 'Active access', value: teamStats.active, note: 'Verified members', tone: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Administrators', value: teamStats.admins, note: 'Full permissions', tone: 'text-sky-600 bg-sky-50' },
+          { label: 'Awaiting review', value: teamStats.pending, note: 'Access requests', tone: 'text-amber-600 bg-amber-50' }
+        ].map((stat) => (
+          <div key={stat.label} className={`team-stat rounded-2xl border border-white/70 p-4 shadow-sm ${stat.tone}`}>
+            <p className="text-[10px] font-black uppercase tracking-[.13em] opacity-70">{stat.label}</p>
+            <div className="mt-2 flex items-end justify-between"><strong className="text-2xl font-black text-slate-900">{stat.value}</strong><span className="text-[10px] font-bold opacity-70">{stat.note}</span></div>
+          </div>
+        ))}
+      </div>
+
+      <section className="premium-card rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-black text-slate-950">Admin oversight</h2><p className="mt-0.5 text-[11px] font-semibold text-slate-500">Latest recorded portal work and access activity.</p></div><ShieldCheck className="h-5 w-5 text-emerald-700"/></div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">{auditLogs.slice(0, 4).map((log) => <div key={log.id} className="rounded-xl bg-slate-50 p-3"><p className="truncate text-xs font-black text-slate-800">{log.actor_name || log.actor_email || 'System'}</p><p className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">{log.details || `${log.action} ${log.record_label || log.table_name}`}</p><p className="mt-2 text-[10px] font-bold text-emerald-700">{log.created_at ? new Date(log.created_at).toLocaleString() : 'Just now'}</p></div>)}{!auditLogs.length && <p className="rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500 md:col-span-2 xl:col-span-4">No recorded activity yet. Portal work will appear here as it is logged.</p>}</div>
+      </section>
+
       {/* Pending Approvals Alert Banner */}
       {pendingUsers.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
@@ -209,7 +240,7 @@ export function UsersWorkspace() {
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[10px] text-slate-400 font-bold mr-1">Approve as:</span>
-                  {(['Sales', 'Accounts', 'Operations', 'Admin'] as AppUser['role'][]).map((role) => (
+                  {(['Sales', 'Accounts', 'Operations', 'Executive', 'Admin'] as AppUser['role'][]).map((role) => (
                     <button
                       key={role}
                       type="button"
@@ -252,6 +283,7 @@ export function UsersWorkspace() {
         >
           <option value="All">All Roles</option>
           <option value="Admin">Admin</option>
+          <option value="Executive">Executive</option>
           <option value="Sales">Sales</option>
           <option value="Accounts">Accounts</option>
           <option value="Operations">Operations</option>
@@ -295,6 +327,7 @@ export function UsersWorkspace() {
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black border ${
                         u.role === 'Admin' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                        u.role === 'Executive' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                         u.role === 'Sales' ? 'bg-sky-50 text-sky-700 border-sky-200' :
                         u.role === 'Accounts' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                         'bg-amber-50 text-amber-700 border-amber-200'
@@ -426,6 +459,7 @@ export function UsersWorkspace() {
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                   >
                     <option value="Admin">Admin (Full Access)</option>
+                    <option value="Executive">Executive (All business modules)</option>
                     <option value="Sales">Sales (CRM & Quotes)</option>
                     <option value="Accounts">Accounts (Expenses & P&L)</option>
                     <option value="Operations">Operations (Shipments & Docs)</option>

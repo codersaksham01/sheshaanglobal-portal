@@ -18,6 +18,19 @@ type PortalIdentity = { email: string; firebaseAuthenticated: boolean };
 const PortalIdentityContext = createContext<PortalIdentity>({ email: '', firebaseAuthenticated: false });
 export const usePortalIdentity = () => useContext(PortalIdentityContext);
 
+// These accounts are verified directly in Firebase Authentication.  They must
+// remain able to sign in if Firestore is temporarily unavailable (for example,
+// when the project's daily read quota has been reached) before their directory
+// documents can be read.
+const leadershipEmails = new Set([
+  'info@sheshaanglobal.com',
+  'sakshamsingh@sheshaanglobal.com',
+  'junedbarade@sheshaanglobal.com',
+  'sanazeba@sheshaanglobal.com'
+]);
+
+const isLeadershipAccount = (email: string) => leadershipEmails.has(email.trim().toLowerCase());
+
 const isFirebaseNetworkError = (error: unknown) => {
   const code = (error as { code?: string })?.code || '';
   const message = error instanceof Error ? error.message : String(error || '');
@@ -33,6 +46,24 @@ async function hasActiveSupabaseProfile(userId: string) {
   return !error && Boolean(data?.active);
 }
 
+async function hasActiveFirebaseProfile(email: string) {
+  try {
+    const { data, error } = await supabase
+      .from('app_users')
+      .select('id, active')
+      .eq('email', email.toLowerCase())
+      .single();
+    if (!error) return Boolean(data?.active);
+  } catch (error) {
+    console.warn('Firebase portal-directory lookup unavailable:', error);
+  }
+
+  // Firestore is the directory of record for ordinary users.  The four
+  // leadership accounts are additionally verified in Firebase Authentication,
+  // so allow them through during a transient Firestore outage/quota block.
+  return isLeadershipAccount(email);
+}
+
 export const AuthGate = ({ children }: { children: React.ReactNode }) => {
   const [email, setEmail] = useState(defaultFirebaseLoginEmail);
   const [password, setPassword] = useState('');
@@ -43,7 +74,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
   const [authenticatedEmail, setAuthenticatedEmail] = useState('');
   const [requestMode, setRequestMode] = useState(false);
   const [requestName, setRequestName] = useState('');
-  const [requestRole, setRequestRole] = useState<'Admin' | 'Sales' | 'Accounts' | 'Operations'>('Sales');
+  const [requestRole, setRequestRole] = useState<'Admin' | 'Executive' | 'Sales' | 'Accounts' | 'Operations'>('Sales');
   const [requestPhone, setRequestPhone] = useState('');
   const [requestTitle, setRequestTitle] = useState('');
 
@@ -92,17 +123,17 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
     const unsubscribe = onAuthStateChanged(
       firebaseAuth,
       (user) => {
-        setIsAuthenticated(Boolean(user));
-        const userEmail = user?.email || '';
-        setAuthenticatedEmail(userEmail);
-        if (typeof window !== 'undefined') {
-          if (userEmail) {
-            localStorage.setItem('crixy_actor_email', userEmail);
-          } else {
-            localStorage.removeItem('crixy_actor_email');
+        void (async () => {
+          const userEmail = user?.email || '';
+          const profileActive = userEmail ? await hasActiveFirebaseProfile(userEmail) : false;
+          setIsAuthenticated(Boolean(user && profileActive));
+          setAuthenticatedEmail(profileActive ? userEmail : '');
+          if (typeof window !== 'undefined') {
+            if (profileActive) localStorage.setItem('crixy_actor_email', userEmail);
+            else localStorage.removeItem('crixy_actor_email');
           }
-        }
-        setChecking(false);
+          setChecking(false);
+        })();
       },
       (authError) => {
         console.warn('Firebase auth state check failed:', authError);
@@ -143,6 +174,10 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
         try {
           await setPersistence(firebaseAuth, browserLocalPersistence);
           await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+          if (!(await hasActiveFirebaseProfile(email.trim()))) {
+            await signOut(firebaseAuth);
+            throw new Error('This account is not active in the portal directory.');
+          }
           if (typeof window !== 'undefined') {
             localStorage.setItem('crixy_actor_email', email.trim());
           }
@@ -178,6 +213,11 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
       setIsAuthenticated(true);
     } catch (err) {
       console.warn('Login error:', err);
+      const firebaseCode = (err as { code?: string })?.code || '';
+      if (firebaseCode === 'auth/invalid-credential' || firebaseCode === 'auth/wrong-password' || firebaseCode === 'auth/user-not-found') {
+        setError('Firebase rejected this email or password. Confirm that you are using info@sheshaanglobal.com and the password was saved in this Firebase project.');
+        return;
+      }
       setError(isSupabaseConfigured
         ? 'Login failed. Check your email and password or ask an administrator to activate your portal account.'
         : 'Login failed. Check the password and make sure the configured authentication user exists.');
@@ -268,31 +308,20 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="auth-os min-h-screen flex items-center justify-center p-3 sm:p-4 py-6 sm:py-8 mobile-safe-bottom mobile-safe-top">
       <div className="grid w-full max-w-5xl gap-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-stretch">
-        <section className="hidden overflow-hidden rounded-2xl border border-white/10 bg-white/8 p-7 text-white shadow-2xl backdrop-blur-xl lg:flex lg:flex-col lg:justify-between">
+        <section className="auth-hero hidden overflow-hidden rounded-[26px] border border-white/10 p-8 text-white shadow-2xl lg:flex lg:flex-col lg:justify-between">
           <div>
             <span className="inline-flex rounded-full bg-sky-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-sky-200 ring-1 ring-sky-300/15">
-              Smart Trade Operating System
+              Sheshaan Global · Secure access
             </span>
             <h1 className="mt-5 max-w-xl text-4xl font-black leading-tight tracking-tight">
-              Command every buyer, quote, shipment, and payment from one secure workspace.
+              Lead global trade operations from one secure workspace.
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">
-              Sheshaan Global portal connects CRM, export documentation, payment control, and logistics execution for faster international trade operations.
+              A focused command center for CRM, export documentation, finance, logistics, and leadership collaboration.
             </p>
           </div>
           <div className="grid grid-cols-3 gap-3 text-xs">
-            <div className="rounded-xl border border-white/10 bg-white/8 p-3">
-              <p className="text-[10px] font-black uppercase text-slate-400">Pipeline</p>
-              <p className="mt-2 text-lg font-black text-white">CRM</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/8 p-3">
-              <p className="text-[10px] font-black uppercase text-slate-400">Exports</p>
-              <p className="mt-2 text-lg font-black text-white">Docs</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/8 p-3">
-              <p className="text-[10px] font-black uppercase text-slate-400">Control</p>
-              <p className="mt-2 text-lg font-black text-white">RBAC</p>
-            </div>
+            {[['SZ', 'Sana Zeba Bakshi', 'Chief Executive Officer'], ['SS', 'Saksham Singh', 'Managing Director'], ['JB', 'Juned Barade', 'Chief Operating Officer']].map(([initials, name, title]) => <div key={initials} className="rounded-2xl border border-white/10 bg-white/10 p-3"><span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-200 text-[10px] font-black text-emerald-950">{initials}</span><p className="mt-3 text-[11px] font-black text-white">{name}</p><p className="mt-1 text-[10px] leading-4 text-emerald-100">{title}</p></div>)}
           </div>
         </section>
 
@@ -302,7 +331,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
               <Image src="/logo.png" alt="Sheshaan Global logo" width={56} height={56} className="h-full w-full object-contain" />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">Secure Portal Access</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Secure Portal Access</p>
               <h1 className="text-lg font-extrabold text-slate-900">Sheshaan Global</h1>
               <p className="text-xs text-slate-500">{requestMode ? 'Request access for your team account.' : 'Commercial operations workspace.'}</p>
             </div>
@@ -320,7 +349,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
                     onChange={(event) => setRequestRole(event.target.value as typeof requestRole)}
                     className="w-full h-11 px-3 border border-slate-200 bg-slate-50 rounded-xl text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 focus:bg-white focus:outline-none"
                   >
-                    {['Sales', 'Accounts', 'Operations', 'Admin'].map((role) => <option key={role} value={role}>{role}</option>)}
+                    {['Sales', 'Accounts', 'Operations', 'Executive', 'Admin'].map((role) => <option key={role} value={role}>{role}</option>)}
                   </select>
                 </label>
               </div>
@@ -358,7 +387,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
         <button
           type="submit"
           disabled={loading}
-          className="w-full h-11 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-500 text-white font-black rounded-xl transition flex items-center justify-center gap-2 shadow-[0_18px_42px_rgba(15,23,42,0.18)]"
+          className="w-full h-11 bg-[#073f35] hover:bg-[#087f63] disabled:bg-slate-500 text-white font-black rounded-xl transition flex items-center justify-center gap-2 shadow-[0_18px_42px_rgba(5,47,41,0.20)]"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           {requestMode ? 'Request Approval' : 'Login'}
@@ -369,7 +398,7 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
             setRequestMode((value) => !value);
             setError('');
           }}
-          className="w-full text-xs font-black text-sky-700 hover:text-sky-900"
+          className="w-full text-xs font-black text-emerald-700 hover:text-emerald-900"
         >
           {requestMode ? 'Back to login' : 'New team member? Request portal access'}
         </button>

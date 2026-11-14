@@ -27,6 +27,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { getPortalCache, setPortalCache, fetchAllPortalData } from '../../lib/portalDataStore';
 import { Quote, Client, Product, FreightPreset } from '../../lib/types';
 import { QuoteForm } from '../QuoteForm';
+import { NewDocumentModal, DocumentType, NewDocumentSelection } from '../NewDocumentModal';
 
 const quoteStatuses: Quote['status'][] = [
   'Draft',
@@ -87,10 +88,13 @@ export function QuotesWorkspace() {
   });
   const [loading, setLoading] = useState(() => !getPortalCache()?.quotes?.length);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(() => {
-    if (searchParams.get('new') === 'true') return null;
     const editId = searchParams.get('edit');
     return editId || undefined;
   });
+  const [showNewDocModal, setShowNewDocModal] = useState(() => searchParams.get('new') === 'true');
+  const [newDocInitialType, setNewDocInitialType] = useState<DocumentType | undefined>(undefined);
+  const [newDocPrefillBuyerId, setNewDocPrefillBuyerId] = useState<string | undefined>(undefined);
+  const [newDocPrefillQuoteId, setNewDocPrefillQuoteId] = useState<string | undefined>(undefined);
 
   const [quoteSearch, setQuoteSearch] = useState('');
   const [quoteStatusFilter, setQuoteStatusFilter] = useState<'All' | Quote['status']>('All');
@@ -200,6 +204,17 @@ export function QuotesWorkspace() {
     }
   };
 
+  const handleNewDocSelect = (selection: NewDocumentSelection) => {
+    setShowNewDocModal(false);
+    if (searchParams.get('new') === 'true') {
+      router.replace('/quotes', { scroll: false });
+    }
+    setNewDocInitialType(selection.documentType);
+    setNewDocPrefillBuyerId(selection.prefillBuyerId);
+    setNewDocPrefillQuoteId(selection.prefillQuoteId);
+    setEditingQuoteId(null);
+  };
+
   if (editingQuoteId !== undefined) {
     return (
       <div className="space-y-4">
@@ -207,9 +222,20 @@ export function QuotesWorkspace() {
           quoteId={editingQuoteId}
           onSaveSuccess={() => {
             setEditingQuoteId(undefined);
+            setNewDocInitialType(undefined);
+            setNewDocPrefillBuyerId(undefined);
+            setNewDocPrefillQuoteId(undefined);
             fetchQuotes();
           }}
-          onCancel={() => setEditingQuoteId(undefined)}
+          onCancel={() => {
+            setEditingQuoteId(undefined);
+            setNewDocInitialType(undefined);
+            setNewDocPrefillBuyerId(undefined);
+            setNewDocPrefillQuoteId(undefined);
+          }}
+          initialDocumentType={editingQuoteId === null ? newDocInitialType : undefined}
+          prefillBuyerId={editingQuoteId === null ? newDocPrefillBuyerId : undefined}
+          prefillQuoteId={editingQuoteId === null ? newDocPrefillQuoteId : undefined}
         />
       </div>
     );
@@ -235,7 +261,7 @@ export function QuotesWorkspace() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setEditingQuoteId(null)}
+            onClick={() => setShowNewDocModal(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold shadow-sm active:scale-95 transition"
           >
             <Plus className="h-4 w-4" />
@@ -338,7 +364,7 @@ export function QuotesWorkspace() {
               <span>{filteredQuotes.length} quotes</span>
               <button
                 type="button"
-                onClick={() => setEditingQuoteId(null)}
+                onClick={() => setShowNewDocModal(true)}
                 className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 font-extrabold text-xs"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -517,6 +543,16 @@ export function QuotesWorkspace() {
           </div>
         </>
       )}
+      <NewDocumentModal
+        open={showNewDocModal}
+        onClose={() => {
+          setShowNewDocModal(false);
+          if (searchParams.get('new') === 'true') {
+            router.replace('/quotes', { scroll: false });
+          }
+        }}
+        onSelect={handleNewDocSelect}
+      />
     </div>
   );
 }

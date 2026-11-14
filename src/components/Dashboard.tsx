@@ -30,6 +30,7 @@ import type { BlogPost } from '../lib/types';
 import { blankBlogPost, generateBlogSlug, sanitizeBlogHtml, stripHtml } from '../lib/blogs';
 import { InvoicePDF } from './InvoicePDF';
 import { QuoteForm } from './QuoteForm';
+import { NewDocumentModal, DocumentType, NewDocumentSelection } from './NewDocumentModal';
 import type { BuyerExportRecord } from './BuyerExportPDF';
 import { CrmTable } from './crm/CrmTable';
 import { CrmKanban } from './crm/CrmKanban';
@@ -1026,6 +1027,10 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const router = useRouter();
   const [editingQuoteId, setEditingQuoteId] = useState<string | null | undefined>(undefined);
+  const [showNewDocModal, setShowNewDocModal] = useState(false);
+  const [newDocInitialType, setNewDocInitialType] = useState<DocumentType | undefined>(undefined);
+  const [newDocPrefillBuyerId, setNewDocPrefillBuyerId] = useState<string | undefined>(undefined);
+  const [newDocPrefillQuoteId, setNewDocPrefillQuoteId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(() => !cachedData || (cachedData.quotes.length === 0 && cachedData.products.length === 0 && cachedData.leads.length === 0));
   const [initialDataLoaded, setInitialDataLoaded] = useState<boolean>(() => Boolean(cachedData && (cachedData.quotes.length > 0 || cachedData.products.length > 0 || cachedData.leads.length > 0)));
   const [globalSearch, setGlobalSearch] = useState('');
@@ -5720,6 +5725,14 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
     if (action === 'followup_due') handleLeadEmail(lead, 'Follow-up');
   }, [handleLeadEmail]);
 
+  const handleNewDocSelect = (selection: NewDocumentSelection) => {
+    setShowNewDocModal(false);
+    setNewDocInitialType(selection.documentType);
+    setNewDocPrefillBuyerId(selection.prefillBuyerId);
+    setNewDocPrefillQuoteId(selection.prefillQuoteId);
+    setEditingQuoteId(null);
+  };
+
   if (editingQuoteId !== undefined) {
     return (
       <div className="p-4 md:p-8">
@@ -5727,9 +5740,20 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
           quoteId={editingQuoteId}
           onSaveSuccess={() => {
             setEditingQuoteId(undefined);
+            setNewDocInitialType(undefined);
+            setNewDocPrefillBuyerId(undefined);
+            setNewDocPrefillQuoteId(undefined);
             fetchData();
           }}
-          onCancel={() => setEditingQuoteId(undefined)}
+          onCancel={() => {
+            setEditingQuoteId(undefined);
+            setNewDocInitialType(undefined);
+            setNewDocPrefillBuyerId(undefined);
+            setNewDocPrefillQuoteId(undefined);
+          }}
+          initialDocumentType={editingQuoteId === null ? newDocInitialType : undefined}
+          prefillBuyerId={editingQuoteId === null ? newDocPrefillBuyerId : undefined}
+          prefillQuoteId={editingQuoteId === null ? newDocPrefillQuoteId : undefined}
         />
       </div>
     );
@@ -5772,7 +5796,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
             authEmail={authEmail}
             currentRole={currentRole}
             onNewQuote={() => {
-              setEditingQuoteId(null);
+              setShowNewDocModal(true);
               setShowMobileMenu(false);
               navigateToTab('quotes');
             }}
@@ -5902,7 +5926,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                   <Edit2 className="h-3.5 w-3.5" />
                   Templates
                 </button>
-                <button type="button" onClick={() => setEditingQuoteId(null)} className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
+                <button type="button" onClick={() => setShowNewDocModal(true)} className="h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition">
                   <Plus className="h-3.5 w-3.5" />
                   Quote
                 </button>
@@ -6251,7 +6275,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
                     <button
                       type="button"
                       onClick={() => {
-                        setEditingQuoteId(null);
+                        setShowNewDocModal(true);
                         navigateToTab('quotes');
                       }}
                       className="inline-flex items-center gap-1 text-sky-600 hover:text-sky-700 font-extrabold text-xs"
@@ -9523,7 +9547,7 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
               </div>
               <button
                 onClick={() => {
-                  setEditingQuoteId(null);
+                  setShowNewDocModal(true);
                   setShowMobileMenu(false);
                 }}
                 className="mt-4 w-full flex items-center justify-center gap-2 px-3 py-2 bg-white text-slate-950 text-xs font-bold rounded shadow active:scale-[0.98] transition"
@@ -9787,6 +9811,11 @@ export const Dashboard: React.FC<{ initialTab?: TabKey }> = ({ initialTab = 'ove
           </div>
         </div>
       )}
+      <NewDocumentModal
+        open={showNewDocModal}
+        onClose={() => setShowNewDocModal(false)}
+        onSelect={handleNewDocSelect}
+      />
     </div>
   );
 };

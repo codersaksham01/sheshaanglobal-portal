@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 const dbPath = path.join(process.cwd(), 'db.json');
-const roles = new Set(['Admin', 'Sales', 'Accounts', 'Operations']);
+const roles = new Set(['Admin', 'Executive', 'Sales', 'Accounts', 'Operations']);
 
 const readDB = () => {
   try {

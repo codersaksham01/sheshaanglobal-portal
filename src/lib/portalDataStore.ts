@@ -59,7 +59,9 @@ export const TAB_ROUTES: Record<string, string> = {
   letterhead: '/letterhead',
   products: '/products',
   vendors: '/vendors',
-  users: '/users'
+  users: '/users',
+  teamChat: '/team-chat',
+  profile: '/profile'
 };
 
 let memoryCache: PortalDataCache | null = null;

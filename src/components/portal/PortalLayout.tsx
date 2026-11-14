@@ -29,11 +29,11 @@ import {
   Bell,
   Sparkles,
   Users,
+  MessageCircle,
   Receipt,
-  Clock,
-  ChevronRight,
-  RotateCcw,
-  ArrowRight
+  ArrowRight,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 const PanelLeftClose = ({ className }: { className?: string }) => (
@@ -72,11 +72,9 @@ const PanelLeftOpen = ({ className }: { className?: string }) => (
 import { AuthGate, usePortalIdentity } from '../AuthGate';
 import { AppErrorBoundary } from '../AppErrorBoundary';
 import { PortalSidebar } from './PortalSidebar';
-import { PortalTopNav } from './PortalTopNav';
 import { SystematicLoadingScreen } from '../SystematicLoadingScreen';
 import { canAccessTab, PortalRole } from '../../lib/permissions';
-import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
-import { isFirebaseConfigured } from '../../lib/firebaseClient';
+import { supabase } from '../../lib/supabaseClient';
 import { getPortalCache, fetchAllPortalData, TAB_ROUTES } from '../../lib/portalDataStore';
 
 export type NavItemDef = {
@@ -88,67 +86,6 @@ export type NavItemDef = {
 };
 
 export { TAB_ROUTES };
-
-function TradingClocks() {
-  const [times, setTimes] = useState<{ mumbai: string; dubai: string; london: string }>({
-    mumbai: '--:--',
-    dubai: '--:--',
-    london: '--:--'
-  });
-
-  useEffect(() => {
-    const update = () => {
-      const now = new Date();
-      setTimes({
-        mumbai: new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Asia/Kolkata',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        }).format(now),
-        dubai: new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Asia/Dubai',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        }).format(now),
-        london: new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Europe/London',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        }).format(now)
-      });
-    };
-    update();
-    const interval = setInterval(update, 15000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <div className="hidden xl:flex items-center gap-2.5 text-slate-600">
-      <div className="flex items-center gap-1 text-slate-400">
-        <Clock className="h-3 w-3 text-slate-400" />
-        <span className="text-[9.5px] uppercase font-bold tracking-wider">Trading Clocks:</span>
-      </div>
-      <div className="flex items-center gap-1 bg-slate-100/90 border border-slate-200 px-2 py-0.5 rounded text-[11px] font-mono shadow-2xs">
-        <span className="text-[9.5px] font-bold text-slate-500">MUMBAI</span>
-        <span className="font-bold text-slate-800">{times.mumbai}</span>
-        <span className="text-[8.5px] font-semibold text-slate-400">IST</span>
-      </div>
-      <div className="flex items-center gap-1 bg-slate-100/90 border border-slate-200 px-2 py-0.5 rounded text-[11px] font-mono shadow-2xs">
-        <span className="text-[9.5px] font-bold text-slate-500">DUBAI</span>
-        <span className="font-bold text-slate-800">{times.dubai}</span>
-        <span className="text-[8.5px] font-semibold text-slate-400">GST</span>
-      </div>
-      <div className="flex items-center gap-1 bg-slate-100/90 border border-slate-200 px-2 py-0.5 rounded text-[11px] font-mono shadow-2xs">
-        <span className="text-[9.5px] font-bold text-slate-500">LONDON</span>
-        <span className="font-bold text-slate-800">{times.london}</span>
-        <span className="text-[8.5px] font-semibold text-slate-400">GMT</span>
-      </div>
-    </div>
-  );
-}
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -181,13 +118,13 @@ export function PortalLayoutContent({
     return 'overview';
   }, [pathname, propActiveTab]);
 
-  const [currentRole, setCurrentRole] = useState<PortalRole>('Admin');
-  const [isSidebarMinimized, setIsSidebarMinimized] = useState<boolean>(false);
+  const [currentRole, setCurrentRole] = useState<PortalRole>('Sales');
+  const [isSidebarMinimized, setIsSidebarMinimized] = useState<boolean>(true);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const val = localStorage.getItem('portal_sidebar_minimized') === 'true';
-      if (val) setIsSidebarMinimized(true);
+      const stored = localStorage.getItem('portal_sidebar_minimized');
+      setIsSidebarMinimized(stored === null ? true : stored === 'true');
     }
   }, []);
 
@@ -217,6 +154,23 @@ export function PortalLayoutContent({
 
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('portal_theme');
+    const next = saved === 'dark';
+    setIsDark(next);
+    document.body.classList.toggle('dark', next);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setIsDark((current) => {
+      const next = !current;
+      document.body.classList.toggle('dark', next);
+      localStorage.setItem('portal_theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -230,6 +184,7 @@ export function PortalLayoutContent({
       }
       if (e.key === 'Escape') {
         setCommandOpen(false);
+        setShowNotifications(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -384,6 +339,7 @@ export function PortalLayoutContent({
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
     { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, href: '/products', count: badgeCounts.products },
     { key: 'vendors', label: 'Suppliers Management', icon: <Building2 className="h-4 w-4" />, href: '/vendors', count: badgeCounts.vendors },
+    { key: 'teamChat', label: 'Team Chat', icon: <MessageCircle className="h-4 w-4" />, href: '/team-chat' },
     { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, href: '/users', count: badgeCounts.users }
   ], [badgeCounts, quickCounts]);
 
@@ -397,7 +353,7 @@ export function PortalLayoutContent({
     {
       label: 'Command',
       items: authorizedNavItems.filter((item) =>
-        ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead'].includes(item.key)
+        ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead', 'teamChat'].includes(item.key)
       )
     },
     {
@@ -414,7 +370,6 @@ export function PortalLayoutContent({
     }
   ], [authorizedNavItems]);
 
-  const dbType = isFirebaseConfigured ? 'Firebase' : isSupabaseConfigured ? 'Supabase' : 'Local';
   const portalBuildLabel = 'Sheshaan Portal v3.4 Enterprise';
 
   return (
@@ -424,15 +379,12 @@ export function PortalLayoutContent({
         <div className="fixed top-0 left-0 right-0 h-0.5 bg-sky-500 opacity-80 z-50 animate-pulse pointer-events-none" />
       )}
       <div className="portal-shell">
-        {/* Desktop Top Navigation Bar (Shifted to top instead of sidebar) */}
-        <PortalTopNav
+        <PortalSidebar
           currentTab={currentTab}
+          isMinimized={isSidebarMinimized}
+          onToggleMinimized={toggleSidebar}
           onNavigate={(_key, href) => router.push(href)}
-          badgeCounts={{
-            ...badgeCounts,
-            crm: badgeCounts.crm ?? quickCounts.leads,
-            quotes: badgeCounts.quotes ?? quickCounts.quotes
-          }}
+          badgeCounts={{ ...badgeCounts, crm: badgeCounts.crm ?? quickCounts.leads, quotes: badgeCounts.quotes ?? quickCounts.quotes }}
           authEmail={authEmail}
           currentRole={currentRole}
           onNewQuote={() => router.push('/quotes?new=true')}
@@ -441,40 +393,65 @@ export function PortalLayoutContent({
           fxRateFetchedAt={fxRateFetchedAt}
           fxRateSource={fxRateSource}
           onRefreshFxRate={fetchMarketFxRate}
-          onSaveManualFxRate={(rate) => {
-            setFxRate(rate);
-            setFxRateSource('Manual');
-            setFxRateFetchedAt(new Date().toISOString());
-            localStorage.setItem('portal_fx_rate', rate.toString());
-          }}
-          onOpenCommand={() => setCommandOpen(true)}
+          onSaveManualFxRate={(rate) => { setFxRate(rate); setFxRateSource('Manual'); setFxRateFetchedAt(new Date().toISOString()); localStorage.setItem('portal_fx_rate', rate.toString()); }}
         />
 
-        <div className="flex flex-col w-full">
+        <div className={`flex min-h-screen flex-col transition-[padding] duration-200 ${isSidebarMinimized ? 'lg:pl-[76px]' : 'lg:pl-[280px]'}`}>
+
+          <header className="portal-desktop-toolbar hidden lg:flex h-[72px] items-center justify-between gap-5 border-b border-emerald-100/80 bg-white/65 px-7 backdrop-blur-xl">
+            <div className="flex min-w-0 items-center gap-5">
+              <button type="button" onClick={() => router.push('/overview')} className="flex items-center gap-2.5 text-left" aria-label="Go to overview">
+                <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-white shadow-sm"><Image src="/logo.png" alt="Sheshaan Global" width={32} height={32} className="h-8 w-8 object-contain" /></div>
+                <div className="hidden min-w-0 2xl:block"><p className="truncate text-sm font-black text-slate-900">Sheshaan Global</p><p className="truncate text-[10px] font-bold text-slate-500">Import · Export · Trade Solutions</p></div>
+              </button>
+            <button type="button" onClick={() => setCommandOpen(true)} className="flex h-11 w-full min-w-[360px] max-w-[540px] items-center gap-3 rounded-full border border-emerald-100 bg-white/80 px-4 text-left text-xs font-semibold text-slate-500 shadow-sm transition hover:border-emerald-200 hover:bg-white">
+              <Search className="h-4 w-4 text-indigo-500" />
+              <span className="flex-1">Search buyers, quotes, products, suppliers…</span>
+              <kbd className="rounded-md border border-emerald-100 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">Ctrl K</kbd>
+            </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={fetchMarketFxRate} className="flex items-center gap-2 rounded-full border border-emerald-100 bg-white/80 px-3 py-2 text-left shadow-sm transition hover:bg-white" title="Refresh USD/INR exchange rate">
+                <RefreshCw className={`h-4 w-4 text-emerald-700 ${fxRateLoading ? 'animate-spin' : ''}`} />
+                <span><span className="block text-[9px] font-black uppercase tracking-wide text-slate-400">USD/INR</span><span className="text-sm font-black text-slate-900">₹{fxRate.toFixed(2)}</span></span>
+              </button>
+              <div className="relative">
+                <button type="button" onClick={() => setShowNotifications((open) => !open)} className="relative grid h-10 w-10 place-items-center rounded-full border border-emerald-100 bg-white/80 text-slate-600 shadow-sm transition hover:bg-white" aria-label="Open notifications" aria-expanded={showNotifications}><Bell className="h-4 w-4" /><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-rose-500" /></button>
+                {showNotifications && (
+                  <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-80 rounded-2xl border border-indigo-100 bg-white/95 p-3 shadow-2xl backdrop-blur-xl animate-panel-in">
+                    <div className="flex items-center justify-between border-b border-indigo-50 pb-2"><span className="text-xs font-black text-slate-900">Notifications</span><button type="button" onClick={() => setShowNotifications(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close notifications"><X className="h-3.5 w-3.5" /></button></div>
+                    <div className="mt-2 space-y-2 text-xs"><div className="flex gap-2 rounded-xl bg-emerald-50/70 p-2.5"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500"/><p className="font-semibold text-slate-700">System connected. Your CRM and trade workspaces are ready.</p></div><div className="flex gap-2 rounded-xl bg-indigo-50/70 p-2.5"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-indigo-500"/><p className="font-semibold text-slate-700">USD/INR is set to ₹{fxRate.toFixed(2)} ({fxRateSource}).</p></div></div>
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={toggleTheme} className="grid h-10 w-10 place-items-center rounded-xl border border-indigo-100 bg-white/80 text-slate-600 shadow-sm transition hover:bg-white" aria-label="Toggle color theme">{isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
+              <button type="button" onClick={() => router.push('/profile')} className="flex items-center gap-2 border-l border-indigo-100 pl-3 text-left"><span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-xs font-black text-white">{(authEmail || 'A')[0].toUpperCase()}</span><span className="max-w-[130px]"><span className="block truncate text-xs font-black text-slate-800">{authEmail?.split('@')[0] || 'Administrator'}</span><span className="block text-[10px] font-bold text-slate-500">{currentRole}</span></span></button>
+            </div>
+          </header>
 
           {/* Main Content Workspace Column: Full Page, Borderless, Natural Spacing */}
           <section className="relative z-10 flex-1 w-full min-w-0">
             {/* Mobile Header Bar: Flush edge-to-edge, full width, 0 border gaps */}
-            <div className="lg:hidden sticky top-0 z-30 w-full bg-[#091124] text-white border-b border-slate-800 shadow-md mb-0 overflow-hidden pt-[env(safe-area-inset-top,0px)]">
-              <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 flex items-center justify-between gap-3">
+            <div className="portal-mobile-header lg:hidden sticky top-0 z-30 w-full bg-[#091124] text-white border-b border-slate-800 shadow-md mb-0 overflow-hidden pt-[env(safe-area-inset-top,0px)]">
+              <div className="portal-mobile-header-inner px-3.5 py-2.5 sm:px-4 sm:py-3 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowNotifications(false);
                     setShowMobileMenu(true);
                   }}
-                  className="h-9 w-9 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center shadow-sm active:scale-95 transition hover:bg-slate-700 shrink-0 cursor-pointer"
+                  className="portal-mobile-icon-button h-9 w-9 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center shadow-sm active:scale-95 transition hover:bg-slate-700 shrink-0 cursor-pointer"
                   aria-label="Open menu"
                 >
                   <Menu className="h-4.5 w-4.5" />
                 </button>
-                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-white border border-slate-700/80 p-0.5 shadow-xs flex items-center justify-center">
+                <div className="portal-mobile-logo h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-white border border-slate-700/80 p-0.5 shadow-xs flex items-center justify-center">
                   <Image src="/logo.png" alt="Sheshaan Global logo" width={34} height={34} className="h-full w-full object-contain" />
                 </div>
-                <div className="min-w-0 flex-1">
+                <div className="portal-mobile-brand min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <p className="text-[10px] uppercase font-bold tracking-wider text-sky-300">Sheshaan Global</p>
-                    <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-400/30">Enterprise</span>
+                    <p className="portal-mobile-brand-name text-[10px] uppercase font-bold tracking-wider text-sky-300">Sheshaan Global</p>
+                    <span className="portal-mobile-brand-badge text-[8px] font-black uppercase px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-400/30">Enterprise</span>
                   </div>
                   <p className="text-xs sm:text-sm font-extrabold text-white truncate">{propPageTitle || activeNavItem?.label || 'Workspace'}</p>
                 </div>
@@ -485,7 +462,7 @@ export function PortalLayoutContent({
                   <button
                     type="button"
                     onClick={() => setShowNotifications((value) => !value)}
-                    className="relative h-9 w-9 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center shadow-xs active:scale-95 transition hover:bg-slate-700 shrink-0 cursor-pointer"
+                    className="portal-mobile-icon-button relative h-9 w-9 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center shadow-xs active:scale-95 transition hover:bg-slate-700 shrink-0 cursor-pointer"
                     aria-label="Open notifications"
                   >
                     <Bell className="h-4.5 w-4.5" />
@@ -534,9 +511,9 @@ export function PortalLayoutContent({
             {showMobileMenu && (
               <div className="lg:hidden fixed inset-0 z-50 flex">
                 <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm transition-opacity" onClick={() => setShowMobileMenu(false)} />
-                <div className="relative w-80 max-w-[85vw] h-full bg-[#081827] text-white flex flex-col overflow-hidden shadow-2xl animate-slide-in-left">
+                <div className="portal-mobile-drawer relative w-80 max-w-[85vw] h-full bg-[#081827] text-white flex flex-col overflow-hidden shadow-2xl animate-slide-in-left">
                   {/* Drawer Header */}
-                  <div className="p-4 flex items-center justify-between border-b border-white/10 shrink-0 pt-[max(1rem,env(safe-area-inset-top,0px))]">
+                  <div className="portal-mobile-drawer-head p-4 flex items-center justify-between border-b border-white/10 shrink-0 pt-[max(1rem,env(safe-area-inset-top,0px))]">
                     <div className="flex items-center gap-2.5">
                       <div className="h-9 w-9 rounded-xl bg-white flex items-center justify-center overflow-hidden p-1 shadow-sm shrink-0">
                         <Image src="/logo.png" alt="Sheshaan" width={32} height={32} className="h-full w-full object-contain" />
@@ -564,7 +541,7 @@ export function PortalLayoutContent({
                         setShowMobileMenu(false);
                         router.push('/quotes?new=true');
                       }}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-white hover:bg-sky-50 active:bg-sky-100 text-slate-950 text-xs font-black rounded-xl shadow-md transition"
+                      className="portal-mobile-drawer-cta w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-white hover:bg-sky-50 active:bg-sky-100 text-slate-950 text-xs font-black rounded-xl shadow-md transition"
                     >
                       <Plus className="h-4 w-4" />
                       <span>New Quote</span>
@@ -751,8 +728,8 @@ export function PortalLayoutContent({
                 <button
                   type="button"
                   onClick={() => router.push('/overview')}
-                  className={`min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 ${
-                    currentTab === 'overview' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  className={`portal-dock-item min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 ${
+                    currentTab === 'overview' ? 'portal-dock-item-active text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   <LayoutDashboard className="h-4 w-4" />
@@ -761,8 +738,8 @@ export function PortalLayoutContent({
                 <button
                   type="button"
                   onClick={() => router.push('/crm')}
-                  className={`min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 relative ${
-                    currentTab === 'crm' || currentTab === 'potentialBuyers' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  className={`portal-dock-item min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 relative ${
+                    currentTab === 'crm' || currentTab === 'potentialBuyers' ? 'portal-dock-item-active text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   <KanbanSquare className="h-4 w-4" />
@@ -774,8 +751,8 @@ export function PortalLayoutContent({
                 <button
                   type="button"
                   onClick={() => router.push('/quotes')}
-                  className={`min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 relative ${
-                    currentTab === 'quotes' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  className={`portal-dock-item min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 relative ${
+                    currentTab === 'quotes' ? 'portal-dock-item-active text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   <FileCheck2 className="h-4 w-4" />
@@ -787,8 +764,8 @@ export function PortalLayoutContent({
                 <button
                   type="button"
                   onClick={() => router.push('/accounting')}
-                  className={`min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 ${
-                    currentTab === 'accounting' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  className={`portal-dock-item min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition active:scale-95 ${
+                    currentTab === 'accounting' ? 'portal-dock-item-active text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   <Receipt className="h-4 w-4" />
@@ -800,7 +777,7 @@ export function PortalLayoutContent({
                     setShowNotifications(false);
                     setShowMobileMenu(true);
                   }}
-                  className="min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-slate-500 hover:text-slate-800 transition active:scale-95"
+                  className="portal-dock-item min-h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-slate-500 hover:text-slate-800 transition active:scale-95"
                 >
                   <Menu className="h-4 w-4" />
                   <span className="leading-none">Menu</span>
@@ -808,51 +785,8 @@ export function PortalLayoutContent({
               </div>
             </nav>
 
-            {/* Workspace Main Area: Full Width, Edge-to-Edge */}
-            {/* Corporate Context & Trading Clocks Subheader (Desktop) */}
-            <div className="hidden lg:block bg-white border-b border-slate-200/90 shadow-2xs">
-              <div className="max-w-[1600px] mx-auto w-full px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-4">
-                {/* Left: Breadcrumbs & Current Workspace */}
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-                    <span className="text-slate-400 hover:text-slate-700 cursor-pointer transition" onClick={() => router.push('/overview')}>
-                      Sheshaan Global
-                    </span>
-                    <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span className="font-black text-slate-900 flex items-center gap-1.5">
-                      <span className="text-sky-600">{propPageIcon || activeNavItem?.icon}</span>
-                      <span>{propPageTitle || activeNavItem?.label || 'Overview'}</span>
-                    </span>
-                  </div>
-                  <span className="text-slate-300">|</span>
-                  {/* Database Sync Status Pill */}
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                    <span>{dbType} Live Sync Active</span>
-                  </div>
-                </div>
-
-                {/* Right: Trading Clocks & Quick Sync */}
-                <div className="flex items-center gap-3 text-xs">
-                  <TradingClocks />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      fetchMarketFxRate();
-                      router.refresh();
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 px-2.5 py-1 rounded-md border border-slate-200/80 transition cursor-pointer"
-                    title="Refresh data & live rates"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    <span>Sync</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
             {/* Workspace Main Area: Structured Max-Width Container */}
-            <main className="max-w-[1600px] mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-6 animate-panel-in">
+            <main className="portal-main-content mx-auto w-full min-w-0 max-w-[1760px] px-4 py-4 sm:px-6 lg:px-8 animate-panel-in">
               {children}
             </main>
           </section>
