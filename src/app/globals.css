@@ -1124,6 +1124,70 @@ textarea:focus {
   }
 }
 
+/* Shared workspace polish: give every page the same calm, precise operational
+   surface without changing the data or page-specific workflow. */
+.portal-os {
+  background:
+    radial-gradient(52rem 28rem at 98% -8%, rgba(167, 243, 208, .20), transparent 62%),
+    radial-gradient(38rem 26rem at -10% 100%, rgba(224, 242, 254, .50), transparent 64%),
+    #f7faf9;
+}
+
+.portal-sidebar {
+  background:
+    radial-gradient(28rem 20rem at 12% -4%, rgba(45, 212, 191, .14), transparent 60%),
+    linear-gradient(180deg, #073f35 0%, #05372f 48%, #062e2a 100%);
+  box-shadow: 18px 0 42px -30px rgba(2, 44, 34, .75);
+}
+
+.portal-sidebar nav button:focus-visible,
+.portal-sidebar footer button:focus-visible {
+  outline: 2px solid rgba(167, 243, 208, .96);
+  outline-offset: 3px;
+}
+
+.portal-main-content {
+  min-height: calc(100vh - 72px);
+}
+
+.portal-main-content > * {
+  transform-origin: 50% 0;
+}
+
+.portal-main-content :is(input, select, textarea) {
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.portal-main-content :is(input, select, textarea):hover {
+  border-color: rgba(16, 185, 129, .35);
+}
+
+.portal-main-content button:not([disabled]) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .portal-main-content .premium-card,
+  .portal-main-content .portal-card,
+  .portal-main-content .metric-tile {
+    transition: transform 220ms var(--ember-ease), box-shadow 220ms ease, border-color 220ms ease;
+  }
+
+  .portal-main-content .premium-card:hover,
+  .portal-main-content .portal-card:hover,
+  .portal-main-content .metric-tile:hover {
+    transform: translateY(-2px);
+    border-color: rgba(110, 231, 183, .52) !important;
+    box-shadow: 0 24px 52px -36px rgba(5, 71, 56, .42) !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .portal-main-content {
+    min-height: calc(100vh - 64px);
+  }
+}
+
 /* Keep the 12-column bento composition at common desktop zoom levels.  The
    content canvas expands; the 76px navigation rail deliberately does not. */
 @media (min-width: 1536px) {
@@ -1620,12 +1684,220 @@ body.dark .cell-editing { background: rgba(2,132,199,0.1); }
 }
 
 .premium-card:hover {
+  will-change: transform;
   transform: translateY(-3px);
   border-color: rgba(8, 127, 99, .22) !important;
   box-shadow: 0 30px 58px -38px rgba(5, 47, 41, .52) !important;
 }
 
 .premium-card:hover::before { opacity: 1; }
+
+/* Motion system: restrained, responsive motion that gives the portal a
+   premium feel without competing with work. */
+.portal-os::after {
+  content: '';
+  position: fixed;
+  z-index: 0;
+  width: 34rem;
+  height: 34rem;
+  right: -16rem;
+  top: 18%;
+  pointer-events: none;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(164,244,214,.22), rgba(164,244,214,0) 68%);
+  /* The radial gradient already has a soft edge. Avoiding filter blur keeps
+     this continuous motion inexpensive on integrated GPUs. */
+  animation: portal-ambient-float 14s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.portal-shell,
+.portal-main-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Keep the mobile controls above ambient decoration without overriding the
+   sticky header and fixed bottom dock utilities from PortalLayout. */
+.portal-mobile-header {
+  position: sticky !important;
+  z-index: 30;
+}
+
+.portal-mobile-dock {
+  position: fixed !important;
+  z-index: 40;
+}
+
+/* Operational tables remain fully usable on phones: supporting columns are
+   intentionally hidden in each workspace while row actions stay in view. */
+@media (max-width: 639px) {
+  .portal-compact-table th,
+  .portal-compact-table td {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  .portal-compact-table .portal-table-actions {
+    background: rgba(255, 255, 255, 0.98);
+  }
+
+  .portal-compact-table .portal-table-actions > div {
+    gap: 0.25rem;
+  }
+
+  .portal-compact-table .portal-table-actions button,
+  .portal-compact-table .portal-table-actions a {
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    padding: 0.25rem !important;
+  }
+}
+
+.premium-card::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  background: linear-gradient(112deg, transparent 32%, rgba(255,255,255,.56) 47%, transparent 61%);
+  transform: translateX(-110%);
+}
+
+.premium-card:hover::after {
+  opacity: 1;
+  animation: premium-sheen 760ms var(--ember-ease) both;
+}
+
+.portal-sidebar .portal-nav-item-active {
+  animation: nav-active-settle 460ms var(--ember-spring) both;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .portal-desktop-toolbar button,
+  .portal-mobile-icon-button,
+  .portal-dock-item {
+    transition: transform 220ms var(--ember-spring), box-shadow 220ms ease, background-color 180ms ease, color 180ms ease !important;
+  }
+
+  .portal-desktop-toolbar button:hover,
+  .portal-mobile-icon-button:hover {
+    transform: translateY(-1px);
+  }
+
+  .portal-dock-item:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.overview-hero::after {
+  animation: hero-glow-breathe 7s ease-in-out infinite alternate;
+}
+
+.inbox-workspace .overview-hero::before {
+  animation: hero-lines-drift 12s ease-in-out infinite alternate;
+}
+
+.team-chat-panel [role='log'] > article {
+  animation: message-arrive 320ms var(--ember-ease) both;
+}
+
+.mailbox-message-body {
+  animation: content-reveal 360ms var(--ember-ease) both;
+}
+
+/* Product-wide premium finishing: visual consistency and dependable keyboard
+   focus without changing page data or workflow behaviour. */
+.portal-desktop-toolbar {
+  isolation: isolate;
+  background: rgba(255,255,255,.76) !important;
+  box-shadow: 0 18px 42px -34px rgba(5, 47, 41, .45) !important;
+}
+
+.portal-desktop-toolbar::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(8,127,99,.26), transparent);
+}
+
+.portal-main-content {
+  position: relative;
+}
+
+.portal-main-content > * {
+  animation: content-settle 260ms var(--ember-ease) both;
+}
+
+.portal-main-content button:focus-visible,
+.portal-main-content a:focus-visible,
+.portal-main-content input:focus-visible,
+.portal-main-content select:focus-visible,
+.portal-main-content textarea:focus-visible {
+  outline: 2px solid #087f63;
+  outline-offset: 2px;
+}
+
+.inbox-workspace .overview-hero {
+  background: linear-gradient(108deg, #053f35 0%, #075d4e 54%, #467c70 100%);
+}
+
+.inbox-workspace .premium-card {
+  box-shadow: 0 32px 70px -46px rgba(5, 47, 41, .48) !important;
+}
+
+.mailbox-message-body {
+  background: linear-gradient(150deg, rgba(247,253,250,.92), rgba(255,255,255,.92) 32%);
+  overflow-wrap: anywhere;
+}
+
+/* Shared modal safety net. A number of legacy workspace forms are taller
+   than a laptop viewport. These selectors keep every centered portal dialog
+   within the visible screen and move scrolling into the dialog itself. */
+.fixed.inset-0[class*='justify-center'] {
+  align-items: flex-start !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding-top: max(1rem, env(safe-area-inset-top)) !important;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+}
+
+.fixed.inset-0[class*='place-items-center'] {
+  align-items: flex-start !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding-top: max(1rem, env(safe-area-inset-top)) !important;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+}
+
+.fixed.inset-0[class*='justify-center'] > form[class*='max-w'],
+.fixed.inset-0[class*='justify-center'] > div.relative[class*='max-w'],
+.fixed.inset-0[class*='place-items-center'] > form[class*='max-w'],
+.fixed.inset-0[class*='place-items-center'] > div.relative[class*='max-w'] {
+  max-height: calc(100dvh - max(2rem, env(safe-area-inset-top) + env(safe-area-inset-bottom))) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+body:has(.fixed.inset-0[class*='justify-center']),
+body:has(.fixed.inset-0[class*='place-items-center']) {
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .fixed.inset-0[class*='justify-center'] {
+    padding-inline: .75rem !important;
+  }
+
+  .fixed.inset-0[class*='justify-center'] > form[class*='max-w'],
+  .fixed.inset-0[class*='justify-center'] > div.relative[class*='max-w'] {
+    border-radius: 1rem !important;
+  }
+}
 
 .overview-hero {
   box-shadow: 0 28px 60px -38px rgba(5, 47, 41, .80) !important;
@@ -1643,15 +1915,72 @@ body.dark .cell-editing { background: rgba(2,132,199,0.1); }
 .overview-bento > *:nth-child(6) { animation-delay: 270ms; }
 
 @keyframes ember-rise {
-  from { opacity: 0; transform: translateY(14px) scale(.985); }
+  from { opacity: .98; transform: translate3d(0, 10px, 0) scale(.992); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes content-settle {
+  from { transform: translate3d(0, 6px, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes portal-ambient-float {
+  from { transform: translate3d(0, -1.5rem, 0) scale(.96); opacity: .78; }
+  to { transform: translate3d(-3.5rem, 2.25rem, 0) scale(1.04); opacity: .94; }
+}
+
+@keyframes premium-sheen {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(110%); }
+}
+
+@keyframes nav-active-settle {
+  from { transform: translate3d(-5px, 0, 0); opacity: .86; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes hero-glow-breathe {
+  from { transform: translate3d(0, 0, 0) scale(.92); opacity: .52; }
+  to { transform: translate3d(-1.5rem, 1rem, 0) scale(1.08); opacity: .86; }
+}
+
+@keyframes hero-lines-drift {
+  from { transform: skewX(-12deg) translateX(0); }
+  to { transform: skewX(-12deg) translateX(-1.5rem); }
+}
+
+@keyframes message-arrive {
+  from { opacity: .92; transform: translate3d(0, 7px, 0) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes content-reveal {
+  from { opacity: .96; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 767px) {
+  /* Smaller screens prioritise instant touch response over decorative motion. */
+  .portal-os::after,
+  .overview-hero::after,
+  .inbox-workspace .overview-hero::before {
+    animation: none;
+  }
+
+  .premium-card:hover {
+    transform: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .portal-sidebar .portal-nav-item,
   .premium-card,
   .overview-bento > *,
-  .overview-hero {
+  .overview-hero,
+  .portal-os::after,
+  .premium-card::after,
+  .team-chat-panel [role='log'] > article,
+  .mailbox-message-body {
     animation: none !important;
     transition-duration: .01ms !important;
   }

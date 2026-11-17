@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
-import { collection, deleteDoc, doc, getDocs, getFirestore, setDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDocs, getFirestore, limit as firestoreLimit, orderBy, query, setDoc } from 'firebase/firestore';
 import { firebaseApp, isFirebaseConfigured } from './firebaseClient';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const portalTables = ['clients', 'vendors', 'supplier_agreements', 'products', 'freight_presets', 'quotes', 'quote_items', 'blogs', 'leads', 'inquiries', 'inquiry_quotations', 'inquiry_follow_ups', 'inquiry_attachments', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users', 'activity_logs', 'team_messages', 'accounting_transactions'] as const;
+const portalTables = ['clients', 'vendors', 'supplier_agreements', 'products', 'freight_presets', 'quotes', 'quote_items', 'blogs', 'leads', 'inquiries', 'inquiry_quotations', 'inquiry_follow_ups', 'inquiry_attachments', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users', 'activity_logs', 'team_messages', 'accounting_transactions', 'mailbox_messages', 'portal_notifications'] as const;
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 const localDbStorageKey = 'crixy_portal_db';
 const maxLocalDbCacheBytes = 1_500_000;
@@ -484,13 +484,24 @@ class ServerFileDB {
   }
 }
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your_supabase_project_url');
+// Keep Firebase available as a rollback path while a new Supabase project is
+// being provisioned. Enable only after schema, RLS, and authentication have
+// been verified in the live project.
+export const isSupabaseConfigured = Boolean(
+  process.env.NEXT_PUBLIC_USE_SUPABASE === 'true' &&
+  supabaseUrl &&
+  supabaseAnonKey &&
+  supabaseUrl !== 'your_supabase_project_url'
+);
 
 class FirebaseDB {
   private db = getFirestore(firebaseApp!);
   private tableCache = new Map<string, { data: any[]; timestamp: number }>();
   private inFlightRequests = new Map<string, Promise<any[]>>();
-  private cacheTTL = 30_000; // 30 seconds TTL for fast client navigation
+  // Shared browser cache. Writes explicitly invalidate the affected table, so a
+  // longer TTL prevents navigation and React remounts from becoming billable
+  // full-collection reads.
+  private cacheTTL = 5 * 60_000;
 
   private invalidateCache(table: string) {
     this.tableCache.delete(table);
@@ -501,40 +512,57 @@ class FirebaseDB {
     }
   }
 
-  private async fetchRawTable(table: string): Promise<any[]> {
+  private async fetchRawTable(
+    table: string,
+    options?: { maxRecords?: number; orderColumn?: string; ascending?: boolean }
+  ): Promise<any[]> {
+    const { maxRecords, orderColumn, ascending = true } = options || {};
+    const cacheKey = `${table}:limit:${maxRecords || 'all'}:order:${orderColumn || 'none'}:${ascending ? 'asc' : 'desc'}`;
     const now = Date.now();
-    const cached = this.tableCache.get(table);
+    const cached = this.tableCache.get(cacheKey);
     if (cached && now - cached.timestamp < this.cacheTTL) {
       return cached.data;
     }
 
-    if (this.inFlightRequests.has(table)) {
-      return this.inFlightRequests.get(table)!;
+    if (this.inFlightRequests.has(cacheKey)) {
+      return this.inFlightRequests.get(cacheKey)!;
     }
 
     const request = (async () => {
       try {
-        const snapshot = await getDocs(collection(this.db, table));
+        // Firestore bills per document returned. A limited query is essential for
+        // dashboard feeds so opening the portal never scans an entire collection.
+        const constraints = [
+          ...(orderColumn ? [orderBy(orderColumn, ascending ? 'asc' : 'desc')] : []),
+          ...(maxRecords ? [firestoreLimit(maxRecords)] : [])
+        ];
+        const source = constraints.length
+          ? query(collection(this.db, table), ...constraints)
+          : collection(this.db, table);
+        const snapshot = await getDocs(source);
         const data = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-        this.tableCache.set(table, { data, timestamp: Date.now() });
+        this.tableCache.set(cacheKey, { data, timestamp: Date.now() });
         return data;
       } finally {
-        this.inFlightRequests.delete(table);
+        this.inFlightRequests.delete(cacheKey);
       }
     })();
 
-    this.inFlightRequests.set(table, request);
+    this.inFlightRequests.set(cacheKey, request);
     return request;
   }
 
-  private async fetchTable(table: string): Promise<any[]> {
+  private async fetchTable(
+    table: string,
+    options?: { maxRecords?: number; orderColumn?: string; ascending?: boolean }
+  ): Promise<any[]> {
     try {
-      const records = await this.fetchRawTable(table);
+      const records = await this.fetchRawTable(table, options);
 
       if (table === 'quotes') {
         const [clients, quoteItems] = await Promise.all([
-          this.fetchRawTable('clients'),
-          this.fetchRawTable('quote_items')
+          this.fetchRawTable('clients', { maxRecords: options?.maxRecords }),
+          this.fetchRawTable('quote_items', { maxRecords: options?.maxRecords ? Math.max(options.maxRecords * 4, 200) : undefined })
         ]);
 
         return records.map((quote: any) => ({
@@ -579,38 +607,34 @@ class FirebaseDB {
 
     return {
       select: () => {
-        const fetchPromise = fetchTable();
-        const basePromise = fetchPromise.then(data => ({ data, error: null }));
+        const makeSelectChain = (options?: { maxRecords?: number; orderColumn?: string; ascending?: boolean }) => {
+          const fetchPromise = this.fetchTable(table, options);
+          const basePromise = fetchPromise.then(data => ({ data, error: null }));
 
-        const selectMethods = {
-          order: (col: string, { ascending = true } = {}) => {
-            const orderPromise = fetchPromise.then(data => {
-              const sorted = [...data];
-              sorted.sort((a: any, b: any) => {
-                if (a[col] < b[col]) return ascending ? -1 : 1;
-                if (a[col] > b[col]) return ascending ? 1 : -1;
-                return 0;
+          return makeChainPromise(basePromise, {
+            // Use this before order(): .select('*').limit(200).order(...).
+            // It maps to a native Firestore limit instead of trimming after a full scan.
+            limit: (count: number) => makeSelectChain({ ...options, maxRecords: Math.max(1, Math.floor(count)) }),
+            order: (col: string, { ascending = true } = {}) => makeChainPromise(
+              this.fetchTable(table, { ...options, orderColumn: col, ascending }).then(data => ({ data, error: null }))
+            ),
+            eq: (col: string, val: any) => {
+              const eqPromise = fetchPromise.then(data => ({
+                data: data.filter((r: any) => r[col] === val),
+                error: null
+              }));
+
+              return makeChainPromise(eqPromise, {
+                single: () => makeChainPromise(eqPromise.then(res => ({
+                  data: res.data[0] || null,
+                  error: res.data[0] ? null : { message: 'Not found' }
+                })))
               });
-              return { data: sorted, error: null };
-            });
-            return makeChainPromise(orderPromise);
-          },
-          eq: (col: string, val: any) => {
-            const eqPromise = fetchPromise.then(data => ({
-              data: data.filter((r: any) => r[col] === val),
-              error: null
-            }));
-
-            return makeChainPromise(eqPromise, {
-              single: () => makeChainPromise(eqPromise.then(res => ({
-                data: res.data[0] || null,
-                error: res.data[0] ? null : { message: 'Not found' }
-              })))
-            });
-          }
+            }
+          });
         };
 
-        return makeChainPromise(basePromise, selectMethods);
+        return makeSelectChain();
       },
       insert: (values: any) => {
         const insertPromise = writeRecords(values);

@@ -32,7 +32,7 @@ import {
   Check,
   ExternalLink
 } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
+import { isSupabaseConfigured, supabase } from '../../lib/supabaseClient';
 import { getPortalCache, setPortalCache } from '../../lib/portalDataStore';
 import { Vendor, SupplierAgreement, AgreementProductItem } from '../../lib/types';
 
@@ -167,6 +167,9 @@ export function SuppliersWorkspace() {
   const [suppliers, setSuppliers] = useState<Vendor[]>(() => {
     const storeCache = getPortalCache();
     if (storeCache?.vendors && storeCache.vendors.length > 0) return storeCache.vendors;
+    // Production data belongs to Supabase. Never substitute demo suppliers for
+    // a real but currently empty/migrating database.
+    if (isSupabaseConfigured) return [];
     if (typeof window !== 'undefined') {
       try {
         const cached = localStorage.getItem('sheshaan_portal_suppliers');
@@ -181,6 +184,7 @@ export function SuppliersWorkspace() {
 
   // Agreements Data State
   const [agreements, setAgreements] = useState<SupplierAgreement[]>(() => {
+    if (isSupabaseConfigured) return [];
     if (typeof window !== 'undefined') {
       try {
         const cached = localStorage.getItem('sheshaan_supplier_agreements');
@@ -319,11 +323,11 @@ export function SuppliersWorkspace() {
   useEffect(() => {
     async function loadData() {
       try {
-        const { data: vData } = await supabase.from('vendors').select('*');
-        if (vData && vData.length > 0) {
-          setSuppliers(vData);
-          setPortalCache({ vendors: vData });
-        }
+        const { data: vData, error } = await supabase.from('vendors').select('*').order('company_name');
+        if (error) throw error;
+        const remoteSuppliers = (vData || []) as Vendor[];
+        setSuppliers(remoteSuppliers);
+        setPortalCache({ vendors: remoteSuppliers });
       } catch {}
     }
     loadData();
@@ -941,17 +945,17 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
           {/* TABLE VIEW */}
           {directoryViewMode === 'table' ? (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse min-w-[650px] sm:min-w-full">
+              <div className="overflow-hidden">
+                <table className="portal-compact-table w-full table-fixed text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
-                      <th className="py-3 px-3 sm:px-4">Supplier Company</th>
+                      <th className="py-3 px-3 sm:px-4 w-[43%] sm:w-auto">Supplier Company</th>
                       <th className="py-3 px-3 sm:px-4 hidden sm:table-cell">Contact & Location</th>
                       <th className="py-3 px-3 sm:px-4 hidden lg:table-cell">GSTIN / Tax ID</th>
                       <th className="py-3 px-3 sm:px-4 hidden xl:table-cell">Commodities Handled</th>
                       <th className="py-3 px-3 sm:px-4 hidden 2xl:table-cell">Payment Terms</th>
-                      <th className="py-3 px-2 sm:px-3 text-center">Status</th>
-                      <th className="py-3 px-3 sm:px-4 text-right">Actions</th>
+                      <th className="py-3 px-2 sm:px-3 text-center w-[20%] sm:w-auto">Status</th>
+                      <th className="portal-table-actions py-3 px-3 sm:px-4 text-right w-[37%] sm:w-auto">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1024,7 +1028,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                           </span>
                         </td>
 
-                        <td className="py-3 px-3 sm:px-4 text-right whitespace-nowrap">
+                        <td className="portal-table-actions py-3 px-3 sm:px-4 text-right whitespace-nowrap">
                           <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
                             <button
                               type="button"
@@ -1237,17 +1241,17 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse min-w-[650px] sm:min-w-full">
+            <div className="overflow-hidden">
+              <table className="portal-compact-table w-full table-fixed text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
-                    <th className="py-3 px-3 sm:px-4">Agreement Ref</th>
-                    <th className="py-3 px-3 sm:px-4">Supplier / Vendor</th>
+                    <th className="py-3 px-3 sm:px-4 w-[27%] sm:w-auto">Agreement Ref</th>
+                    <th className="py-3 px-3 sm:px-4 w-[27%] sm:w-auto">Supplier / Vendor</th>
                     <th className="py-3 px-3 sm:px-4 hidden sm:table-cell">Commodity / Qty</th>
                     <th className="py-3 px-3 sm:px-4 hidden lg:table-cell">Target Window</th>
-                    <th className="py-3 px-3 sm:px-4">Contract Value</th>
-                    <th className="py-3 px-2 sm:px-3 text-center">Status</th>
-                    <th className="py-3 px-3 sm:px-4 text-right">Actions</th>
+                    <th className="py-3 px-3 sm:px-4 w-[22%] sm:w-auto">Contract Value</th>
+                    <th className="hidden sm:table-cell py-3 px-2 sm:px-3 text-center">Status</th>
+                    <th className="portal-table-actions py-3 px-3 sm:px-4 text-right w-[24%] sm:w-auto">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1287,7 +1291,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                         {formatCurrency(agreement.total_value, agreement.currency)}
                       </td>
 
-                      <td className="py-3 px-2 sm:px-3 text-center whitespace-nowrap">
+                    <td className="hidden sm:table-cell py-3 px-2 sm:px-3 text-center whitespace-nowrap">
                         <span
                           className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black ${
                             agreement.status === 'Signed'
@@ -1299,7 +1303,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                         </span>
                       </td>
 
-                      <td className="py-3 px-3 sm:px-4 text-right whitespace-nowrap">
+                    <td className="portal-table-actions py-3 px-3 sm:px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
                           <button
                             onClick={() => {

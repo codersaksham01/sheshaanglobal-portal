@@ -1174,19 +1174,28 @@ export function AccountingWorkspace() {
             </div>
           </div>
 
-          {/* DESKTOP/TABLET VIEW: Structured White Corporate Table, Borderless */}
-          <div className="hidden md:block bg-white rounded-xl overflow-hidden border border-slate-100">
-            <div className="overflow-x-auto min-w-full">
-              <table className="w-full text-left border-collapse">
+          {/* Desktop table only; smaller screens use action cards. */}
+          <div className="hidden 2xl:block bg-white rounded-xl overflow-hidden border border-slate-100">
+            <div className="w-full overflow-hidden">
+              <table className="w-full table-fixed text-left border-collapse">
+                <colgroup>
+                  <col className="w-[10%]" />
+                  <col className="w-[28%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[10%]" />
+                </colgroup>
                 <thead>
                   <tr className="bg-slate-50 text-[10.5px] uppercase font-black tracking-wider text-slate-600">
-                    <th className="py-3.5 px-4 min-w-[95px]">Date</th>
-                    <th className="py-3.5 px-4 min-w-[240px]">Transaction & Cost Head</th>
-                    <th className="py-3.5 px-4 min-w-[150px]">Payee / Beneficiary</th>
-                    <th className="py-3.5 px-4 min-w-[140px]">Method & Ref</th>
-                    <th className="py-3.5 px-4 min-w-[130px] text-right">Amount (INR)</th>
-                    <th className="py-3.5 px-4 min-w-[125px] text-center">Status</th>
-                    <th className="py-3.5 px-4 min-w-[130px] text-right">Actions</th>
+                    <th className="py-3.5 px-3">Date</th>
+                    <th className="py-3.5 px-3">Transaction & Cost Head</th>
+                    <th className="py-3.5 px-3">Payee / Beneficiary</th>
+                    <th className="py-3.5 px-3">Method & Ref</th>
+                    <th className="py-3.5 px-3 text-right">Amount (INR)</th>
+                    <th className="py-3.5 px-3 text-center">Status</th>
+                    <th className="py-3.5 px-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100/60 text-xs">
@@ -1213,10 +1222,10 @@ export function AccountingWorkspace() {
 
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap align-top">
+                          <td className="py-3.5 px-3 text-slate-500 font-mono text-[11px] whitespace-nowrap align-top">
                             {item.transaction_date}
                           </td>
-                          <td className="py-3.5 px-4 align-top">
+                          <td className="py-3.5 px-3 align-top">
                             <div className="flex items-start gap-2.5">
                               <span
                                 className={`mt-0.5 p-1 rounded-lg shrink-0 ${
@@ -1245,10 +1254,10 @@ export function AccountingWorkspace() {
                               </div>
                             </div>
                           </td>
-                          <td className="py-3.5 px-4 text-slate-700 font-semibold align-top break-words">
+                          <td className="py-3.5 px-3 text-slate-700 font-semibold align-top break-words">
                             {item.paid_to_or_from || '-'}
                           </td>
-                          <td className="py-3.5 px-4 align-top">
+                          <td className="py-3.5 px-3 align-top">
                             <p className="text-slate-800 font-semibold truncate max-w-[160px]">{item.payment_method}</p>
                             {item.reference_number && (
                               <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-[160px]">
@@ -1256,12 +1265,12 @@ export function AccountingWorkspace() {
                               </p>
                             )}
                           </td>
-                          <td className="py-3.5 px-4 text-right font-black font-mono whitespace-nowrap text-sm align-top">
+                          <td className="py-3.5 px-3 text-right font-black font-mono whitespace-nowrap text-sm align-top">
                             <span className={isIncome ? 'text-emerald-700' : 'text-slate-900'}>
                               {isIncome ? '+' : '-'}₹{Number(item.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </td>
-                          <td className="py-3.5 px-4 text-center whitespace-nowrap align-top">
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap align-top">
                             {isApproved && (
                               <span className="inline-flex items-center gap-1 text-[10.5px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">
                                 <CheckCircle2 className="h-3 w-3 shrink-0" /> Approved
@@ -1278,8 +1287,8 @@ export function AccountingWorkspace() {
                               </span>
                             )}
                           </td>
-                          <td className="py-3.5 px-4 text-right whitespace-nowrap align-top">
-                            <div className="flex items-center justify-end gap-1.5">
+                          <td className="py-3.5 px-3 text-right whitespace-nowrap align-top">
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
                               {isPending && (
                                 <>
                                   <button
@@ -1322,8 +1331,8 @@ export function AccountingWorkspace() {
             </div>
           </div>
 
-          {/* MOBILE VIEW (<768px): Responsive Borderless Transaction Cards */}
-          <div className="block md:hidden space-y-3">
+          {/* Compact view (<1024px): transaction cards keep controls visible. */}
+          <div className="block 2xl:hidden space-y-3">
             {loading ? (
               <div className="py-10 text-center bg-white rounded-2xl p-6 shadow-sm">
                 <RefreshCw className="h-5 w-5 animate-spin mx-auto text-blue-900 mb-2" />

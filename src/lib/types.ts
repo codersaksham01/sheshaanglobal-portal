@@ -11,6 +11,14 @@ export interface Client {
   lifecycle_status?: 'Prospect' | 'Qualified' | 'Customer' | 'Active Sourcing' | 'Completed Cycle';
 }
 
+export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+export type TaskStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Awaiting Approval';
+export interface TeamTask { id: string; title: string; description?: string; assignee_ids: string[]; created_by: string; department?: string; priority: TaskPriority; status: TaskStatus; due_at?: string; requires_approval?: boolean; related_type?: 'buyer' | 'quote' | 'email' | 'shipment'; related_id?: string; completion_notes?: string; completed_at?: string; created_at?: string; updated_at?: string; }
+export type PaymentStatus = 'Awaiting Payment' | 'Buyer Claims Sent' | 'Payment Initiated' | 'Awaiting Bank Confirmation' | 'Received' | 'Reconciled' | 'Partially Paid' | 'Overdue' | 'Disputed';
+export interface PaymentMilestone { id: string; client_id?: string; quote_id?: string; currency: string; amount: number; received_amount: number; due_at?: string; status: PaymentStatus; reference?: string; }
+export type NotificationCategory = 'task' | 'approval' | 'email' | 'payment' | 'message' | 'system';
+export interface PortalNotification { id: string; target_email?: string; recipient_user_id?: string; category?: NotificationCategory; kind?: 'task' | 'message' | 'system'; title: string; message?: string; description?: string; priority?: 'low' | 'normal' | 'high' | 'urgent'; href?: string; destination?: string; related_record_id?: string; read_at?: string | null; created_at?: string; updated_at?: string; }
+
 export interface Product {
   id: string;
   sku: string;
@@ -252,6 +260,8 @@ export interface TaskRecord {
   priority: 'Low' | 'Medium' | 'High';
   due_date?: string;
   owner?: string;
+  assigned_by_email?: string;
+  assigned_by_name?: string;
   client_id?: string;
   lead_id?: string;
   quote_id?: string;
@@ -400,12 +410,57 @@ export interface TeamMessage {
   channel?: string;
   recipient_email?: string;
   attachment_url?: string;
+  reply_to_id?: string;
+  pinned_at?: string | null;
+  pinned_by?: string;
+  mentions?: string[];
   read_by?: string[];
   link_url?: string;
   link_label?: string;
   tag_type?: 'Quote' | 'Task' | 'Buyer' | 'Lead' | 'Invoice' | 'Shipment';
   tag_id?: string;
   tag_label?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface QuoteVersion {
+  id: string;
+  quote_id: string;
+  version_number: number;
+  snapshot: Record<string, unknown>;
+  created_by_email?: string;
+  created_at?: string;
+}
+
+export interface QuoteApproval {
+  id: string;
+  quote_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requested_by_email?: string;
+  reviewer_email?: string;
+  request_note?: string;
+  decision_note?: string;
+  requested_at?: string;
+  decided_at?: string | null;
+}
+
+export interface MailboxMessage {
+  id: string;
+  external_id: string;
+  folder: string;
+  sender_name?: string;
+  sender_email: string;
+  recipient_emails?: string[];
+  subject: string;
+  preview: string;
+  body_text?: string;
+  received_at: string;
+  is_read: boolean;
+  has_attachments: boolean;
+  assigned_to?: string;
+  client_id?: string;
+  lead_id?: string;
   created_at?: string;
   updated_at?: string;
 }

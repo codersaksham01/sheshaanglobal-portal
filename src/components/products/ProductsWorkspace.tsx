@@ -246,28 +246,28 @@ export function ProductsWorkspace() {
           </button>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200/90 bg-white shadow-xs">
-          <table className="w-full text-left border-collapse text-xs">
+        <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-xs">
+          <table className="portal-compact-table w-full table-fixed text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-200/80 bg-slate-50/50 text-[10px] uppercase font-black tracking-wider text-slate-500">
-                <th className="py-3 px-4 font-black">SKU</th>
+                <th className="py-3 px-4 font-black w-[22%] sm:w-auto">SKU</th>
                 <th className="py-3 px-4 font-black">Description & Specifications</th>
-                <th className="py-3 px-4 font-black text-right">Selling Price / kg</th>
-                <th className="py-3 px-4 font-black text-right">Cost Price / kg</th>
-                <th className="py-3 px-4 font-black text-right">Gross Weight</th>
-                <th className="py-3 px-4 font-black text-center w-24">Actions</th>
+                <th className="py-3 px-4 font-black text-right w-[22%] sm:w-auto">Selling Price / kg</th>
+                <th className="hidden sm:table-cell py-3 px-4 font-black text-right">Cost Price / kg</th>
+                <th className="hidden lg:table-cell py-3 px-4 font-black text-right">Gross Weight</th>
+                <th className="portal-table-actions py-3 px-4 font-black text-center w-[74px] sm:w-24">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredProducts.map((p) => (
                 <tr key={p.id} className="hover:bg-slate-50/80 transition select-none">
-                  <td className="py-3 px-4 font-mono font-black text-slate-900">
+                  <td className="py-3 px-4 font-mono font-black text-slate-900 truncate">
                     <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                       {p.sku}
                     </span>
                   </td>
-                  <td className="py-3 px-4">
-                    <p className="font-extrabold text-slate-900">{p.description || 'N/A'}</p>
+                  <td className="py-3 px-4 min-w-0">
+                    <p className="font-extrabold text-slate-900 truncate">{p.description || 'N/A'}</p>
                     {p.dimensions && (
                       <p className="text-[10px] text-slate-400 mt-0.5 font-semibold">Dimensions: {p.dimensions}</p>
                     )}
@@ -275,13 +275,13 @@ export function ProductsWorkspace() {
                   <td className="py-3 px-4 text-right font-mono font-black text-emerald-700">
                     {formatCurrency(Number(p.unit_price) || 0)}
                   </td>
-                  <td className="py-3 px-4 text-right font-mono font-semibold text-slate-500">
+                  <td className="hidden sm:table-cell py-3 px-4 text-right font-mono font-semibold text-slate-500">
                     {formatCurrency(Number(p.cost_price) || 0)}
                   </td>
-                  <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">
+                  <td className="hidden lg:table-cell py-3 px-4 text-right font-mono font-bold text-slate-700">
                     {p.weight ? `${p.weight} kg` : 'N/A'}
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="portal-table-actions py-3 px-4">
                     <div className="flex items-center justify-center gap-1.5">
                       <button
                         type="button"

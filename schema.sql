@@ -19,10 +19,10 @@ create table if not exists public.app_users (
   auth_user_id uuid unique references auth.users(id) on delete cascade,
   name text not null,
   email text not null unique,
-  role text not null default 'Sales' check (role in ('Admin', 'Sales', 'Accounts', 'Operations')),
+  role text not null default 'Sales' check (role in ('Admin', 'Executive', 'Sales', 'Accounts', 'Operations')),
   active boolean not null default true,
   status text not null default 'Approved' check (status in ('Pending', 'Approved', 'Rejected')),
-  requested_role text not null default 'Sales' check (requested_role in ('Admin', 'Sales', 'Accounts', 'Operations')),
+  requested_role text not null default 'Sales' check (requested_role in ('Admin', 'Executive', 'Sales', 'Accounts', 'Operations')),
   phone text not null default '',
   title text not null default '',
   approved_by text not null default '',
@@ -49,7 +49,12 @@ as $$
     select 1 from public.app_users
     where auth_user_id = auth.uid()
       and active = true
-      and role = any(allowed_roles)
+      and (
+        role = any(allowed_roles)
+        -- Executives receive the same system-wide access as Administrators,
+        -- while the info mailbox remains the primary Admin account.
+        or (role = 'Executive' and 'Admin' = any(allowed_roles))
+      )
   );
 $$;
 
@@ -391,6 +396,8 @@ create table if not exists public.tasks (
   priority text not null default 'Medium' check (priority in ('Low', 'Medium', 'High')),
   due_date date,
   owner text not null default '',
+  assigned_by_email text not null default '',
+  assigned_by_name text not null default '',
   client_id text references public.clients(id) on delete set null,
   lead_id text references public.leads(id) on delete set null,
   quote_id text references public.quotes(id) on delete set null,
@@ -471,16 +478,58 @@ create table if not exists public.activity_logs (
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
 
+create table if not exists public.portal_notifications (
+  id text primary key default gen_random_uuid()::text,
+  target_email text not null,
+  title text not null,
+  message text not null default '',
+  kind text not null default 'system' check (kind in ('task', 'message', 'system')),
+  href text not null default '',
+  read_at timestamptz,
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
 create table if not exists public.team_messages (
   id text primary key default gen_random_uuid()::text,
   sender_email text not null default '',
   sender_name text not null default '',
   body text not null default '',
+  channel text not null default 'daily-operations' check (channel in ('company-announcements', 'daily-operations', 'sales-and-volza', 'sourcing-and-logistics', 'finance-and-approvals', 'portal-development')),
   link_url text not null default '',
   link_label text not null default '',
   tag_type text not null default 'Quote' check (tag_type in ('Quote', 'Task', 'Buyer', 'Lead', 'Invoice', 'Shipment')),
   tag_id text not null default '',
   tag_label text not null default '',
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create table if not exists public.accounting_transactions (
+  id text primary key default gen_random_uuid()::text,
+  type text not null check (type in ('expense', 'income')),
+  title text not null,
+  description text not null default '',
+  category text not null default '',
+  amount numeric(14,2) not null default 0 check (amount >= 0),
+  currency text not null default 'INR' check (currency in ('INR', 'USD')),
+  payment_method text not null default '',
+  reference_number text not null default '',
+  transaction_date date not null,
+  paid_to_or_from text not null default '',
+  vendor_id text references public.vendors(id) on delete set null,
+  client_id text references public.clients(id) on delete set null,
+  logged_by_name text not null default '',
+  logged_by_email text not null default '',
+  status text not null default 'pending_approval' check (status in ('pending_approval', 'approved', 'rejected')),
+  approved_by_name text not null default '',
+  approved_by_email text not null default '',
+  approval_date timestamptz,
+  approval_notes text not null default '',
+  requires_otp boolean not null default false,
+  otp_verified boolean not null default false,
+  otp_verified_at timestamptz,
+  receipt_url text not null default '',
   created_at timestamptz not null default timezone('utc'::text, now()),
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
@@ -747,7 +796,7 @@ begin
     'app_users', 'clients', 'products', 'vendors', 'freight_presets', 'quotes', 'quote_items',
     'leads', 'inquiries', 'inquiry_quotations', 'inquiry_follow_ups', 'inquiry_attachments',
     'invoices', 'shipments', 'activities', 'tasks', 'message_templates', 'blogs',
-    'freight_rate_history', 'document_checklists', 'activity_logs', 'team_messages'
+    'freight_rate_history', 'document_checklists', 'activity_logs', 'team_messages', 'accounting_transactions', 'portal_notifications'
   ] loop
     execute format('drop trigger if exists set_%I_updated_at on public.%I', table_name, table_name);
     execute format('create trigger set_%I_updated_at before update on public.%I for each row execute function public.set_updated_at()', table_name, table_name);
@@ -848,9 +897,37 @@ create policy portal_log_insert on public.activity_logs for insert to authentica
 
 alter table public.team_messages enable row level security;
 drop policy if exists portal_chat_read on public.team_messages;
-create policy portal_chat_read on public.team_messages for select to authenticated using (public.has_portal_role(array['Admin','Sales','Accounts','Operations']));
+create policy portal_chat_read on public.team_messages for select to authenticated using (public.has_portal_role(array['Admin','Executive','Sales','Accounts','Operations']));
 drop policy if exists portal_chat_insert on public.team_messages;
-create policy portal_chat_insert on public.team_messages for insert to authenticated with check (public.has_portal_role(array['Admin','Sales','Accounts','Operations']));
+create policy portal_chat_insert on public.team_messages for insert to authenticated with check (
+  public.has_portal_role(array['Admin','Executive','Sales','Accounts','Operations'])
+  and (channel <> 'company-announcements' or public.has_portal_role(array['Admin']))
+);
+
+alter table public.portal_notifications enable row level security;
+drop policy if exists portal_notification_read on public.portal_notifications;
+create policy portal_notification_read on public.portal_notifications for select to authenticated using (
+  lower(target_email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  or public.has_portal_role(array['Admin'])
+);
+drop policy if exists portal_notification_insert on public.portal_notifications;
+create policy portal_notification_insert on public.portal_notifications for insert to authenticated with check (
+  public.has_portal_role(array['Admin','Executive','Sales','Accounts','Operations'])
+);
+drop policy if exists portal_notification_update on public.portal_notifications;
+create policy portal_notification_update on public.portal_notifications for update to authenticated using (
+  lower(target_email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  or public.has_portal_role(array['Admin'])
+) with check (
+  lower(target_email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  or public.has_portal_role(array['Admin'])
+);
+
+alter table public.accounting_transactions enable row level security;
+drop policy if exists accounts_transaction_read on public.accounting_transactions;
+create policy accounts_transaction_read on public.accounting_transactions for select to authenticated using (public.has_portal_role(array['Admin','Accounts']));
+drop policy if exists accounts_transaction_write on public.accounting_transactions;
+create policy accounts_transaction_write on public.accounting_transactions for all to authenticated using (public.has_portal_role(array['Admin','Accounts'])) with check (public.has_portal_role(array['Admin','Accounts']));
 
 -- Bootstrap the first administrator after creating them in Supabase Auth:
 -- insert into public.app_users (auth_user_id, name, email, role)

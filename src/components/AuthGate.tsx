@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import Image from 'next/image';
-import { LogOut, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import {
   browserLocalPersistence,
   onAuthStateChanged,
@@ -258,25 +258,6 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('crixy_actor_email');
-        localStorage.removeItem('crixy_actor_name');
-      }
-      if (isSupabaseConfigured) await supabase.auth.signOut();
-      else if (firebaseAuth) await signOut(firebaseAuth);
-      await fetch('/api/login', { method: 'DELETE' }).catch(() => {});
-    } catch (err) {
-      console.warn('Logout error:', err);
-    } finally {
-      setAuthenticatedEmail('');
-      setEmail(defaultFirebaseLoginEmail);
-      setPassword('');
-      setIsAuthenticated(false);
-    }
-  };
-
   if (checking) {
     return (
       <SystematicLoadingScreen
@@ -288,20 +269,9 @@ export const AuthGate = ({ children }: { children: React.ReactNode }) => {
 
   if (isAuthenticated) {
     return (
-      <>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="fixed bottom-20 right-4 z-20 inline-flex items-center gap-2 rounded-lg bg-slate-900/90 backdrop-blur-sm px-3 py-2 text-xs font-bold text-white shadow-md hover:bg-slate-900 transition sm:bottom-4"
-          title="Logout"
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </button>
-        <PortalIdentityContext.Provider value={{ email: authenticatedEmail || email.trim(), firebaseAuthenticated: Boolean(isFirebaseConfigured || isSupabaseConfigured) }}>
-          {children}
-        </PortalIdentityContext.Provider>
-      </>
+      <PortalIdentityContext.Provider value={{ email: authenticatedEmail || email.trim(), firebaseAuthenticated: Boolean(isFirebaseConfigured || isSupabaseConfigured) }}>
+        {children}
+      </PortalIdentityContext.Provider>
     );
   }
 

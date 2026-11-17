@@ -358,8 +358,8 @@ export function QuotesWorkspace() {
         </div>
       ) : (
         <>
-          {/* Mobile Quotes Card List (< md) */}
-          <div className="md:hidden space-y-2.5">
+          {/* Compact quote cards below desktop widths avoid a clipped action column. */}
+          <div className="2xl:hidden space-y-2.5">
             <div className="flex items-center justify-between px-1 text-[11px] font-bold text-slate-500">
               <span>{filteredQuotes.length} quotes</span>
               <button
@@ -425,8 +425,8 @@ export function QuotesWorkspace() {
             ))}
           </div>
 
-          {/* Desktop Quotes Table (>= md) */}
-          <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200/90 bg-white shadow-xs">
+          {/* Wide table only when there is enough room for every control. */}
+          <div className="hidden 2xl:block overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-xs">
             <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/70 border-b border-slate-200/80">
               <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
                 {filteredQuotes.length} quotes displayed
@@ -448,7 +448,7 @@ export function QuotesWorkspace() {
               </div>
             </div>
 
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full table-fixed text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-200/80 bg-slate-50/40 text-[10px] uppercase font-black tracking-wider text-slate-500">
                   <th className="py-3 px-4 w-10">
@@ -491,17 +491,17 @@ export function QuotesWorkspace() {
                           className="rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
                         />
                       </td>
-                      <td className={pad}>
-                        <span className="font-mono font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      <td className={`${pad} min-w-0`}>
+                        <span className="inline-block max-w-full truncate align-bottom font-mono font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                           {q.quote_number}
                         </span>
                       </td>
-                      <td className={pad}>
-                        <span className="font-extrabold text-slate-900 block">{q.client?.company_name || 'Unassigned'}</span>
-                        <span className="text-[10px] text-slate-400 block">{q.client?.contact_email}</span>
+                      <td className={`${pad} min-w-0`}>
+                        <span className="font-extrabold text-slate-900 block truncate">{q.client?.company_name || 'Unassigned'}</span>
+                        <span className="text-[10px] text-slate-400 block truncate">{q.client?.contact_email}</span>
                       </td>
-                      <td className={pad}>
-                        <span className="font-bold text-slate-600">{q.client?.destination_port || 'N/A'}</span>
+                      <td className={`${pad} min-w-0`}>
+                        <span className="font-bold text-slate-600 block truncate">{q.client?.destination_port || 'N/A'}</span>
                       </td>
                       <td className={`${pad} text-right font-mono text-slate-500`}>
                         {formatQuoteCurrency(Number(q.freight_cost || 0), q.currency || 'INR')}

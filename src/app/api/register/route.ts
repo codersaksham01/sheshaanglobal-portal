@@ -39,6 +39,14 @@ export async function POST(req: NextRequest) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   const now = new Date().toISOString();
 
+  // Once Supabase is enabled, never write access requests to the legacy local
+  // file. Doing so creates a pending profile the live portal cannot see.
+  if (supabaseUrl && !serviceRoleKey) {
+    return NextResponse.json({
+      error: 'Access requests are temporarily managed by the portal administrator. Please contact the administrator to add your account.'
+    }, { status: 503 });
+  }
+
   if (supabaseUrl && serviceRoleKey) {
     const admin = createClient(supabaseUrl, serviceRoleKey);
     const { data: created, error: createError } = await admin.auth.admin.createUser({

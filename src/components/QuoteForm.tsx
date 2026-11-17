@@ -1,6 +1,8 @@
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { notifyCoreTeam } from '../lib/portalNotifications';
 import { Client, Product, Quote, QuoteItem, ShipperDetails, LogisticsSpecs, FreightPreset, BankDetails, CostBreakdownNotes } from '../lib/types';
+import { usePortalIdentity } from './AuthGate';
 import { AlertTriangle, CheckCircle2, Plus, Trash2, Save, Eye, ArrowLeft, Loader2, Download, ShieldCheck } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -263,6 +265,7 @@ class PdfPreviewBoundary extends React.Component<
 }
 
 export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, onCancel, initialDocumentType, prefillBuyerId, prefillQuoteId }) => {
+  const { email: actorEmail } = usePortalIdentity();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
@@ -1608,6 +1611,32 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
         if (retryItems.error) throw itemsErr;
       }
 
+      // Preserve a commercial snapshot on every save. This is deliberately
+      // independent from the editable quote so an approved offer can always
+      // be audited and restored later.
+      const { count: existingVersionCount } = await supabase
+        .from('quote_versions')
+        .select('id', { count: 'exact', head: true })
+        .eq('quote_id', quoteResultId);
+      await supabase.from('quote_versions').insert([{
+        id: `quote-version-${crypto.randomUUID()}`,
+        quote_id: quoteResultId,
+        version_number: (existingVersionCount || 0) + 1,
+        snapshot: { quote: quotePayload, items: itemsPayload },
+        created_by_email: actorEmail
+      }]).catch(() => {});
+
+      await supabase.from('activity_logs').insert([{
+        id: `activity-${crypto.randomUUID()}`,
+        actor_email: actorEmail,
+        actor_name: actorEmail.split('@')[0],
+        action: quoteId ? 'Updated' : 'Created',
+        table_name: 'quotes',
+        record_id: quoteResultId,
+        record_label: quoteNumber || 'Quotation',
+        details: `${quoteId ? 'Updated' : 'Created'} quotation for ${quoteClient.company_name || 'buyer'}.`
+      }]).catch(() => {});
+
       // Update CRM lead stage to 'Quoted'
       if (quoteClient.id) {
         const { data: leadData } = await supabase.from('leads').select('*').eq('client_id', quoteClient.id);
@@ -1627,6 +1656,17 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             }
           }
         }
+      }
+
+      if (!quoteId && quoteResultId) {
+        await notifyCoreTeam({
+          scope: `quote-${quoteResultId}`,
+          senderEmail: actorEmail,
+          title: 'New quotation created',
+          message: `${quoteNumber || 'A new quotation'} was created for ${quoteClient.company_name || 'a buyer'}.`,
+          kind: 'system',
+          href: '/quotes'
+        });
       }
 
       alert(quoteId ? 'Deal details updated!' : 'Deal saved successfully!');

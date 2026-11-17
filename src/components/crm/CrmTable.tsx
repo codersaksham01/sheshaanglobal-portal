@@ -459,8 +459,8 @@ const CrmTableComponent: React.FC<CrmTableProps> = ({
 
   return (
     <div className="w-full space-y-3">
-      {/* Mobile Card Layout (< md) */}
-      <div className="md:hidden space-y-2.5">
+      {/* Card layout keeps all row actions visible below desktop widths. */}
+      <div className="2xl:hidden space-y-2.5">
         {leads.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-400 font-semibold text-xs">
             No active leads found matching current filter context.
@@ -485,8 +485,8 @@ const CrmTableComponent: React.FC<CrmTableProps> = ({
         )}
       </div>
 
-      {/* Desktop / Tablet Adaptive Table (>= md) */}
-      <div className="hidden md:block w-full overflow-x-auto rounded-xl border border-slate-200/80 bg-white shadow-xs scrollbar-thin scrollbar-thumb-slate-200">
+      {/* Wide table only when its content area is genuinely available. */}
+      <div className="hidden 2xl:block w-full overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs">
         <table className="w-full min-w-[940px] text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">

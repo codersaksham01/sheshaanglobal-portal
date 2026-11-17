@@ -302,16 +302,16 @@ export function UsersWorkspace() {
           <p className="text-sm font-bold text-slate-700">No users match the criteria</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200/90 bg-white shadow-xs">
-          <table className="w-full text-left border-collapse text-xs">
+        <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-xs">
+          <table className="portal-compact-table w-full table-fixed text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-200/80 bg-slate-50/50 text-[10px] uppercase font-black tracking-wider text-slate-500">
-                <th className="py-3 px-4 font-black">Member</th>
-                <th className="py-3 px-4 font-black">Email</th>
-                <th className="py-3 px-4 font-black">Role</th>
-                <th className="py-3 px-4 font-black">Status</th>
-                <th className="py-3 px-4 font-black">Approval Audit</th>
-                <th className="py-3 px-4 font-black text-center w-24">Actions</th>
+                <th className="py-3 px-4 font-black w-[36%] sm:w-auto">Member</th>
+                <th className="hidden md:table-cell py-3 px-4 font-black">Email</th>
+                <th className="py-3 px-4 font-black w-[21%] sm:w-auto">Role</th>
+                <th className="py-3 px-4 font-black w-[21%] sm:w-auto">Status</th>
+                <th className="hidden lg:table-cell py-3 px-4 font-black">Approval Audit</th>
+                <th className="portal-table-actions py-3 px-4 font-black text-center w-[74px] sm:w-24">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -319,11 +319,11 @@ export function UsersWorkspace() {
                 const status = u.status || (u.active ? 'Approved' : 'Pending');
                 return (
                   <tr key={u.id} className="hover:bg-slate-50/80 transition select-none">
-                    <td className="py-3 px-4">
-                      <div className="font-extrabold text-slate-900">{u.name}</div>
-                      <div className="text-[10px] text-slate-400 font-semibold">{u.title || u.phone || ''}</div>
+                    <td className="py-3 px-4 min-w-0">
+                      <div className="font-extrabold text-slate-900 truncate">{u.name}</div>
+                      <div className="text-[10px] text-slate-400 font-semibold truncate">{u.title || u.phone || ''}</div>
                     </td>
-                    <td className="py-3 px-4 font-semibold text-slate-600">{u.email}</td>
+                    <td className="hidden md:table-cell py-3 px-4 font-semibold text-slate-600">{u.email}</td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black border ${
                         u.role === 'Admin' ? 'bg-purple-50 text-purple-700 border-purple-200' :
@@ -344,10 +344,10 @@ export function UsersWorkspace() {
                         {status}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-slate-400 text-[11px] font-semibold">
+                    <td className="hidden lg:table-cell py-3 px-4 text-slate-400 text-[11px] font-semibold">
                       {u.approved_by ? `By ${u.approved_by}` : 'System Registered'}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="portal-table-actions py-3 px-4">
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"

@@ -34,6 +34,7 @@ const emptyDB = {
   app_users: [],
   activity_logs: [],
   team_messages: [],
+  portal_notifications: [],
   accounting_transactions: []
 };
 

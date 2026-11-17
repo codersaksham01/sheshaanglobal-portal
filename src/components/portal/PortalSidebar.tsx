@@ -1,656 +1,72 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+'use client';
+
+import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import {
-  LayoutDashboard,
-  KanbanSquare,
-  Target,
-  FileCheck2,
-  Mail,
-  Send,
-  FileText,
-  Package,
-  Building2,
-  Lock,
-  Plus,
-  ChevronDown,
-  RefreshCw,
-  Edit2,
-  Check,
-  Receipt,
-  MessageCircle
-} from 'lucide-react';
+import { Building2, Check, ChevronDown, ClipboardList, FileCheck2, FileText, KanbanSquare, LayoutDashboard, Lock, LogOut, Mail, MessageCircle, Package, Plus, Receipt, RefreshCw, Send, Target } from 'lucide-react';
 import { canAccessTab, PortalRole } from '../../lib/permissions';
-import { TAB_ROUTES } from '../../lib/portalDataStore';
 
-const PanelLeftClose = ({ className }: { className?: string }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <rect width="18" height="18" x="3" y="3" rx="2" />
-    <path d="M9 3v18" />
-    <path d="m14 9-3 3 3 3" />
-  </svg>
-);
+export interface NavItemDef { key: string; label: string; icon: React.ReactNode; href: string; count?: number; }
+export interface PortalSidebarProps { currentTab: string; isMinimized: boolean; onToggleMinimized: () => void; onNavigate: (tabKey: string, href: string) => void; badgeCounts?: Record<string, number>; authEmail?: string | null; currentRole?: PortalRole; onNewQuote?: () => void; fxRate?: number; fxRateLoading?: boolean; fxRateFetchedAt?: string | null; fxRateSource?: string; onRefreshFxRate?: () => void; onSaveManualFxRate?: (rate: number) => void; }
 
-const PanelLeftOpen = ({ className }: { className?: string }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <rect width="18" height="18" x="3" y="3" rx="2" />
-    <path d="M9 3v18" />
-    <path d="m13 15 3-3-3-3" />
-  </svg>
-);
-
-export interface NavItemDef {
-  key: string;
-  label: string;
-  icon: React.ReactNode;
-  href: string;
-  count?: number;
-}
-
-export interface PortalSidebarProps {
-  currentTab: string;
-  isMinimized: boolean;
-  onToggleMinimized: () => void;
-  onNavigate: (tabKey: string, href: string) => void;
-  badgeCounts?: Record<string, number>;
-  authEmail?: string | null;
-  currentRole?: PortalRole;
-  onNewQuote?: () => void;
-  fxRate?: number;
-  fxRateLoading?: boolean;
-  fxRateFetchedAt?: string | null;
-  fxRateSource?: string;
-  onRefreshFxRate?: () => void;
-  onSaveManualFxRate?: (rate: number) => void;
-}
-
-export const PortalSidebar: React.FC<PortalSidebarProps> = ({
-  currentTab,
-  isMinimized,
-  onToggleMinimized,
-  onNavigate,
-  badgeCounts = {},
-  authEmail,
-  currentRole = 'Admin',
-  onNewQuote,
-  fxRate: propFxRate,
-  fxRateLoading: propFxRateLoading,
-  fxRateFetchedAt: propFxRateFetchedAt,
-  fxRateSource: propFxRateSource,
-  onRefreshFxRate,
-  onSaveManualFxRate
-}) => {
+export const PortalSidebar: React.FC<PortalSidebarProps> = ({ currentTab, isMinimized, onToggleMinimized, onNavigate, badgeCounts = {}, authEmail, currentRole = 'Admin', onNewQuote, fxRate = 86.85, fxRateLoading = false, onRefreshFxRate }) => {
   const router = useRouter();
-  const [crmMenuOpen, setCrmMenuOpen] = useState(true);
-  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
-
-  // Fallback internal FX Rate state if not provided as props
-  const [localFxRate, setLocalFxRate] = useState<number>(86.85);
-  const [localFxLoading, setLocalFxLoading] = useState(false);
-  const [localFxEditing, setLocalFxEditing] = useState(false);
-  const [localFxDraft, setLocalFxDraft] = useState('86.85');
-
-  useEffect(() => {
+  const [crmOpen, setCrmOpen] = useState(true);
+  const [mailOpen, setMailOpen] = useState(false);
+  const handleLogout = async () => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('portal_fx_rate');
-      if (saved) {
-        const parsed = parseFloat(saved);
-        if (!isNaN(parsed) && parsed > 0) {
-          setLocalFxRate(parsed);
-          setLocalFxDraft(parsed.toFixed(2));
-        }
-      }
+      localStorage.removeItem('crixy_actor_email');
+      localStorage.removeItem('crixy_actor_name');
     }
-  }, []);
-
-  const fxRate = propFxRate !== undefined ? propFxRate : localFxRate;
-  const fxRateLoading = propFxRateLoading !== undefined ? propFxRateLoading : localFxLoading;
-
-  const fetchMarketFx = useCallback(async () => {
-    if (onRefreshFxRate) {
-      onRefreshFxRate();
-      return;
-    }
-    setLocalFxLoading(true);
     try {
-      const res = await fetch('https://open.er-api.com/v6/latest/USD');
-      if (res.ok) {
-        const json = await res.json();
-        const inr = json?.rates?.INR;
-        if (typeof inr === 'number' && inr > 0) {
-          setLocalFxRate(inr);
-          setLocalFxDraft(inr.toFixed(2));
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('portal_fx_rate', inr.toString());
-          }
-        }
-      }
-    } catch {} finally {
-      setLocalFxLoading(false);
-    }
-  }, [onRefreshFxRate]);
-
-  const handleSaveRate = () => {
-    const parsed = parseFloat(localFxDraft);
-    if (!isNaN(parsed) && parsed > 0) {
-      if (onSaveManualFxRate) {
-        onSaveManualFxRate(parsed);
-      } else {
-        setLocalFxRate(parsed);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('portal_fx_rate', parsed.toString());
-        }
-      }
-      setLocalFxEditing(false);
-    }
-  };
-
-  const navItems: NavItemDef[] = useMemo(() => [
-    { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" />, href: '/overview' },
-    { key: 'crm', label: 'Smart CRM Pipeline', icon: <KanbanSquare className="h-4 w-4" />, href: '/crm', count: badgeCounts.crm },
-    { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, href: '/potential-buyers', count: badgeCounts.potentialBuyers },
-    { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, href: '/quotes', count: badgeCounts.quotes },
-    { key: 'accounting', label: 'Accounting & Expenses', icon: <Receipt className="h-4 w-4" />, href: '/accounting', count: badgeCounts.accounting },
-    { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, href: '/templates', count: badgeCounts.templates },
-    { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" />, href: '/generate-responses' },
-    { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
-    { key: 'products', label: 'Products', icon: <Package className="h-4 w-4" />, href: '/products', count: badgeCounts.products },
-    { key: 'vendors', label: 'Suppliers Management', icon: <Building2 className="h-4 w-4" />, href: '/vendors', count: badgeCounts.vendors },
-    { key: 'teamChat', label: 'Team Chat', icon: <MessageCircle className="h-4 w-4" />, href: '/team-chat' },
-    { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4" />, href: '/users', count: badgeCounts.users }
-  ], [badgeCounts]);
-
-  const navGroups = useMemo(() => [
-    { label: 'Command', items: navItems.filter((item) => ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead', 'teamChat'].includes(item.key)) },
-    { label: 'Operations', items: navItems.filter((item) => ['products', 'vendors'].includes(item.key)) },
-    { label: 'Admin', items: navItems.filter((item) => ['users'].includes(item.key)) }
-  ], [navItems]);
-
-  const prefetchRoute = useCallback((href: string) => {
-    try {
-      router.prefetch(href);
+      const { supabase, isSupabaseConfigured } = await import('../../lib/supabaseClient');
+      if (isSupabaseConfigured) await supabase.auth.signOut();
     } catch {}
-  }, [router]);
+    try {
+      const { firebaseAuth } = await import('../../lib/firebaseClient');
+      if (firebaseAuth) {
+        const { signOut } = await import('firebase/auth');
+        await signOut(firebaseAuth);
+      }
+    } catch {}
+    await fetch('/api/login', { method: 'DELETE' }).catch(() => {});
+    router.push('/');
+  };
+  const items: NavItemDef[] = useMemo(() => [
+    { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4"/>, href: '/overview' },
+    { key: 'crm', label: 'Smart CRM', icon: <KanbanSquare className="h-4 w-4"/>, href: '/crm', count: badgeCounts.crm },
+    { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4"/>, href: '/potential-buyers', count: badgeCounts.potentialBuyers },
+    { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4"/>, href: '/quotes', count: badgeCounts.quotes },
+    { key: 'accounting', label: 'Accounting & Expenses', icon: <Receipt className="h-4 w-4"/>, href: '/accounting', count: badgeCounts.accounting },
+    { key: 'paymentIntelligence', label: 'Payment Intelligence', icon: <Receipt className="h-4 w-4"/>, href: '/payment-intelligence' },
+    { key: 'teamTasks', label: 'Team Tasks', icon: <ClipboardList className="h-4 w-4"/>, href: '/team-tasks' },
+    { key: 'inbox', label: 'Unified Inbox', icon: <Mail className="h-4 w-4"/>, href: '/inbox' },
+    { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4"/>, href: '/templates', count: badgeCounts.templates },
+    { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4"/>, href: '/generate-responses' },
+    { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4"/>, href: '/letterhead' },
+    { key: 'products', label: 'Products', icon: <Package className="h-4 w-4"/>, href: '/products', count: badgeCounts.products },
+    { key: 'vendors', label: 'Suppliers Management', icon: <Building2 className="h-4 w-4"/>, href: '/vendors', count: badgeCounts.vendors },
+    { key: 'teamChat', label: 'Team Chat', icon: <MessageCircle className="h-4 w-4"/>, href: '/team-chat' },
+    { key: 'users', label: 'Users & Roles', icon: <Lock className="h-4 w-4"/>, href: '/users', count: badgeCounts.users }
+  ], [badgeCounts]);
+  const groups = [
+    { label: 'Command', keys: ['overview','crm','quotes','accounting','paymentIntelligence','teamTasks','inbox','templates','letterhead','teamChat'] },
+    { label: 'Operations', keys: ['vendors','products'] },
+    { label: 'Administration', keys: ['users'] }
+  ];
+  const itemButton = (active: boolean) => `relative flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[11.5px] font-bold transition-all duration-200 ${active ? 'bg-gradient-to-r from-emerald-300 to-teal-300 text-emerald-950 shadow-[0_10px_24px_-14px_rgba(110,231,183,.9)]' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`;
 
-  return (
-    <aside
-      data-sidebar="true"
-      data-minimized={isMinimized ? 'true' : undefined}
-      className={`portal-sidebar hidden lg:flex flex-col ${
-        isMinimized ? 'w-[76px]' : 'w-[280px]'
-      } h-screen fixed top-0 left-0 overflow-hidden z-40 transition-[width] duration-200 ease-out will-change-[width] select-none`}
-    >
-      {/* Brand Header */}
-      <div className="portal-brand-block flex items-center px-3.5 shrink-0 border-b border-white/5 h-[72px] relative overflow-hidden">
-        {/* Logo Card */}
-        <button
-          type="button"
-          onClick={() => {
-            if (isMinimized) {
-              onToggleMinimized();
-            } else {
-              onNavigate('overview', '/overview');
-            }
-          }}
-          onMouseEnter={() => prefetchRoute('/overview')}
-          className="h-9 w-9 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0 border border-slate-700/80 relative group cursor-pointer"
-          title={isMinimized ? 'Click to expand navbar (Ctrl+B)' : 'Sheshaan Global Overview'}
-        >
-          <Image
-            src="/logo.png"
-            alt="Sheshaan Global"
-            width={36}
-            height={36}
-            className={`h-full w-full object-contain transition-opacity duration-200 ${isMinimized ? 'group-hover:opacity-20' : ''}`}
-            priority
-          />
-          {isMinimized && (
-            <PanelLeftOpen className="absolute h-5 w-5 text-slate-900 opacity-0 group-hover:opacity-100 transition-opacity duration-150" />
-          )}
-        </button>
-
-        {/* Brand Text (collapses smoothly with 0 layout shift) */}
-        <div
-          onClick={() => onNavigate('overview', '/overview')}
-          onMouseEnter={() => prefetchRoute('/overview')}
-          className={`min-w-0 ml-3 cursor-pointer transition-all duration-200 overflow-hidden whitespace-nowrap ${
-            isMinimized ? 'opacity-0 max-w-0 ml-0 pointer-events-none' : 'opacity-100 max-w-[155px]'
-          }`}
-        >
-          <h1 className="text-sm font-black text-white tracking-tight leading-none truncate">Sheshaan Global</h1>
-          <p className="text-[9px] text-sky-200/75 font-bold mt-1 tracking-wide truncate">Import · Export · Trade Solutions</p>
-        </div>
-
-        {/* Minimize Button (visible only in expanded mode) */}
-        <button
-          type="button"
-          onClick={onToggleMinimized}
-          className={`h-8 w-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition-all duration-200 shrink-0 ml-auto ${
-            isMinimized ? 'opacity-0 max-w-0 pointer-events-none scale-75' : 'opacity-100 max-w-[32px] scale-100'
-          }`}
-          title="Minimize navbar (Ctrl+B)"
-          aria-label="Minimize navbar"
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* New Quote CTA */}
-      <div className="px-3.5 pt-3 pb-2 shrink-0">
-        <button
-          type="button"
-          onClick={() => {
-            if (onNewQuote) {
-              onNewQuote();
-            } else {
-              onNavigate('quotes', '/quotes?new=true');
-            }
-          }}
-          onMouseEnter={() => prefetchRoute('/quotes')}
-          className={`flex items-center justify-center bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-bold rounded-lg shadow-xs transition-all duration-150 overflow-hidden ${
-            isMinimized ? 'w-10 h-10 p-0 mx-auto' : 'w-full px-3 py-2.5 text-xs gap-2'
-          }`}
-          title={isMinimized ? 'New Quote' : undefined}
-          aria-label="New Quote"
-        >
-          <Plus className="h-4 w-4 shrink-0" />
-          <span className={`whitespace-nowrap transition-all duration-200 overflow-hidden ${
-            isMinimized ? 'opacity-0 max-w-0 pointer-events-none hidden' : 'opacity-100 max-w-[120px]'
-          }`}>
-            New Quote
-          </span>
-        </button>
-      </div>
-
-      {/* Navigation Groups */}
-      <nav className={`flex-1 overflow-y-auto ${isMinimized ? 'px-2 pb-4 pt-2 space-y-3' : 'px-3.5 pb-4 pt-2 space-y-4'} scrollbar-thin scrollbar-thumb-white/10`}>
-        {navGroups.map((group, groupIdx) => (
-          <div key={group.label}>
-            {!isMinimized ? (
-              <p className="portal-nav-heading px-2 pb-1.5 pt-1 text-[9.5px] uppercase font-extrabold tracking-wider text-slate-400/80">
-                {group.label}
-              </p>
-            ) : groupIdx > 0 ? (
-              <div className="my-2 border-t border-white/10 mx-2" title={group.label} />
-            ) : null}
-
-            <div className="space-y-1">
-              {group.items.map((item) => {
-                if (!canAccessTab(currentRole, item.key)) return null;
-                if (item.key === 'generateResponses') return null;
-
-                const isCrmParent = item.key === 'crm';
-                const isTemplateParent = item.key === 'templates';
-                const isActive = isCrmParent
-                  ? currentTab === 'crm' || currentTab === 'potentialBuyers'
-                  : isTemplateParent
-                  ? currentTab === 'templates' || currentTab === 'generateResponses'
-                  : currentTab === item.key;
-
-                // Minimized Mode Item
-                if (isMinimized) {
-                  return (
-                    <div key={item.key} className="flex justify-center my-1 relative group/mini">
-                      <button
-                        type="button"
-                        onClick={() => onNavigate(item.key, item.href)}
-                        onMouseEnter={() => prefetchRoute(item.href)}
-                        title={item.label}
-                        aria-label={item.label}
-                        className={`h-10 w-10 flex items-center justify-center rounded-lg transition-all duration-150 relative ${
-                          isActive
-                            ? 'bg-slate-800 text-white shadow-xs'
-                            : 'text-slate-400 hover:bg-white/10 hover:text-white'
-                        }`}
-                      >
-                        {item.icon}
-                        {typeof item.count === 'number' && item.count > 0 && (
-                          <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-sky-500 text-[9px] font-black text-white flex items-center justify-center shadow">
-                            {item.count > 99 ? '99+' : item.count}
-                          </span>
-                        )}
-                      </button>
-
-                      {/* Tooltip / Flyout Menu on Hover */}
-                      {isCrmParent ? (
-                        <div className="absolute left-full ml-3 top-0 p-1.5 rounded-lg bg-slate-900 border border-white/10 shadow-2xl opacity-0 group-hover/mini:opacity-100 pointer-events-none group-hover/mini:pointer-events-auto transition-opacity duration-150 z-50 min-w-[170px] space-y-1">
-                          <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-white/10 flex items-center justify-between">
-                            <span>Smart CRM</span>
-                            {typeof item.count === 'number' && item.count > 0 && (
-                              <span className="text-[9px] text-sky-400">{item.count}</span>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => onNavigate('crm', '/crm')}
-                            onMouseEnter={() => prefetchRoute('/crm')}
-                            className={`w-full text-left px-2.5 py-1.5 rounded text-[11px] font-bold transition ${
-                              currentTab === 'crm' ? 'bg-sky-500/20 text-sky-300' : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            Normal Smart CRM
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onNavigate('potentialBuyers', '/potential-buyers')}
-                            onMouseEnter={() => prefetchRoute('/potential-buyers')}
-                            className={`w-full text-left px-2.5 py-1.5 rounded text-[11px] font-bold transition ${
-                              currentTab === 'potentialBuyers' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            Potential Buyers
-                            {badgeCounts.potentialBuyers !== undefined && badgeCounts.potentialBuyers > 0 && (
-                              <span className="ml-1.5 px-1 rounded-full bg-emerald-500/30 text-emerald-300 text-[9px]">
-                                {badgeCounts.potentialBuyers}
-                              </span>
-                            )}
-                          </button>
-                        </div>
-                      ) : isTemplateParent ? (
-                        <div className="absolute left-full ml-3 top-0 p-1.5 rounded-lg bg-slate-900 border border-white/10 shadow-2xl opacity-0 group-hover/mini:opacity-100 pointer-events-none group-hover/mini:pointer-events-auto transition-opacity duration-150 z-50 min-w-[170px] space-y-1">
-                          <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-white/10 flex items-center justify-between">
-                            <span>Mail & Messages</span>
-                            {typeof item.count === 'number' && item.count > 0 && (
-                              <span className="text-[9px] text-sky-400">{item.count}</span>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => onNavigate('templates', '/templates')}
-                            onMouseEnter={() => prefetchRoute('/templates')}
-                            className={`w-full text-left px-2.5 py-1.5 rounded text-[11px] font-bold transition ${
-                              currentTab === 'templates' ? 'bg-sky-500/20 text-sky-300' : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            Template Library
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onNavigate('generateResponses', '/generate-responses')}
-                            onMouseEnter={() => prefetchRoute('/generate-responses')}
-                            className={`w-full text-left px-2.5 py-1.5 rounded text-[11px] font-bold transition ${
-                              currentTab === 'generateResponses' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            Generate Responses
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-md bg-slate-900 text-white text-[11px] font-bold shadow-xl border border-white/10 opacity-0 group-hover/mini:opacity-100 pointer-events-none transition-opacity duration-150 z-50 whitespace-nowrap">
-                          {item.label}
-                          {typeof item.count === 'number' && item.count > 0 && (
-                            <span className="ml-1.5 px-1.5 py-0.2 rounded-full bg-sky-500/30 text-sky-300 text-[9px]">
-                              {item.count}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                // Expanded Mode: Smart CRM Dropdown
-                if (isCrmParent) {
-                  return (
-                    <div key={item.key} className="space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => setCrmMenuOpen((open) => !open)}
-                        className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                          isActive
-                            ? 'portal-nav-item-active text-white'
-                            : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                        }`}
-                      >
-                        {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-sky-500 rounded-r-sm" />}
-                        <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                        <span className="flex-1 truncate">Smart CRM</span>
-                        {typeof item.count === 'number' && item.count > 0 && (
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                            isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
-                          }`}>
-                            {item.count}
-                          </span>
-                        )}
-                        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${crmMenuOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                      {crmMenuOpen && (
-                        <div className="ml-6 space-y-1 border-l border-white/10 pl-2">
-                          <button
-                            type="button"
-                            onClick={() => onNavigate('crm', '/crm')}
-                            onMouseEnter={() => prefetchRoute('/crm')}
-                            className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                              currentTab === 'crm' ? 'bg-sky-500/15 text-sky-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            Normal Smart CRM
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onNavigate('potentialBuyers', '/potential-buyers')}
-                            onMouseEnter={() => prefetchRoute('/potential-buyers')}
-                            className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                              currentTab === 'potentialBuyers' ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            Potential Buyers
-                            {badgeCounts.potentialBuyers !== undefined && badgeCounts.potentialBuyers > 0 && (
-                              <span className="ml-2 rounded-full bg-zinc-700 px-1.5 py-0.5 text-[9px] text-zinc-300">
-                                {badgeCounts.potentialBuyers}
-                              </span>
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                // Expanded Mode: Templates Dropdown
-                if (isTemplateParent) {
-                  const templatesActive = currentTab === 'templates' || currentTab === 'generateResponses';
-                  return (
-                    <div key={item.key} className="space-y-1">
-                      <button
-                        type="button"
-                        onClick={() => setTemplateMenuOpen((open) => !open)}
-                        className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                          templatesActive
-                            ? 'portal-nav-item-active text-white'
-                            : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                        }`}
-                      >
-                        {templatesActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-sky-500 rounded-r-sm" />}
-                        <span className={`shrink-0 ${templatesActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                        <span className="flex-1 truncate">Mail & Messages</span>
-                        {typeof item.count === 'number' && item.count > 0 && (
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                            templatesActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
-                          }`}>
-                            {item.count}
-                          </span>
-                        )}
-                        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${templateMenuOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                      {templateMenuOpen && (
-                        <div className="ml-6 space-y-1 border-l border-white/10 pl-2">
-                          <button
-                            type="button"
-                            onClick={() => onNavigate('templates', '/templates')}
-                            onMouseEnter={() => prefetchRoute('/templates')}
-                            className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                              currentTab === 'templates' ? 'bg-sky-500/15 text-sky-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            Template Library
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onNavigate('generateResponses', '/generate-responses')}
-                            onMouseEnter={() => prefetchRoute('/generate-responses')}
-                            className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[10.5px] font-bold transition ${
-                              currentTab === 'generateResponses' ? 'bg-emerald-500/15 text-emerald-200' : 'text-slate-500 hover:bg-white/10 hover:text-white'
-                            }`}
-                          >
-                            Generate Responses
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                // Expanded Mode: Regular Nav Item
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => onNavigate(item.key, item.href)}
-                    onMouseEnter={() => prefetchRoute(item.href)}
-                    className={`portal-nav-item w-full flex items-center gap-2.5 px-2.5 py-2 text-left text-[11.5px] font-bold transition-all duration-150 relative group ${
-                      isActive
-                        ? 'portal-nav-item-active text-white'
-                        : 'text-slate-400 hover:bg-white/10 hover:text-zinc-100'
-                    }`}
-                  >
-                    {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-sky-500 rounded-r-sm" />}
-                    <span className={`shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500 group-hover:text-zinc-300'}`}>{item.icon}</span>
-                    <span className="flex-1 truncate">{item.label}</span>
-                    {typeof item.count === 'number' && item.count > 0 && (
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                        isActive ? 'bg-sky-500/20 text-sky-300' : 'bg-zinc-700 text-zinc-400'
-                      }`}>
-                        {item.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      {/* Sidebar Footer: Role Badge + FX Rate */}
-      <div className="border-t border-zinc-800/80 p-3 shrink-0">
-        <div className={`flex items-center gap-2.5 transition-all duration-200 ${isMinimized ? 'justify-center' : 'justify-between'}`}>
-          <div className="flex items-center gap-2 min-w-0">
-            <div
-              className="h-8 w-8 rounded-full bg-sky-500/20 border border-sky-500/30 flex items-center justify-center shrink-0 cursor-default"
-              title={`${authEmail || 'Admin'} (${currentRole})`}
-            >
-              <span className="text-[10px] font-black text-sky-400">{(authEmail || 'A')[0].toUpperCase()}</span>
-            </div>
-            <div className={`min-w-0 transition-all duration-200 ${isMinimized ? 'opacity-0 max-w-0 hidden' : 'opacity-100 max-w-[140px]'}`}>
-              <p className="text-[10.5px] font-bold text-zinc-200 truncate">{authEmail || 'Admin'}</p>
-              <p className="text-[9px] text-zinc-500 font-semibold">{currentRole}</p>
-            </div>
-          </div>
-          {!isMinimized && (
-            <span className="px-2 py-0.5 rounded text-[8px] font-black uppercase bg-sky-500/10 text-sky-300 border border-sky-500/20 shrink-0">
-              {currentRole}
-            </span>
-          )}
-        </div>
-
-        {/* FX Rate Box */}
-        {!isMinimized ? (
-          <div className="mt-2.5 rounded-lg border border-white/10 bg-white/[0.03] p-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <span className="block text-[8.5px] text-zinc-500 font-semibold uppercase tracking-wider">USD/INR</span>
-                <span className={`block text-[11px] font-black ${fxRateLoading ? 'text-zinc-500 animate-pulse' : 'text-emerald-400'}`}>
-                  ₹{fxRate.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setLocalFxEditing((v) => !v)}
-                  className="h-6 w-6 rounded border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white flex items-center justify-center transition"
-                  title="Edit rate"
-                  aria-label="Edit USD INR rate"
-                >
-                  <Edit2 className="h-3 w-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={fetchMarketFx}
-                  disabled={fxRateLoading}
-                  className="h-6 w-6 rounded border border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white disabled:opacity-50 flex items-center justify-center transition"
-                  title="Refresh market rate"
-                  aria-label="Refresh market rate"
-                >
-                  <RefreshCw className={`h-3 w-3 ${fxRateLoading ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
-            </div>
-            {localFxEditing && (
-              <div className="mt-2 flex items-center gap-1">
-                <input
-                  type="number"
-                  min="1"
-                  step="0.0001"
-                  value={localFxDraft}
-                  onChange={(e) => setLocalFxDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveRate();
-                    if (e.key === 'Escape') setLocalFxEditing(false);
-                  }}
-                  className="h-7 w-full rounded border border-white/10 bg-zinc-950 px-2 text-[10.5px] font-bold text-white outline-none focus:border-sky-400"
-                  aria-label="Manual USD INR rate"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveRate}
-                  className="h-7 w-7 rounded bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center shrink-0"
-                  title="Save rate"
-                  aria-label="Save rate"
-                >
-                  <Check className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="mt-2 flex items-center justify-between gap-1">
-            <div
-              className="h-7 flex-1 rounded-md border border-white/10 bg-white/[0.04] flex items-center justify-center text-center cursor-default"
-              title={`USD/INR Rate: ₹${fxRate.toFixed(2)}`}
-            >
-              <span className="text-[10px] font-black text-emerald-400">₹{Math.round(fxRate)}</span>
-            </div>
-            <button
-              type="button"
-              onClick={onToggleMinimized}
-              className="h-7 w-7 rounded-md border border-white/10 bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition shrink-0"
-              title="Expand navbar (Ctrl+B)"
-              aria-label="Expand navbar"
-            >
-              <PanelLeftOpen className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-      </div>
-    </aside>
-  );
+  return <aside data-sidebar="true" data-minimized={isMinimized || undefined} className={`portal-sidebar fixed left-0 top-0 z-40 hidden h-screen flex-col overflow-hidden transition-[width,box-shadow] duration-300 ease-out lg:flex ${isMinimized ? 'w-[76px]' : 'w-[280px]'}`}>
+    <div className="flex h-[72px] shrink-0 items-center border-b border-white/10 px-3.5">
+      <button type="button" onClick={() => isMinimized ? onToggleMinimized() : onNavigate('overview', '/overview')} className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-white/10 bg-white" aria-label="Sheshaan Global home"><Image src="/logo.png" alt="" width={36} height={36} className="h-full w-full object-contain"/></button>
+      {!isMinimized && <button type="button" onClick={() => onNavigate('overview', '/overview')} className="ml-3 min-w-0 flex-1 text-left"><p className="truncate text-sm font-black text-white">Sheshaan Global</p><p className="mt-0.5 truncate text-[9px] font-bold text-sky-100/70">Import · Export · Trade Solutions</p></button>}
+      {!isMinimized && <button type="button" onClick={onToggleMinimized} className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Minimize sidebar">‹</button>}
+    </div>
+    <div className="shrink-0 px-3.5 pb-2 pt-3"><button type="button" onClick={() => onNewQuote ? onNewQuote() : onNavigate('quotes', '/quotes?new=true')} className={`flex h-10 items-center justify-center rounded-lg bg-sky-600 text-xs font-black text-white transition hover:bg-sky-500 ${isMinimized ? 'mx-auto w-10' : 'w-full gap-2'}`} aria-label="New quote"><Plus className="h-4 w-4"/>{!isMinimized && 'New Quote'}</button></div>
+    <nav aria-label="Primary navigation" className={`flex-1 overflow-y-auto ${isMinimized ? 'space-y-2 px-2 py-2' : 'space-y-4 px-3.5 py-2'} scrollbar-thin scrollbar-thumb-white/10`}>
+      {groups.map((group, index) => { const visible = items.filter((item) => group.keys.includes(item.key) && canAccessTab(currentRole, item.key)); if (!visible.length) return null; return <section key={group.label}>{!isMinimized ? <p className="px-2 pb-1.5 text-[9.5px] font-black uppercase tracking-wider text-slate-400">{group.label}</p> : index > 0 ? <div className="mx-2 my-2 border-t border-white/10"/> : null}<div className="space-y-1">{visible.map((item) => { const active = item.key === currentTab || (item.key === 'crm' && currentTab === 'potentialBuyers') || (item.key === 'templates' && currentTab === 'generateResponses'); if (isMinimized) return <button key={item.key} type="button" onClick={() => onNavigate(item.key, item.href)} title={item.label} className={`mx-auto grid h-10 w-10 place-items-center rounded-lg transition ${active ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}>{item.icon}</button>; if (item.key === 'crm') return <div key="crm" className="space-y-1"><button type="button" onClick={() => setCrmOpen((value) => !value)} className={itemButton(active)}>{item.icon}<span className="flex-1">Smart CRM</span><ChevronDown className={`h-3.5 w-3.5 transition ${crmOpen ? 'rotate-180' : ''}`}/></button>{crmOpen && <div className="ml-6 space-y-1 border-l border-white/10 pl-2"><button type="button" onClick={() => onNavigate('crm','/crm')} className="w-full rounded px-2 py-1.5 text-left text-[10.5px] font-bold text-slate-400 hover:bg-white/10 hover:text-white">CRM Pipeline</button><button type="button" onClick={() => onNavigate('potentialBuyers','/potential-buyers')} className="w-full rounded px-2 py-1.5 text-left text-[10.5px] font-bold text-slate-400 hover:bg-white/10 hover:text-white">Potential Buyers</button></div>}</div>; if (item.key === 'templates') return <div key="templates" className="space-y-1"><button type="button" onClick={() => setMailOpen((value) => !value)} className={itemButton(active)}>{item.icon}<span className="flex-1">Mail & Messages</span><ChevronDown className={`h-3.5 w-3.5 transition ${mailOpen ? 'rotate-180' : ''}`}/></button>{mailOpen && <div className="ml-6 space-y-1 border-l border-white/10 pl-2"><button type="button" onClick={() => onNavigate('templates','/templates')} className="w-full rounded px-2 py-1.5 text-left text-[10.5px] font-bold text-slate-400 hover:bg-white/10 hover:text-white">Template Library</button><button type="button" onClick={() => onNavigate('generateResponses','/generate-responses')} className="w-full rounded px-2 py-1.5 text-left text-[10.5px] font-bold text-slate-400 hover:bg-white/10 hover:text-white">Generate Responses</button></div>}</div>; if (item.key === 'potentialBuyers' || item.key === 'generateResponses') return null; return <button key={item.key} type="button" onClick={() => onNavigate(item.key, item.href)} onMouseEnter={() => router.prefetch(item.href)} className={itemButton(active)}>{item.icon}<span className="min-w-0 flex-1 truncate">{item.label}</span>{typeof item.count === 'number' && item.count > 0 && <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] text-slate-200">{item.count > 99 ? '99+' : item.count}</span>}</button>; })}</div></section>; })}
+    </nav>
+    <footer className="shrink-0 border-t border-white/10 bg-slate-950/20 p-3">{!isMinimized ? <><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-sky-500/20 text-xs font-black text-sky-200">{(authEmail || 'A')[0]?.toUpperCase()}</span><div className="min-w-0"><p className="truncate text-[10px] font-black text-white">{authEmail || 'Administrator'}</p><p className="text-[9px] font-bold text-slate-400">{currentRole}</p></div></div><div className="mt-2 flex items-center justify-between rounded-lg border border-white/10 bg-white/[.04] p-2"><span><span className="block text-[8px] font-black uppercase text-slate-400">USD / INR</span><strong className="text-[11px] text-emerald-300">₹{fxRate.toFixed(2)}</strong></span><button type="button" onClick={onRefreshFxRate} className="grid h-6 w-6 place-items-center rounded border border-white/10 text-slate-200" aria-label="Refresh USD INR rate"><RefreshCw className={`h-3 w-3 ${fxRateLoading ? 'animate-spin' : ''}`}/></button></div></> : <button type="button" onClick={onToggleMinimized} className="mx-auto grid h-9 w-9 place-items-center rounded-lg text-emerald-300">₹</button>}</footer>
+    {!isMinimized && <div className="shrink-0 border-t border-white/10 bg-slate-950/30 px-3 pb-3 pt-2"><button type="button" onClick={() => void handleLogout()} className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[.04] px-2 py-2 text-[10px] font-black text-slate-200 transition hover:border-rose-400/30 hover:bg-rose-500/15 hover:text-rose-100"><LogOut className="h-3.5 w-3.5"/>Logout</button></div>}
+  </aside>;
 };

@@ -33,7 +33,8 @@ import {
   Receipt,
   ArrowRight,
   Sun,
-  Moon
+  Moon,
+  LogOut
 } from 'lucide-react';
 
 const PanelLeftClose = ({ className }: { className?: string }) => (
@@ -75,7 +76,9 @@ import { PortalSidebar } from './PortalSidebar';
 import { SystematicLoadingScreen } from '../SystematicLoadingScreen';
 import { canAccessTab, PortalRole } from '../../lib/permissions';
 import { supabase } from '../../lib/supabaseClient';
-import { getPortalCache, fetchAllPortalData, TAB_ROUTES } from '../../lib/portalDataStore';
+import { createDueTaskNotifications } from '../../lib/portalNotifications';
+import { getPortalCache, fetchAllPortalData, TAB_ROUTES, type PortalDataCache } from '../../lib/portalDataStore';
+import { PortalNotification } from '../../lib/types';
 
 export type NavItemDef = {
   key: string;
@@ -84,6 +87,31 @@ export type NavItemDef = {
   href: string;
   count?: number;
 };
+
+type GlobalSearchRecord = {
+  id: string;
+  type: string;
+  title: string;
+  details: string;
+  href: string;
+  tab: string;
+  icon: React.ReactNode;
+  searchableText: string;
+};
+
+const searchText = (values: Array<unknown>) => values
+  .flatMap((value) => Array.isArray(value) ? value : [value])
+  .filter((value): value is string | number => typeof value === 'string' || typeof value === 'number')
+  .map((value) => String(value).trim())
+  .filter(Boolean)
+  .join(' ');
+
+const recordDetails = (fields: Array<[string, unknown]>) => fields
+  .flatMap(([label, value]) => {
+    const text = Array.isArray(value) ? value.filter(Boolean).join(', ') : String(value || '').trim();
+    return text ? [`${label}: ${text}`] : [];
+  })
+  .join(' · ');
 
 export { TAB_ROUTES };
 
@@ -154,6 +182,8 @@ export function PortalLayoutContent({
 
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');
+  const [searchData, setSearchData] = useState<PortalDataCache | null>(() => getPortalCache());
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -195,7 +225,73 @@ export function PortalLayoutContent({
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<PortalNotification[]>([]);
+  const [notificationsUnavailable, setNotificationsUnavailable] = useState(false);
+
+  const handleMobileLogout = useCallback(async () => {
+    setShowMobileMenu(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('crixy_actor_email');
+      localStorage.removeItem('crixy_actor_name');
+    }
+    try {
+      const { supabase, isSupabaseConfigured } = await import('../../lib/supabaseClient');
+      if (isSupabaseConfigured) await supabase.auth.signOut();
+    } catch {}
+    try {
+      const { firebaseAuth } = await import('../../lib/firebaseClient');
+      if (firebaseAuth) {
+        const { signOut } = await import('firebase/auth');
+        await signOut(firebaseAuth);
+      }
+    } catch {}
+    await fetch('/api/login', { method: 'DELETE' }).catch(() => {});
+    router.push('/');
+  }, [router]);
   const [globalSearch, setGlobalSearch] = useState('');
+
+  const loadNotifications = useCallback(async () => {
+    if (!authEmail || notificationsUnavailable) return;
+    await createDueTaskNotifications(authEmail).catch(() => {});
+    const { data, error } = await supabase
+      .from('portal_notifications')
+      .select('*')
+      .eq('target_email', authEmail.toLowerCase())
+      .order('created_at', { ascending: false })
+      .limit(12);
+    if (error) {
+      // A missing table means the Supabase migration has not been applied yet.
+      // Stop polling in that state rather than filling the console every 30s.
+      if (error.code === 'PGRST205' || error.message.includes("Could not find the table 'public.portal_notifications'")) {
+        setNotificationsUnavailable(true);
+        setNotifications([]);
+        return;
+      }
+      console.warn('Unable to load portal notifications:', error.message);
+      return;
+    }
+    setNotifications((data || []) as PortalNotification[]);
+  }, [authEmail, notificationsUnavailable]);
+
+  useEffect(() => {
+    void loadNotifications();
+    const interval = window.setInterval(() => void loadNotifications(), 30_000);
+    return () => window.clearInterval(interval);
+  }, [loadNotifications]);
+
+  const openNotifications = () => {
+    setShowNotifications((open) => !open);
+    void loadNotifications();
+  };
+
+  const unreadNotificationCount = notifications.filter((notification) => !notification.read_at).length;
+
+  const markNotificationsRead = useCallback(async () => {
+    if (!unreadNotificationCount || notificationsUnavailable) return;
+    const readAt = new Date().toISOString();
+    const { error } = await supabase.from('portal_notifications').update({ read_at: readAt }).eq('target_email', authEmail.toLowerCase()).is('read_at', null);
+    if (!error) setNotifications((current) => current.map((notification) => notification.read_at ? notification : { ...notification, read_at: readAt }));
+  }, [authEmail, notificationsUnavailable, unreadNotificationCount]);
 
   // Quick stats state with 0ms cached initial render
   const [isInitialSyncing, setIsInitialSyncing] = useState<boolean>(() => !getPortalCache());
@@ -334,6 +430,9 @@ export function PortalLayoutContent({
     { key: 'potentialBuyers', label: 'Potential Buyers', icon: <Target className="h-4 w-4" />, href: '/potential-buyers', count: badgeCounts.potentialBuyers },
     { key: 'quotes', label: 'Quote Automation', icon: <FileCheck2 className="h-4 w-4" />, href: '/quotes', count: badgeCounts.quotes ?? quickCounts.quotes },
     { key: 'accounting', label: 'Accounting & Expenses', icon: <Receipt className="h-4 w-4" />, href: '/accounting', count: badgeCounts.accounting },
+    { key: 'paymentIntelligence', label: 'Payment Intelligence', icon: <Receipt className="h-4 w-4" />, href: '/payment-intelligence' },
+    { key: 'teamTasks', label: 'Team Tasks', icon: <ClipboardList className="h-4 w-4" />, href: '/team-tasks' },
+    { key: 'inbox', label: 'Unified Inbox', icon: <Mail className="h-4 w-4" />, href: '/inbox' },
     { key: 'templates', label: 'Mail & Message Templates', icon: <Mail className="h-4 w-4" />, href: '/templates', count: badgeCounts.templates },
     { key: 'generateResponses', label: 'Generate Responses', icon: <Send className="h-4 w-4" />, href: '/generate-responses' },
     { key: 'letterhead', label: 'Letterhead Generator', icon: <FileText className="h-4 w-4" />, href: '/letterhead' },
@@ -347,27 +446,135 @@ export function PortalLayoutContent({
     return navItems.filter((item) => canAccessTab(currentRole, item.key));
   }, [navItems, currentRole]);
 
+  useEffect(() => {
+    if (!commandOpen) return;
+
+    let cancelled = false;
+    const cached = getPortalCache();
+    if (cached) setSearchData(cached);
+
+    setIsSearchLoading(!cached);
+    fetchAllPortalData()
+      .then((data) => {
+        if (!cancelled) setSearchData(data);
+      })
+      .catch(() => {
+        // Keep any cached records available rather than replacing them with an error state.
+      })
+      .finally(() => {
+        if (!cancelled) setIsSearchLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [commandOpen]);
+
+  const globalSearchRecords = useMemo<GlobalSearchRecord[]>(() => {
+    if (!searchData) return [];
+
+    const records: GlobalSearchRecord[] = [];
+    const canSearch = (tab: string) => canAccessTab(currentRole, tab);
+    const add = (record: Omit<GlobalSearchRecord, 'searchableText'>, terms: Array<unknown>) => {
+      records.push({ ...record, searchableText: searchText([record.title, record.details, ...terms]).toLowerCase() });
+    };
+
+    if (canSearch('crm')) {
+      searchData.clients.forEach((client) => {
+        const details = recordDetails([
+          ['Contact', client.contact_name], ['Email', client.contact_email], ['Phone', client.phone],
+          ['Address', client.address], ['Destination', client.destination_port], ['Products', client.products_dealing], ['Status', client.lifecycle_status]
+        ]);
+        add({ id: `buyer-${client.id}`, type: 'Buyer', title: client.company_name || 'Unnamed buyer', details, href: '/crm', tab: 'crm', icon: <Users className="h-4 w-4" /> }, Object.values(client));
+      });
+      searchData.leads.forEach((lead) => {
+        const details = recordDetails([
+          ['Contact', lead.contact_name], ['Email', lead.contact_email], ['Phone', lead.phone], ['Country', lead.country],
+          ['Product', lead.product_interest], ['Stage', lead.stage], ['Owner', lead.owner], ['Notes', lead.notes]
+        ]);
+        add({ id: `lead-${lead.id}`, type: 'CRM lead', title: lead.company_name || 'Unnamed lead', details, href: '/crm', tab: 'crm', icon: <Target className="h-4 w-4" /> }, Object.values(lead));
+      });
+      searchData.inquiries.forEach((inquiry) => {
+        const details = recordDetails([
+          ['Inquiry', inquiry.inquiry_number], ['Contact', inquiry.contact_person], ['Email', inquiry.contact_email], ['WhatsApp', inquiry.whatsapp_number],
+          ['Country', inquiry.country], ['Product', inquiry.product_name], ['Destination', inquiry.destination_port], ['Stage', inquiry.stage], ['Salesperson', inquiry.salesperson]
+        ]);
+        add({ id: `inquiry-${inquiry.id}`, type: 'Inquiry', title: inquiry.buyer_company || inquiry.inquiry_number, details, href: '/crm', tab: 'crm', icon: <KanbanSquare className="h-4 w-4" /> }, Object.values(inquiry));
+      });
+    }
+
+    if (canSearch('vendors')) {
+      searchData.vendors.forEach((vendor) => {
+        const details = recordDetails([
+          ['Contact', vendor.contact_name], ['Email', vendor.contact_email], ['Phone', vendor.phone], ['Address', vendor.address],
+          ['Location', [vendor.city, vendor.state, vendor.country].filter(Boolean)], ['Products', vendor.product_categories], ['Terms', vendor.payment_terms], ['Status', vendor.status], ['Notes', vendor.notes]
+        ]);
+        add({ id: `supplier-${vendor.id}`, type: 'Supplier', title: vendor.company_name || 'Unnamed supplier', details, href: '/vendors', tab: 'vendors', icon: <Building2 className="h-4 w-4" /> }, Object.values(vendor));
+      });
+    }
+
+    if (canSearch('products')) {
+      searchData.products.forEach((product) => {
+        const details = recordDetails([
+          ['SKU', product.sku], ['Description', product.description], ['Price', product.unit_price ? `₹${product.unit_price}` : undefined],
+          ['Weight', product.weight ? `${product.weight} kg` : undefined], ['Dimensions', product.dimensions]
+        ]);
+        add({ id: `product-${product.id}`, type: 'Product', title: product.description || product.sku || 'Unnamed product', details, href: '/products', tab: 'products', icon: <Package className="h-4 w-4" /> }, Object.values(product));
+      });
+    }
+
+    if (canSearch('quotes')) {
+      searchData.quotes.forEach((quote) => {
+        const quoteWithRelations = quote as typeof quote & { client?: { company_name?: string }; items?: Array<{ sku?: string; description?: string }> };
+        const details = recordDetails([
+          ['Quote', quote.quote_number], ['Buyer', quoteWithRelations.client?.company_name], ['Origin', quote.origin_country], ['Route', [quote.loading_port, quote.destination_port].filter(Boolean)],
+          ['Incoterm', quote.incoterm], ['Mode', quote.shipment_mode], ['Terms', quote.payment_terms], ['Status', quote.status], ['Items', quoteWithRelations.items?.map((item) => item.description || item.sku)]
+        ]);
+        add({ id: `quote-${quote.id}`, type: 'Quote', title: quote.quote_number || 'Untitled quote', details, href: '/quotes', tab: 'quotes', icon: <FileCheck2 className="h-4 w-4" /> }, [Object.values(quote), quoteWithRelations.client?.company_name, quoteWithRelations.items?.flatMap((item) => [item.sku, item.description])]);
+      });
+    }
+
+    if (canSearch('accounting')) {
+      searchData.invoices.forEach((invoice) => {
+        const details = recordDetails([
+          ['Type', invoice.invoice_type], ['Amount', `${invoice.currency} ${invoice.amount}`], ['Payment', invoice.payment_status], ['Due', invoice.due_date], ['Notes', invoice.notes]
+        ]);
+        add({ id: `invoice-${invoice.id}`, type: 'Invoice', title: invoice.invoice_number || 'Untitled invoice', details, href: '/accounting', tab: 'accounting', icon: <Receipt className="h-4 w-4" /> }, Object.values(invoice));
+      });
+    }
+
+    if (canSearch('overview')) {
+      searchData.shipments.forEach((shipment) => {
+        const details = recordDetails([
+          ['Booking', shipment.booking_number], ['Vessel', shipment.vessel_name], ['Container', shipment.container_number],
+          ['Bill of lading', shipment.bl_number], ['ETD', shipment.etd], ['ETA', shipment.eta], ['Status', shipment.status], ['Notes', shipment.notes]
+        ]);
+        add({ id: `shipment-${shipment.id}`, type: 'Shipment', title: shipment.booking_number || shipment.container_number || 'Shipment record', details, href: '/overview', tab: 'overview', icon: <Database className="h-4 w-4" /> }, Object.values(shipment));
+      });
+    }
+
+    if (canSearch('teamTasks')) {
+      searchData.tasks.forEach((task) => {
+        const details = recordDetails([
+          ['Status', task.status], ['Priority', task.priority], ['Owner', task.owner], ['Due', task.due_date], ['Notes', task.notes]
+        ]);
+        add({ id: `task-${task.id}`, type: 'Task', title: task.title || 'Untitled task', details, href: '/team-tasks', tab: 'teamTasks', icon: <ClipboardList className="h-4 w-4" /> }, Object.values(task));
+      });
+    }
+
+    return records;
+  }, [currentRole, searchData]);
+
+  const matchingSearchRecords = useMemo(() => {
+    const query = commandSearch.trim().toLowerCase();
+    if (!query) return [];
+    return globalSearchRecords.filter((record) => record.searchableText.includes(query)).slice(0, 30);
+  }, [commandSearch, globalSearchRecords]);
+
   const activeNavItem = authorizedNavItems.find((item) => item.key === currentTab) || authorizedNavItems[0];
 
   const navGroups = useMemo(() => [
-    {
-      label: 'Command',
-      items: authorizedNavItems.filter((item) =>
-        ['overview', 'crm', 'quotes', 'accounting', 'templates', 'generateResponses', 'letterhead', 'teamChat'].includes(item.key)
-      )
-    },
-    {
-      label: 'Operations',
-      items: authorizedNavItems.filter((item) =>
-        ['products', 'vendors'].includes(item.key)
-      )
-    },
-    {
-      label: 'Admin',
-      items: authorizedNavItems.filter((item) =>
-        ['users'].includes(item.key)
-      )
-    }
+    { label: 'Command', items: authorizedNavItems.filter((item) => ['overview', 'crm', 'vendors', 'quotes', 'accounting', 'paymentIntelligence', 'teamTasks', 'inbox', 'templates', 'generateResponses', 'letterhead', 'teamChat'].includes(item.key)) },
+    { label: 'Operations', items: authorizedNavItems.filter((item) => ['products'].includes(item.key)) },
+    { label: 'Admin', items: authorizedNavItems.filter((item) => ['users'].includes(item.key)) }
   ], [authorizedNavItems]);
 
   const portalBuildLabel = 'Sheshaan Portal v3.4 Enterprise';
@@ -398,7 +605,7 @@ export function PortalLayoutContent({
 
         <div className={`flex min-h-screen flex-col transition-[padding] duration-200 ${isSidebarMinimized ? 'lg:pl-[76px]' : 'lg:pl-[280px]'}`}>
 
-          <header className="portal-desktop-toolbar hidden lg:flex h-[72px] items-center justify-between gap-5 border-b border-emerald-100/80 bg-white/65 px-7 backdrop-blur-xl">
+          <header className="portal-desktop-toolbar relative z-40 hidden h-[72px] items-center justify-between gap-5 border-b border-emerald-100/80 bg-white/65 px-7 backdrop-blur-xl lg:flex">
             <div className="flex min-w-0 items-center gap-5">
               <button type="button" onClick={() => router.push('/overview')} className="flex items-center gap-2.5 text-left" aria-label="Go to overview">
                 <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-white shadow-sm"><Image src="/logo.png" alt="Sheshaan Global" width={32} height={32} className="h-8 w-8 object-contain" /></div>
@@ -416,11 +623,11 @@ export function PortalLayoutContent({
                 <span><span className="block text-[9px] font-black uppercase tracking-wide text-slate-400">USD/INR</span><span className="text-sm font-black text-slate-900">₹{fxRate.toFixed(2)}</span></span>
               </button>
               <div className="relative">
-                <button type="button" onClick={() => setShowNotifications((open) => !open)} className="relative grid h-10 w-10 place-items-center rounded-full border border-emerald-100 bg-white/80 text-slate-600 shadow-sm transition hover:bg-white" aria-label="Open notifications" aria-expanded={showNotifications}><Bell className="h-4 w-4" /><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-rose-500" /></button>
+                <button type="button" onClick={() => { openNotifications(); void markNotificationsRead(); }} className="relative grid h-10 w-10 place-items-center rounded-full border border-emerald-100 bg-white/80 text-slate-600 shadow-sm transition hover:bg-white" aria-label="Open notifications" aria-expanded={showNotifications}><Bell className="h-4 w-4" />{unreadNotificationCount > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[8px] font-black text-white">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</span>}</button>
                 {showNotifications && (
-                  <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-80 rounded-2xl border border-indigo-100 bg-white/95 p-3 shadow-2xl backdrop-blur-xl animate-panel-in">
+                  <div className="absolute right-0 top-[calc(100%+10px)] z-[60] w-80 rounded-2xl border border-indigo-100 bg-white/95 p-3 shadow-2xl backdrop-blur-xl animate-panel-in">
                     <div className="flex items-center justify-between border-b border-indigo-50 pb-2"><span className="text-xs font-black text-slate-900">Notifications</span><button type="button" onClick={() => setShowNotifications(false)} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close notifications"><X className="h-3.5 w-3.5" /></button></div>
-                    <div className="mt-2 space-y-2 text-xs"><div className="flex gap-2 rounded-xl bg-emerald-50/70 p-2.5"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500"/><p className="font-semibold text-slate-700">System connected. Your CRM and trade workspaces are ready.</p></div><div className="flex gap-2 rounded-xl bg-indigo-50/70 p-2.5"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-indigo-500"/><p className="font-semibold text-slate-700">USD/INR is set to ₹{fxRate.toFixed(2)} ({fxRateSource}).</p></div></div>
+                    <div className="mt-2 max-h-80 space-y-2 overflow-y-auto text-xs">{notificationsUnavailable ? <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-center text-[11px] font-semibold leading-4 text-amber-800">Notifications are being set up. Apply the Supabase notification migration, then refresh this page.</div> : notifications.length ? notifications.map((notification) => <button type="button" key={notification.id} onClick={() => { setShowNotifications(false); router.push(notification.href || '/overview'); }} className="flex w-full gap-2 rounded-xl bg-emerald-50/70 p-2.5 text-left transition hover:bg-emerald-100"><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.kind === 'task' ? 'bg-amber-500' : notification.kind === 'message' ? 'bg-sky-500' : 'bg-emerald-500'}`}/><span><span className="block font-black text-slate-800">{notification.title}</span><span className="mt-0.5 block text-[11px] font-medium leading-4 text-slate-500">{notification.message || 'Open to view details.'}</span></span></button>) : <div className="rounded-xl bg-slate-50 p-4 text-center text-[11px] font-semibold text-slate-500">You are all caught up.</div>}</div>
                   </div>
                 )}
               </div>
@@ -461,11 +668,12 @@ export function PortalLayoutContent({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setShowNotifications((value) => !value)}
+                    onClick={() => { openNotifications(); void markNotificationsRead(); }}
                     className="portal-mobile-icon-button relative h-9 w-9 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center shadow-xs active:scale-95 transition hover:bg-slate-700 shrink-0 cursor-pointer"
                     aria-label="Open notifications"
                   >
                     <Bell className="h-4.5 w-4.5" />
+                    {unreadNotificationCount > 0 && <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[8px] font-black text-white">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</span>}
                   </button>
                 </div>
               </div>
@@ -488,14 +696,9 @@ export function PortalLayoutContent({
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="space-y-2 text-xs">
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-2.5">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500 mt-1 shrink-0" />
-                    <div>
-                      <p className="font-bold text-slate-800">System Ready</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Database synchronized and all trade workspaces live.</p>
-                    </div>
-                  </div>
+                <div className="max-h-80 space-y-2 overflow-y-auto text-xs">
+                  {notificationsUnavailable ? <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-center text-[11px] font-semibold leading-4 text-amber-800">Notifications are being set up. Apply the Supabase notification migration, then refresh this page.</div> : notifications.map((notification) => <button type="button" key={notification.id} onClick={() => { setShowNotifications(false); router.push(notification.href || '/overview'); }} className="flex w-full gap-2.5 rounded-xl bg-emerald-50 p-2.5 text-left transition hover:bg-emerald-100"><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.kind === 'task' ? 'bg-amber-500' : notification.kind === 'message' ? 'bg-sky-500' : 'bg-emerald-500'}`}/><span><span className="block font-bold text-slate-800">{notification.title}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{notification.message || 'Open to view details.'}</span></span></button>)}
+                  {!notificationsUnavailable && !notifications.length && <div className="rounded-xl bg-slate-50 p-4 text-center text-[11px] font-semibold text-slate-500">You are all caught up.</div>}
                   <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-2.5">
                     <span className="h-2 w-2 rounded-full bg-sky-500 mt-1 shrink-0" />
                     <div>
@@ -717,6 +920,14 @@ export function PortalLayoutContent({
                         {currentRole}
                       </span>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleMobileLogout()}
+                      className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 text-xs font-black text-rose-200 transition hover:bg-rose-500/20 active:scale-[0.98]"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout securely
+                    </button>
                   </div>
                 </div>
               </div>
@@ -797,7 +1008,7 @@ export function PortalLayoutContent({
       {commandOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4">
           <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs" onClick={() => setCommandOpen(false)} />
-          <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl animate-panel-in max-h-[70vh] flex flex-col z-50">
+          <div className="relative z-50 flex max-h-[76vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl animate-panel-in">
             <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
               <Search className="h-5 w-5 text-slate-400 shrink-0" />
               <input
@@ -805,7 +1016,7 @@ export function PortalLayoutContent({
                 autoFocus
                 value={commandSearch}
                 onChange={(e) => setCommandSearch(e.target.value)}
-                placeholder="Type a workspace, action, or record..."
+                placeholder="Search any buyer, supplier, product, quote, contact, phone, email, route, or record detail..."
                 className="w-full text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none"
               />
               <button
@@ -817,7 +1028,46 @@ export function PortalLayoutContent({
               </button>
             </div>
 
-            <div className="mt-3 overflow-y-auto flex-1 space-y-3 text-xs">
+            <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1 text-xs">
+              {commandSearch.trim() && (
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Record results</p>
+                    {isSearchLoading && <span className="text-[10px] font-semibold text-slate-400">Loading records…</span>}
+                    {!isSearchLoading && <span className="text-[10px] font-semibold text-slate-400">{matchingSearchRecords.length} found</span>}
+                  </div>
+                  {matchingSearchRecords.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {matchingSearchRecords.map((record) => (
+                        <button
+                          key={record.id}
+                          type="button"
+                          onClick={() => {
+                            router.push(record.href);
+                            setCommandOpen(false);
+                            setCommandSearch('');
+                          }}
+                          className="flex w-full items-start gap-3 rounded-xl border border-slate-100 bg-white p-3 text-left transition hover:border-emerald-200 hover:bg-emerald-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                        >
+                          <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700">{record.icon}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              <span className="font-extrabold text-slate-900">{record.title}</span>
+                              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-slate-500">{record.type}</span>
+                            </span>
+                            <span className="mt-1 block break-words text-[11px] leading-4 text-slate-600">{record.details || 'Open the workspace to view this record.'}</span>
+                          </span>
+                          <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : !isSearchLoading ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-[11px] font-semibold text-slate-500">
+                      No records match “{commandSearch.trim()}”. Try a supplier contact, email, phone, product, route, or reference number.
+                    </div>
+                  ) : null}
+                </div>
+              )}
               {/* Navigation Options */}
               <div>
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">

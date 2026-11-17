@@ -8,7 +8,9 @@ const config = [
       'node_modules/**',
       'output/**',
       'outputs/**',
-      'tmp/**'
+      'tmp/**',
+      // Reference template archive; it is not part of the Next.js portal.
+      'v29 (1)/**'
     ]
   },
   ...nextVitals,

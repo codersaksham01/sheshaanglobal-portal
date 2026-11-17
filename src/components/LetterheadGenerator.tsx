@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useState, useRef } from 'react';
-import { 
+import React, { useMemo, useRef, useState } from 'react';
+import {
   User, 
   Mail, 
   Phone, 
@@ -11,8 +11,44 @@ import {
   ChevronDown, 
   RefreshCw,
   Printer,
-  FileCheck
+  FileCheck,
+  Plus,
+  Trash2,
+  SlidersHorizontal,
+  Type
 } from 'lucide-react';
+
+const splitAtWordBoundary = (value: string, maxLength: number) => {
+  if (value.length <= maxLength) return [value, ''] as const;
+  const boundary = value.lastIndexOf(' ', maxLength);
+  const splitPoint = boundary > Math.floor(maxLength * 0.55) ? boundary : maxLength;
+  return [value.slice(0, splitPoint).trimEnd(), value.slice(splitPoint).trimStart()] as const;
+};
+
+const takeLetterPage = (value: string, maxLength: number) => {
+  if (value.length <= maxLength) return [value, ''] as const;
+  const blocks = value.split(/(\n{2,})/);
+  let page = '';
+  let remainder = '';
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if ((page + block).length <= maxLength) {
+      page += block;
+      continue;
+    }
+    if (!page) {
+      const [fit, rest] = splitAtWordBoundary(block, maxLength);
+      page = fit;
+      remainder = `${rest}${blocks.slice(index + 1).join('')}`;
+    } else {
+      remainder = blocks.slice(index).join('');
+    }
+    break;
+  }
+
+  return [page.trimEnd(), remainder.trimStart()] as const;
+};
 
 export const LetterheadGenerator: React.FC = () => {
   // 1. State for editable letterhead fields
@@ -27,6 +63,12 @@ export const LetterheadGenerator: React.FC = () => {
   const [senderName, setSenderName] = useState('Sana Zeba Bakshi');
   const [senderPosition, setSenderPosition] = useState('CEO');
   const [showSignature, setShowSignature] = useState(true);
+  const [extraPages, setExtraPages] = useState<string[]>([]);
+  const [fontFamily, setFontFamily] = useState<'serif' | 'sans' | 'georgia'>('serif');
+  const [bodyFontSize, setBodyFontSize] = useState(11.5);
+  const [bodyLineHeight, setBodyLineHeight] = useState(1.65);
+  const [pagePadding, setPagePadding] = useState(48);
+  const [showWatermark, setShowWatermark] = useState(true);
 
   // Generation status states
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -35,6 +77,33 @@ export const LetterheadGenerator: React.FC = () => {
 
   // Ref to the A4 preview element
   const previewRef = useRef<HTMLDivElement>(null);
+  const getPageElements = () => Array.from(previewRef.current?.querySelectorAll<HTMLElement>('[data-letterhead-page]') || []);
+  const bodyFont = fontFamily === 'sans' ? 'Arial, Helvetica, sans-serif' : fontFamily === 'georgia' ? 'Georgia, serif' : 'ui-serif, Georgia, Cambria, "Times New Roman", serif';
+  const letterPages = useMemo(() => {
+    const manualContinuation = extraPages.filter((page) => page.trim()).join('\n\n');
+    let remaining = [body.trim(), manualContinuation].filter(Boolean).join('\n\n') || 'Start writing letter body content...';
+    const estimatedCharactersPerLine = Math.max(52, Math.floor(650 / (bodyFontSize * 0.58)));
+    const lineHeightPx = bodyFontSize * bodyLineHeight;
+    // The first page has date, recipient and subject; the final page reserves space for approval signature and stamp.
+    const firstPageCapacity = Math.max(420, Math.floor((330 / lineHeightPx) * estimatedCharactersPerLine * 0.84));
+    const middlePageCapacity = Math.max(700, Math.floor((600 / lineHeightPx) * estimatedCharactersPerLine * 0.84));
+    const finalPageCapacity = Math.max(560, Math.floor((485 / lineHeightPx) * estimatedCharactersPerLine * 0.84));
+    const pages: string[] = [];
+    const [firstPage, afterFirst] = takeLetterPage(remaining, firstPageCapacity);
+    pages.push(firstPage);
+    remaining = afterFirst;
+
+    while (remaining) {
+      if (remaining.length <= finalPageCapacity) {
+        pages.push(remaining);
+        break;
+      }
+      const [page, rest] = takeLetterPage(remaining, middlePageCapacity);
+      pages.push(page);
+      remaining = rest;
+    }
+    return pages;
+  }, [body, extraPages, bodyFontSize, bodyLineHeight]);
 
   // 2. Clear / Reset Form to default values
   const handleReset = () => {
@@ -50,6 +119,12 @@ export const LetterheadGenerator: React.FC = () => {
       setSenderName('Sana Zeba Bakshi');
       setSenderPosition('CEO');
       setShowSignature(true);
+      setExtraPages([]);
+      setFontFamily('serif');
+      setBodyFontSize(11.5);
+      setBodyLineHeight(1.65);
+      setPagePadding(48);
+      setShowWatermark(true);
     }
   };
 
@@ -62,29 +137,18 @@ export const LetterheadGenerator: React.FC = () => {
         import('html2canvas'),
         import('jspdf')
       ]);
-      const canvas = await html2canvas(previewRef.current, {
-        scale: 3, // Ultra-high resolution capture for printing
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: 1200,
-        onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('letterhead-a4-page');
-          if (el) {
-            el.style.boxShadow = 'none';
-            el.style.margin = '0 auto';
-          }
-        }
-      });
-      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      const pages = getPageElements();
+      if (!pages.length) return;
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4'
       });
-      pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+      for (const [index, page] of pages.entries()) {
+        const canvas = await html2canvas(page, { scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 1200 });
+        if (index > 0) pdf.addPage('a4', 'portrait');
+        pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, 210, 297);
+      }
       pdf.save(`Sheshaan_Letterhead_${senderName.replace(/\s+/g, '_')}.pdf`);
     } catch (error) {
       console.error('PDF generation failed:', error);
@@ -96,11 +160,12 @@ export const LetterheadGenerator: React.FC = () => {
 
   // 4. Export PNG Handler
   const handleDownloadPNG = async () => {
-    if (!previewRef.current) return;
+    const firstPage = getPageElements()[0];
+    if (!firstPage) return;
     setGeneratingPng(true);
     try {
       const { default: html2canvas } = await import('html2canvas');
-      const canvas = await html2canvas(previewRef.current, {
+      const canvas = await html2canvas(firstPage, {
         scale: 3,
         useCORS: true,
         logging: false,
@@ -108,13 +173,6 @@ export const LetterheadGenerator: React.FC = () => {
         scrollX: 0,
         scrollY: 0,
         windowWidth: 1200,
-        onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('letterhead-a4-page');
-          if (el) {
-            el.style.boxShadow = 'none';
-            el.style.margin = '0 auto';
-          }
-        }
       });
       const link = document.createElement('a');
       link.download = `Sheshaan_Letterhead_${senderName.replace(/\s+/g, '_')}.png`;
@@ -130,11 +188,12 @@ export const LetterheadGenerator: React.FC = () => {
 
   // 5. Export JPG Handler
   const handleDownloadJPG = async () => {
-    if (!previewRef.current) return;
+    const firstPage = getPageElements()[0];
+    if (!firstPage) return;
     setGeneratingJpg(true);
     try {
       const { default: html2canvas } = await import('html2canvas');
-      const canvas = await html2canvas(previewRef.current, {
+      const canvas = await html2canvas(firstPage, {
         scale: 3,
         useCORS: true,
         logging: false,
@@ -142,13 +201,6 @@ export const LetterheadGenerator: React.FC = () => {
         scrollX: 0,
         scrollY: 0,
         windowWidth: 1200,
-        onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('letterhead-a4-page');
-          if (el) {
-            el.style.boxShadow = 'none';
-            el.style.margin = '0 auto';
-          }
-        }
       });
       const link = document.createElement('a');
       link.download = `Sheshaan_Letterhead_${senderName.replace(/\s+/g, '_')}.jpg`;
@@ -309,6 +361,34 @@ export const LetterheadGenerator: React.FC = () => {
                 Include CEO Signature
               </label>
             </div>
+
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50/55 p-3.5 space-y-3">
+              <div className="flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-emerald-700"/><h5 className="text-[11px] font-black uppercase tracking-wider text-emerald-900">Page & typography</h5></div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">Font family
+                  <select value={fontFamily} onChange={(event) => setFontFamily(event.target.value as typeof fontFamily)} className="mt-1.5 h-9 w-full rounded-lg border border-emerald-100 bg-white px-2 text-xs font-bold text-slate-700 outline-none">
+                    <option value="serif">Classic serif</option><option value="sans">Modern sans</option><option value="georgia">Georgia</option>
+                  </select>
+                </label>
+                <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">Page padding
+                  <select value={pagePadding} onChange={(event) => setPagePadding(Number(event.target.value))} className="mt-1.5 h-9 w-full rounded-lg border border-emerald-100 bg-white px-2 text-xs font-bold text-slate-700 outline-none">
+                    <option value={36}>Narrow</option><option value={48}>Standard</option><option value={60}>Wide</option>
+                  </select>
+                </label>
+              </div>
+              <label className="block text-[10px] font-black uppercase tracking-wide text-slate-600">Body font size <span className="float-right text-emerald-700">{bodyFontSize.toFixed(1)}px</span>
+                <input type="range" min="10" max="16" step="0.5" value={bodyFontSize} onChange={(event) => setBodyFontSize(Number(event.target.value))} className="mt-2 w-full accent-emerald-700"/>
+              </label>
+              <label className="block text-[10px] font-black uppercase tracking-wide text-slate-600">Line spacing <span className="float-right text-emerald-700">{bodyLineHeight.toFixed(2)}</span>
+                <input type="range" min="1.3" max="2" step="0.05" value={bodyLineHeight} onChange={(event) => setBodyLineHeight(Number(event.target.value))} className="mt-2 w-full accent-emerald-700"/>
+              </label>
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-700"><input type="checkbox" checked={showWatermark} onChange={(event) => setShowWatermark(event.target.checked)} className="h-4 w-4 rounded border-emerald-300 text-emerald-700 focus:ring-emerald-500"/>Show document watermark</label>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 p-3.5 space-y-3">
+              <div className="flex items-center justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-wider text-slate-800">Additional pages</p><p className="mt-1 text-[10px] text-slate-500">Each page is included in the PDF export.</p></div><button type="button" onClick={() => setExtraPages((pages) => [...pages, ''])} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 px-2.5 text-[10px] font-black text-white"><Plus className="h-3.5 w-3.5"/>Add page</button></div>
+              {extraPages.map((page, index) => <div key={index} className="rounded-lg border border-slate-100 bg-slate-50 p-2"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-black text-slate-500">Page {index + 2}</span><button type="button" onClick={() => setExtraPages((pages) => pages.filter((_, pageIndex) => pageIndex !== index))} className="grid h-6 w-6 place-items-center rounded text-rose-500 hover:bg-rose-50" aria-label={`Delete page ${index + 2}`}><Trash2 className="h-3.5 w-3.5"/></button></div><textarea value={page} onChange={(event) => setExtraPages((pages) => pages.map((item, pageIndex) => pageIndex === index ? event.target.value : item))} rows={5} placeholder="Continue your letter on this page…" className="w-full resize-y rounded-lg border border-slate-200 bg-white p-2 text-xs leading-relaxed text-slate-700 outline-none focus:border-emerald-400"/></div>)}
+            </div>
           </div>
 
           {/* Export Panel */}
@@ -366,13 +446,12 @@ export const LetterheadGenerator: React.FC = () => {
             <span>794px × 1123px (Print-Ready)</span>
           </div>
 
-          <div className="w-full overflow-x-auto overflow-y-auto border border-slate-200 rounded-xl p-2 sm:p-4 bg-slate-100/60 shadow-inner flex justify-start lg:justify-center max-h-[85vh] touch-pan-x scrollbar-thin">
+          <div ref={previewRef} className="w-full overflow-x-auto overflow-y-auto border border-slate-200 rounded-xl p-2 sm:p-4 bg-slate-100/60 shadow-inner flex flex-col items-start lg:items-center gap-5 max-h-[85vh] touch-pan-x scrollbar-thin">
             {/* The Locked A4 Page Container */}
             <div 
-              ref={previewRef}
-              id="letterhead-a4-page" 
+              data-letterhead-page
               className="w-[794px] h-[1123px] bg-white shadow-2xl relative flex flex-col shrink-0 text-slate-800 text-left font-serif printable-document"
-              style={{ minWidth: '794px', minHeight: '1123px' }}
+              style={{ minWidth: '794px', minHeight: '1123px', fontFamily: bodyFont }}
             >
               {/* TOP HEADER ACCENT BAND */}
               <div className="absolute top-0 left-0 right-0 h-[14px] bg-blue-900 z-10">
@@ -380,7 +459,7 @@ export const LetterheadGenerator: React.FC = () => {
               </div>
 
               {/* HEADER AREA */}
-              <div className="px-12 pt-12 pb-5 flex justify-between items-start flex-none z-10 relative">
+              <div className="pt-12 pb-5 flex justify-between items-start flex-none z-10 relative" style={{ paddingLeft: pagePadding, paddingRight: pagePadding }}>
                 {/* Logo and Brand Text */}
                 <div className="flex items-center gap-4">
                   {/* Sheshaan Logo Container */}
@@ -449,16 +528,16 @@ export const LetterheadGenerator: React.FC = () => {
               </div>
 
               {/* Header Divider Line */}
-              <div className="px-12 flex-none select-none relative z-10">
+              <div className="flex-none select-none relative z-10" style={{ paddingLeft: pagePadding, paddingRight: pagePadding }}>
                 <div className="relative w-full h-[2.5px] bg-blue-900">
                   <div className="absolute right-0 top-0 h-full w-[28%] bg-orange-500" />
                 </div>
               </div>
 
               {/* BODY AREA */}
-              <div className="px-12 py-10 flex-1 relative flex flex-col z-0">
+              <div className="py-10 flex-1 relative flex flex-col z-0" style={{ paddingLeft: pagePadding, paddingRight: pagePadding }}>
                 {/* 1. Dotted World Map Watermark in Center */}
-                <div className="absolute inset-0 flex items-center justify-center p-12 pointer-events-none select-none z-0">
+                {showWatermark && <div className="absolute inset-0 flex items-center justify-center p-12 pointer-events-none select-none z-0">
                   <svg viewBox="0 0 1000 500" className="w-[85%] h-auto opacity-[0.035]">
                     {/* North America */}
                     <path d="M 120 150 C 100 120, 60 110, 40 130 C 20 150, 30 190, 50 220 C 70 250, 90 240, 110 240 C 130 240, 160 220, 180 190 C 200 160, 220 170, 240 150 C 260 130, 260 90, 240 80 C 220 70, 160 70, 120 150 Z" fill="#1d4ed8" />
@@ -474,7 +553,7 @@ export const LetterheadGenerator: React.FC = () => {
                     {/* Australia */}
                     <path d="M 760 330 C 740 340, 730 370, 750 390 C 770 410, 810 410, 830 390 C 850 370, 840 340, 810 320 C 780 310, 770 320, 760 330 Z" fill="#1d4ed8" />
                   </svg>
-                </div>
+                </div>}
 
                 {/* 2. Abstract Swoop watermark bottom-right */}
                 <div className="absolute -bottom-20 -right-20 w-[350px] h-[350px] opacity-[0.035] pointer-events-none select-none z-0 rotate-45">
@@ -495,7 +574,7 @@ export const LetterheadGenerator: React.FC = () => {
                     </div>
 
                     {toAddress && (
-                      <div className="text-[11.5px] text-slate-700 font-bold mb-6 leading-relaxed whitespace-pre-line text-left">
+                    <div className="text-slate-700 font-bold mb-6 whitespace-pre-line text-left" style={{ fontSize: `${bodyFontSize}px`, lineHeight: bodyLineHeight }}>
                         {toAddress}
                       </div>
                     )}
@@ -507,13 +586,13 @@ export const LetterheadGenerator: React.FC = () => {
                     )}
 
                     {/* Letter Body paragraphs */}
-                    <div className="text-[11.5px] text-slate-700 leading-relaxed space-y-4 whitespace-pre-line text-justify pr-2">
-                      {body || 'Start writing letter body content...'}
+                    <div className="text-slate-700 whitespace-pre-line text-justify pr-2" style={{ fontSize: `${bodyFontSize}px`, lineHeight: bodyLineHeight, whiteSpace: 'pre-line' }}>
+                      {letterPages[0]}
                     </div>
                   </div>
 
                   {/* Sign-off details block */}
-                  <div className="mt-8 text-left self-start relative">
+                  {letterPages.length === 1 && <div className="mt-8 text-left self-start relative">
                     <p className="text-[11.5px] text-slate-600 mb-1.5">Yours sincerely,</p>
                     
                     {/* CEO Signature & Official Rubber Stamp Side-by-Side */}
@@ -542,19 +621,19 @@ export const LetterheadGenerator: React.FC = () => {
                     <p className="text-[12px] font-black text-slate-900 leading-none mt-1">{senderName || 'Sana Zeba Bakshi'}</p>
                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1.5">{senderPosition || 'CEO'}</p>
                     <p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5 select-none">Sheshaan Global</p>
-                  </div>
+                  </div>}
                 </div>
               </div>
 
               {/* FOOTER DIVIDER LINE */}
-              <div className="px-12 flex-none select-none relative z-10">
+              <div className="flex-none select-none relative z-10" style={{ paddingLeft: pagePadding, paddingRight: pagePadding }}>
                 <div className="relative w-full h-[2px] bg-blue-900">
                   <div className="absolute right-0 top-0 h-full w-[35%] bg-orange-500" />
                 </div>
               </div>
 
               {/* FOOTER DETAILS */}
-              <div className="px-12 py-3 flex items-center justify-between flex-none z-10 relative select-none" style={{ fontFamily: 'sans-serif' }}>
+              <div className="py-3 flex items-center justify-between flex-none z-10 relative select-none" style={{ fontFamily: 'sans-serif', paddingLeft: pagePadding, paddingRight: pagePadding }}>
                 {/* Office Address */}
                 <div className="flex items-start gap-2.5 max-w-[65%]">
                   <div className="h-6 w-6 rounded-full bg-blue-900 flex items-center justify-center text-white shrink-0 shadow-sm mt-0.5">
@@ -596,6 +675,23 @@ export const LetterheadGenerator: React.FC = () => {
                 <div className="absolute right-0 top-0 h-full w-28 bg-orange-500 -skew-x-[28deg] translate-x-5" />
               </div>
             </div>
+            {letterPages.slice(1).map((page, index) => {
+              const pageNumber = index + 2;
+              const isFinalPage = pageNumber === letterPages.length;
+              return <div key={`${pageNumber}-${page.slice(0, 24)}`} data-letterhead-page className="w-[794px] h-[1123px] bg-white shadow-2xl relative flex flex-col shrink-0 text-slate-800 text-left printable-document" style={{ minWidth: '794px', minHeight: '1123px', fontFamily: bodyFont }}>
+              <div className="h-[14px] bg-blue-900 relative flex-none"><div className="absolute right-0 inset-y-0 w-[45%] bg-orange-500" style={{ clipPath: 'polygon(15px 0, 100% 0, 100% 100%, 0 100%)' }} /></div>
+              <header className="pt-12 pb-5 flex items-center justify-between" style={{ paddingLeft: pagePadding, paddingRight: pagePadding }}><div className="flex items-center gap-4"><img src="/logo.jpg" alt="Sheshaan Global Logo" className="h-14 w-auto object-contain"/><div><p className="text-[22px] font-black leading-none tracking-tight text-blue-900" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>SHESHAAN</p><p className="mt-1 text-[11px] font-black tracking-[.25em] text-orange-500" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>GLOBAL</p><p className="mt-1 text-[6px] font-bold tracking-[.18em] text-slate-400" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>CONTINUED CORRESPONDENCE</p></div></div><p className="text-[10px] font-bold text-slate-500">Page {pageNumber} of {letterPages.length}</p></header>
+              <div className="h-[2.5px] bg-blue-900 mx-0" style={{ marginLeft: pagePadding, marginRight: pagePadding }}><span className="float-right h-full w-[28%] bg-orange-500"/></div>
+              <main className="flex-1 py-10 relative flex flex-col" style={{ paddingLeft: pagePadding, paddingRight: pagePadding }}>
+                {showWatermark && <div className="absolute inset-0 grid place-items-center pointer-events-none opacity-[.035]"><FileText className="h-72 w-72 text-blue-900"/></div>}
+                <p className="relative z-10 whitespace-pre-line text-justify text-slate-700" style={{ fontSize: `${bodyFontSize}px`, lineHeight: bodyLineHeight }}>{page || 'Continue your letter on this page.'}</p>
+                {isFinalPage && <div className="relative z-10 mt-auto pt-8 text-left"><p className="text-[11.5px] text-slate-600 mb-1.5">Yours sincerely,</p><div className="flex items-center gap-6 my-2 select-none">{showSignature ? <div className="h-14 relative flex items-center"><img src="/signature.png" alt="CEO Signature" className="h-14 w-auto object-contain select-none" /></div> : <div className="h-10 w-28 border-b border-dashed border-slate-400" />}<div className="relative flex items-center"><img src="/stamp.png" alt="Official Sheshaan Stamp" className="h-12 w-auto object-contain opacity-[0.93] -rotate-[1.5deg]" /></div></div><p className="text-[12px] font-black text-slate-900 leading-none mt-1">{senderName || 'Sana Zeba Bakshi'}</p><p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1.5">{senderPosition || 'CEO'}</p><p className="text-[9px] font-bold text-slate-400 uppercase mt-0.5 select-none">Sheshaan Global</p></div>}
+              </main>
+              <div className="h-[2px] bg-blue-900" style={{ marginLeft: pagePadding, marginRight: pagePadding }}><span className="float-right h-full w-[35%] bg-orange-500"/></div>
+              <footer className="py-4 flex items-center justify-between text-[8px] font-bold text-slate-500" style={{ paddingLeft: pagePadding, paddingRight: pagePadding }}><span>SHESHAAN GLOBAL · Connecting Markets, Delivering Trust</span><span>Page {index + 2}</span></footer>
+              <div className="relative h-8 bg-blue-900 flex-none overflow-hidden"><div className="absolute left-0 top-0 h-full w-9 bg-orange-500 -skew-x-[28deg] -translate-x-3.5"/><div className="absolute right-0 top-0 h-full w-28 bg-orange-500 -skew-x-[28deg] translate-x-5"/></div>
+            </div>;
+            })}
           </div>
         </div>
       </div>

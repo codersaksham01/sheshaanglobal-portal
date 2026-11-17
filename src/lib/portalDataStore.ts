@@ -61,11 +61,18 @@ export const TAB_ROUTES: Record<string, string> = {
   vendors: '/vendors',
   users: '/users',
   teamChat: '/team-chat',
+  teamTasks: '/team-tasks',
+  paymentIntelligence: '/payment-intelligence',
+  inbox: '/inbox',
   profile: '/profile'
 };
 
 let memoryCache: PortalDataCache | null = null;
 let inFlightFetch: Promise<PortalDataCache> | null = null;
+// A portal refresh previously re-read every collection every 30 seconds. Keep a
+// shared snapshot longer; individual workspaces refresh their own records after
+// a mutation.
+const portalCacheTTL = 5 * 60_000;
 
 export function hasCachedData(): boolean {
   if (memoryCache !== null && memoryCache.lastFetched > 0 && (memoryCache.quotes.length > 0 || memoryCache.products.length > 0 || memoryCache.leads.length > 0)) {
@@ -140,8 +147,8 @@ export async function fetchAllPortalData(options?: { force?: boolean }): Promise
     memoryCache &&
     (memoryCache.quotes.length > 0 || memoryCache.products.length > 0 || memoryCache.leads.length > 0)
   );
-  // If fresh cache with actual data exists within 30s and not forced, return immediately (0ms)
-  if (!force && memoryCache && hasFullData && Date.now() - memoryCache.lastFetched < 30000) {
+  // If fresh cache with actual data exists, return immediately (0ms).
+  if (!force && memoryCache && hasFullData && Date.now() - memoryCache.lastFetched < portalCacheTTL) {
     return memoryCache;
   }
   // Deduplicate concurrent fetch calls
@@ -197,28 +204,31 @@ export async function fetchAllPortalData(options?: { force?: boolean }): Promise
       }
 
       if (!usedBatch) {
+        // The overview needs a current operational snapshot, not an unlimited
+        // export of every Firestore collection. These hard caps avoid a single
+        // page load consuming thousands of document reads.
         const results = await Promise.all([
-          supabase.from('quotes').select('*, client:clients(*), items:quote_items(*)').order('created_at', { ascending: false }),
-          supabase.from('clients').select('*').order('company_name'),
-          supabase.from('vendors').select('*').order('company_name'),
-          supabase.from('products').select('*').order('sku'),
-          supabase.from('freight_presets').select('*').order('name'),
-          supabase.from('leads').select('*').order('updated_at', { ascending: false }),
-          supabase.from('inquiries').select('*').order('updated_at', { ascending: false }),
-          supabase.from('inquiry_quotations').select('*').order('created_at', { ascending: false }),
-          supabase.from('inquiry_follow_ups').select('*').order('follow_up_date', { ascending: true }),
-          supabase.from('activities').select('*').order('activity_date', { ascending: false }),
-          supabase.from('freight_rate_history').select('*').order('effective_date', { ascending: false }),
-          supabase.from('invoices').select('*').order('created_at', { ascending: false }),
-          supabase.from('shipments').select('*').order('updated_at', { ascending: false }),
-          supabase.from('document_checklists').select('*').order('updated_at', { ascending: false }),
-          supabase.from('tasks').select('*').order('due_date', { ascending: true }),
-          supabase.from('message_templates').select('*').order('name'),
-          supabase.from('blogs').select('*').order('updated_at', { ascending: false }),
-          supabase.from('app_users').select('*').order('name'),
-          supabase.from('activity_logs').select('*').order('created_at', { ascending: false }),
-          supabase.from('team_messages').select('*').order('created_at', { ascending: false }),
-          supabase.from('accounting_transactions').select('*').order('transaction_date', { ascending: false })
+          supabase.from('quotes').select('*, client:clients(*), items:quote_items(*)').limit(150).order('created_at', { ascending: false }),
+          supabase.from('clients').select('*').limit(500).order('company_name'),
+          supabase.from('vendors').select('*').limit(300).order('company_name'),
+          supabase.from('products').select('*').limit(500).order('sku'),
+          supabase.from('freight_presets').select('*').limit(200).order('name'),
+          supabase.from('leads').select('*').limit(500).order('updated_at', { ascending: false }),
+          supabase.from('inquiries').select('*').limit(200).order('updated_at', { ascending: false }),
+          supabase.from('inquiry_quotations').select('*').limit(250).order('created_at', { ascending: false }),
+          supabase.from('inquiry_follow_ups').select('*').limit(250).order('follow_up_date', { ascending: true }),
+          supabase.from('activities').select('*').limit(200).order('activity_date', { ascending: false }),
+          supabase.from('freight_rate_history').select('*').limit(200).order('effective_date', { ascending: false }),
+          supabase.from('invoices').select('*').limit(250).order('created_at', { ascending: false }),
+          supabase.from('shipments').select('*').limit(250).order('updated_at', { ascending: false }),
+          supabase.from('document_checklists').select('*').limit(300).order('updated_at', { ascending: false }),
+          supabase.from('tasks').select('*').limit(300).order('due_date', { ascending: true }),
+          supabase.from('message_templates').select('*').limit(150).order('name'),
+          supabase.from('blogs').select('*').limit(80).order('updated_at', { ascending: false }),
+          supabase.from('app_users').select('*').limit(100).order('name'),
+          supabase.from('activity_logs').select('*').limit(100).order('created_at', { ascending: false }),
+          supabase.from('team_messages').select('*').limit(150).order('created_at', { ascending: false }),
+          supabase.from('accounting_transactions').select('*').limit(250).order('transaction_date', { ascending: false })
         ]);
         qData = results[0].data || [];
         cData = results[1].data || [];
