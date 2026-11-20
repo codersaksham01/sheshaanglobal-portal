@@ -4,7 +4,7 @@ import { firebaseApp, isFirebaseConfigured } from './firebaseClient';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const portalTables = ['clients', 'vendors', 'supplier_agreements', 'products', 'freight_presets', 'quotes', 'quote_items', 'blogs', 'leads', 'inquiries', 'inquiry_quotations', 'inquiry_follow_ups', 'inquiry_attachments', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users', 'activity_logs', 'team_messages', 'accounting_transactions', 'mailbox_messages', 'portal_notifications'] as const;
+const portalTables = ['clients', 'vendors', 'supplier_agreements', 'products', 'freight_presets', 'quotes', 'quote_items', 'quote_versions', 'blogs', 'leads', 'inquiries', 'inquiry_quotations', 'inquiry_follow_ups', 'inquiry_attachments', 'activities', 'freight_rate_history', 'invoices', 'shipments', 'document_checklists', 'tasks', 'message_templates', 'app_users', 'activity_logs', 'team_messages', 'accounting_transactions', 'mailbox_messages', 'portal_notifications'] as const;
 const errorMessage = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback;
 const localDbStorageKey = 'crixy_portal_db';
 const maxLocalDbCacheBytes = 1_500_000;
@@ -219,6 +219,21 @@ class ServerFileDB {
               const nextPromise = currentPromise.then(data => data.filter((r: any) => r[col] !== val));
               return createQueryChain(nextPromise);
             },
+            is: (col: string, val: any) => {
+              const nextPromise = currentPromise.then(data => data.filter((r: any) => r[col] === val));
+              return createQueryChain(nextPromise);
+            },
+            not: (col: string, operator: string, val: any) => {
+              const nextPromise = currentPromise.then(data => {
+                if (operator === 'is') return data.filter((r: any) => r[col] !== val);
+                return data.filter((r: any) => r[col] !== val);
+              });
+              return createQueryChain(nextPromise);
+            },
+            lte: (col: string, val: any) => {
+              const nextPromise = currentPromise.then(data => data.filter((r: any) => r[col] != null && r[col] <= val));
+              return createQueryChain(nextPromise);
+            },
             in: (col: string, valArray: any[]) => {
               const nextPromise = currentPromise.then(data => data.filter((r: any) => valArray.includes(r[col])));
               return createQueryChain(nextPromise);
@@ -231,6 +246,13 @@ class ServerFileDB {
               const singlePromise = currentPromise.then(data => ({
                 data: data[0] || null,
                 error: data[0] ? null : { message: 'Not found' }
+              }));
+              return makeChainPromise(singlePromise);
+            },
+            maybeSingle: () => {
+              const singlePromise = currentPromise.then(data => ({
+                data: data[0] || null,
+                error: null
               }));
               return makeChainPromise(singlePromise);
             }
@@ -392,7 +414,14 @@ class ServerFileDB {
                 return { data: updatedRecords, error: { message: error instanceof Error ? error.message : `Could not update ${table}` } };
               }
             })();
-            return makeChainPromise(updatePromise);
+            return makeChainPromise(updatePromise, {
+              select: () => makeChainPromise(updatePromise, {
+                single: () => makeChainPromise(updatePromise.then(res => ({
+                  data: res.data?.[0] || null,
+                  error: res.error || null
+                })))
+              })
+            });
           }
         };
       },
@@ -606,35 +635,39 @@ class FirebaseDB {
     };
 
     return {
-      select: () => {
-        const makeSelectChain = (options?: { maxRecords?: number; orderColumn?: string; ascending?: boolean }) => {
-          const fetchPromise = this.fetchTable(table, options);
-          const basePromise = fetchPromise.then(data => ({ data, error: null }));
+      select: (_columns: string = '*', selectOptions?: { count?: 'exact'; head?: boolean }) => {
+        // Apply filters locally so every chain used by the portal works the
+        // same way when Firebase is selected instead of Supabase.
+        const makeSelectChain = (dataPromise: Promise<any[]>) => {
+          const response = dataPromise.then(data => ({
+            data: selectOptions?.head ? [] : data,
+            count: selectOptions?.count ? data.length : undefined,
+            error: null
+          }));
+          const single = (allowEmpty: boolean) => makeChainPromise(dataPromise.then(data => ({
+            data: data[0] || null,
+            error: data[0] || allowEmpty ? null : { message: 'Not found' }
+          })));
+          const filter = (predicate: (record: any) => boolean) => makeSelectChain(dataPromise.then(data => data.filter(predicate)));
 
-          return makeChainPromise(basePromise, {
-            // Use this before order(): .select('*').limit(200).order(...).
-            // It maps to a native Firestore limit instead of trimming after a full scan.
-            limit: (count: number) => makeSelectChain({ ...options, maxRecords: Math.max(1, Math.floor(count)) }),
-            order: (col: string, { ascending = true } = {}) => makeChainPromise(
-              this.fetchTable(table, { ...options, orderColumn: col, ascending }).then(data => ({ data, error: null }))
-            ),
-            eq: (col: string, val: any) => {
-              const eqPromise = fetchPromise.then(data => ({
-                data: data.filter((r: any) => r[col] === val),
-                error: null
-              }));
-
-              return makeChainPromise(eqPromise, {
-                single: () => makeChainPromise(eqPromise.then(res => ({
-                  data: res.data[0] || null,
-                  error: res.data[0] ? null : { message: 'Not found' }
-                })))
-              });
-            }
+          return makeChainPromise(response, {
+            order: (col: string, { ascending = true } = {}) => makeSelectChain(dataPromise.then(data => [...data].sort((a: any, b: any) => {
+              if (a[col] < b[col]) return ascending ? -1 : 1;
+              if (a[col] > b[col]) return ascending ? 1 : -1;
+              return 0;
+            }))),
+            limit: (count: number) => makeSelectChain(dataPromise.then(data => data.slice(0, Math.max(0, Math.floor(count))))),
+            eq: (col: string, val: any) => filter((record) => record[col] === val),
+            neq: (col: string, val: any) => filter((record) => record[col] !== val),
+            is: (col: string, val: any) => filter((record) => record[col] === val),
+            not: (col: string, _operator: string, val: any) => filter((record) => record[col] !== val),
+            lte: (col: string, val: any) => filter((record) => record[col] != null && record[col] <= val),
+            single: () => single(false),
+            maybeSingle: () => single(true)
           });
         };
 
-        return makeSelectChain();
+        return makeSelectChain(this.fetchTable(table));
       },
       insert: (values: any) => {
         const insertPromise = writeRecords(values);
@@ -644,8 +677,23 @@ class FirebaseDB {
           })
         });
       },
+      // Keep the Firebase fallback compatible with the Supabase client used by
+      // the rest of the portal. Firestore's merge write has upsert semantics,
+      // and `writeRecords` preserves the record id while updating timestamps.
+      upsert: (values: any, _options?: any) => {
+        const upsertPromise = writeRecords(values);
+        return makeChainPromise(upsertPromise, {
+          select: () => makeChainPromise(upsertPromise, {
+            single: () => makeChainPromise(upsertPromise.then(res => ({
+              data: res.data[0] || null,
+              error: res.error || null
+            })))
+          })
+        });
+      },
       update: (values: any) => ({
-        eq: (col: string, val: any) => makeChainPromise((async () => {
+        eq: (col: string, val: any) => {
+          const updatePromise = (async () => {
           try {
             const data = await this.fetchRawTable(table);
             const matches = data.filter((r: any) => r[col] === val);
@@ -656,7 +704,16 @@ class FirebaseDB {
           } catch (error) {
             return { data: [], error: { message: errorMessage(error, `Could not update ${table} in Firebase.`) } };
           }
-        })())
+          })();
+          return makeChainPromise(updatePromise, {
+            select: () => makeChainPromise(updatePromise, {
+              single: () => makeChainPromise(updatePromise.then(res => ({
+                data: res.data?.[0] || null,
+                error: res.error || null
+              })))
+            })
+          });
+        }
       }),
       delete: () => ({
         eq: (col: string, val: any) => makeChainPromise((async () => {

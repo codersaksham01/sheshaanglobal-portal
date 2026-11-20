@@ -18,6 +18,7 @@ const emptyDB = {
   freight_presets: [],
   quotes: [],
   quote_items: [],
+  quote_versions: [],
   blogs: [],
   leads: [],
   inquiries: [],
