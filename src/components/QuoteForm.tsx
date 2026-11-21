@@ -447,6 +447,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
   const [showSignatureBlock, setShowSignatureBlock] = useState(true);
   const [showCeoSignature, setShowCeoSignature] = useState(true);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingExcel, setDownloadingExcel] = useState(false);
   const [showOriginCharges, setShowOriginCharges] = useState(true);
   const [showOceanFreight, setShowOceanFreight] = useState(true);
   const [showInsuranceCharge, setShowInsuranceCharge] = useState(true);
@@ -1925,6 +1926,7 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     packing_list: 'Packing List'
   };
   const pdfFileName = `${quoteNumber || 'export-document'}-${previewDocType}.pdf`.replace(/[^a-z0-9_.-]/gi, '-');
+  const excelFileName = `${quoteNumber || 'quotation'}-quotation.xlsx`.replace(/[^a-z0-9_.-]/gi, '-');
   const downloadButtonClass = 'inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded shadow transition min-h-9';
 
   const handleDownloadPDF = async () => {
@@ -1951,6 +1953,111 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
       alert('Unable to generate PDF. Please ensure all product quantities and prices are valid numbers.');
     } finally {
       setDownloadingPdf(false);
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    if (downloadingExcel) return;
+    setDownloadingExcel(true);
+
+    try {
+      const XLSX = await import('xlsx');
+      const currencyFormat = currency === 'INR' ? '₹#,##0.00' : '$#,##0.00';
+      const rows: Array<Array<string | number>> = [
+        [`Quotation: ${quoteNumber || 'Draft quotation'}`],
+        ['Status', status],
+        ['Date', new Date().toLocaleDateString('en-CA')],
+        [],
+        ['Buyer details'],
+        ['Company', currentClient?.company_name || ''],
+        ['Contact', currentClient?.contact_name || ''],
+        ['Email', currentClient?.contact_email || ''],
+        ['Address', currentClient?.address || ''],
+        [],
+        ['Shipment & terms'],
+        ['Currency', currency],
+        ['Incoterm', incoterm],
+        ['Origin country', originCountry],
+        ['Loading port', loadingPort],
+        ['Destination port', destinationPort || currentClient?.destination_port || ''],
+        ['Shipment mode', shipmentMode],
+        ['Payment terms', paymentTerms],
+        ['Validity (days)', validityDays ? Number(validityDays) : ''],
+        [],
+        ['Line items'],
+        ['#', 'SKU', 'Description', 'Pricing basis', 'Quantity', 'Unit', 'Unit weight (kg)', `Unit price (${currency})`, `Line total (${currency})`]
+      ];
+
+      const lineItemStartRow = rows.length + 1;
+      lineItems.forEach((item, index) => {
+        const isPackagePricing = getItemPricingBasis(item) === 'package';
+        rows.push([
+          index + 1,
+          item.sku || '',
+          item.description || '',
+          isPackagePricing ? 'Per package' : 'Per kg',
+          isPackagePricing ? getItemPackageQuantity(item) : Number(item.quantity || 0),
+          isPackagePricing ? 'package' : 'kg',
+          isPackagePricing ? getItemPackageWeight(item) : Number(item.weight || 0),
+          isPackagePricing ? Number(item.package_unit_price || 0) : Number(item.unit_price || 0),
+          getItemSellTotal(item)
+        ]);
+      });
+      const lineItemEndRow = rows.length;
+
+      rows.push(
+        [],
+        ['Charge summary'],
+        [`Product total (${currency})`, lineItems.reduce((total, item) => total + getItemSellTotal(item), 0)],
+        ['Export packaging', Number(packagingCost || 0)],
+        ['Inland haulage', Number(inlandHaulageCost || 0)],
+        ['Customs clearance', Number(customsClearanceCost || 0)],
+        [freightLabels.transportType, Number(freightCost || 0)],
+        [freightLabels.insuranceLabel, Number(insuranceCost || 0)],
+        [`Grand total (${currency})`, 0],
+        [],
+        ['Notes', commercialNote || '']
+      );
+
+      const worksheet = XLSX.utils.aoa_to_sheet(rows);
+      const productTotalRow = lineItemEndRow + 3;
+      const grandTotalRow = productTotalRow + 6;
+      const productTotalFormula = lineItems.length
+        ? `SUM(I${lineItemStartRow}:I${lineItemEndRow})`
+        : '0';
+
+      lineItems.forEach((_, index) => {
+        const row = lineItemStartRow + index;
+        worksheet[`I${row}`] = { t: 'n', f: `E${row}*H${row}`, z: currencyFormat };
+        worksheet[`H${row}`] = { ...worksheet[`H${row}`], z: currencyFormat };
+      });
+      worksheet[`B${productTotalRow}`] = { t: 'n', f: productTotalFormula, z: currencyFormat };
+      for (let row = productTotalRow + 1; row <= grandTotalRow; row += 1) {
+        worksheet[`B${row}`] = { ...worksheet[`B${row}`], z: currencyFormat };
+      }
+      worksheet[`B${grandTotalRow}`] = {
+        t: 'n',
+        f: `SUM(B${productTotalRow}:B${grandTotalRow - 1})`,
+        z: currencyFormat
+      };
+      worksheet['!cols'] = [
+        { wch: 8 }, { wch: 20 }, { wch: 38 }, { wch: 16 }, { wch: 14 },
+        { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 20 }
+      ];
+      worksheet['!merges'] = [
+        XLSX.utils.decode_range('A1:I1'),
+        XLSX.utils.decode_range('A21:I21'),
+        XLSX.utils.decode_range(`A${productTotalRow - 1}:I${productTotalRow - 1}`)
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Quotation');
+      XLSX.writeFile(workbook, excelFileName, { compression: true });
+    } catch (err) {
+      console.error('Error exporting quotation to Excel:', err);
+      alert('Unable to export the quotation to Excel. Please try again.');
+    } finally {
+      setDownloadingExcel(false);
     }
   };
 
@@ -1999,15 +2106,26 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
             <span className="hidden sm:inline">{showPreview ? 'Hide Live PDF Preview' : 'Show Live PDF Preview'}</span>
           </button>
           {isMounted && (
-            <button
-              type="button"
-              onClick={handleDownloadPDF}
-              disabled={downloadingPdf}
-              className={downloadButtonClass}
-            >
-              {downloadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleDownloadPDF}
+                disabled={downloadingPdf}
+                className={downloadButtonClass}
+              >
+                {downloadingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadExcel}
+                disabled={downloadingExcel}
+                className="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white shadow transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+              >
+                {downloadingExcel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {downloadingExcel ? 'Generating Excel...' : 'Export Excel'}
+              </button>
+            </>
           )}
           {quoteId && (
             <button
