@@ -410,6 +410,11 @@ body {
   }
 }
 
+@media (max-width: 700px) {
+  .overview-hero-ship { display: none; }
+  .overview-hero > .relative { max-width: none; }
+}
+
 .portal-orbit {
   display: none !important;
 }
@@ -588,6 +593,9 @@ body {
 .overview-hero { position: relative; overflow: hidden; min-height: 152px; color: #fff; background: linear-gradient(100deg, rgba(5,47,41,.98), rgba(7,63,53,.91) 54%, rgba(7,63,53,.67)); box-shadow: 0 14px 35px rgba(13,58,43,.12); }
 .overview-hero::after { content: ''; position: absolute; width: 34rem; height: 20rem; right: -4rem; top: -7rem; background: radial-gradient(ellipse, rgba(164,244,214,.24), transparent 67%); pointer-events: none; }
 .overview-hero::before { content: ''; position: absolute; right: 4%; bottom: -5px; width: 290px; height: 132px; opacity: .3; background: repeating-linear-gradient(0deg, transparent 0 13px, rgba(164,244,214,.42) 14px 16px), linear-gradient(155deg, transparent 32%, rgba(164,244,214,.38) 33% 56%, transparent 57%); transform: skewX(-12deg); pointer-events:none; }
+.overview-hero-ship { position: absolute; z-index: 1; right: 1.5rem; bottom: -1.35rem; width: min(46%, 460px); opacity: .9; filter: drop-shadow(0 20px 13px rgba(0,0,0,.22)); pointer-events: none; }
+.overview-hero-ship svg { display: block; width: 100%; height: auto; }
+.overview-hero > .relative { max-width: 65%; }
 .premium-card { border: 1px solid rgba(226,236,228,.85); background: rgba(255,255,255,.88); box-shadow: 0 3px 12px rgba(13,58,43,.025), 0 14px 34px rgba(13,58,43,.045); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
 
 .portal-card > :first-child:is(.border-b) {

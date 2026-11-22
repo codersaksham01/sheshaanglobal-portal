@@ -5,7 +5,6 @@ import { sessionCookieName, verifySessionToken } from '../../../lib/serverSessio
 
 const isAuthorized = (req: NextRequest) => {
   if (process.env.NODE_ENV !== 'production') return true;
-  if (!process.env.APP_LOGIN_PASSWORD) return true;
   return verifySessionToken(req.cookies.get(sessionCookieName)?.value);
 };
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -716,6 +715,20 @@ export async function POST(req: NextRequest) {
   if (action === 'clear') {
     if (!writeDB({ ...emptyDB })) {
       return NextResponse.json({ error: 'Could not clear demo data' }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'clear-crm') {
+    const crmLeadIds = new Set((db.leads || []).map((lead: any) => lead.id));
+    db.activities = (db.activities || []).filter((activity: any) => !crmLeadIds.has(activity.lead_id));
+    db.tasks = (db.tasks || []).filter((task: any) => !crmLeadIds.has(task.lead_id));
+    db.leads = [];
+
+    // Persist the complete CRM reset in one write so the local fallback cannot
+    // expose a partially-deleted pipeline to another browser request.
+    if (!writeDB(db)) {
+      return NextResponse.json({ error: 'Could not clear CRM data' }, { status: 500 });
     }
     return NextResponse.json({ success: true });
   }

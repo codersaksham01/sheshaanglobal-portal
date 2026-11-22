@@ -118,6 +118,7 @@ export function OverviewWorkspace() {
     <div className="overview-bento grid grid-cols-1 gap-4 2xl:grid-cols-12">
       <section className="grid gap-4 2xl:col-span-12 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="overview-hero rounded-[22px] border border-white/10 px-5 py-5 sm:px-7 sm:py-6">
+        <div className="overview-hero-ship" aria-hidden="true"><svg viewBox="0 0 520 240" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M36 193h446l-33 25H92L36 193Z" fill="#071e2a"/><path d="M84 177h346l52 16H36l48-16Z" fill="#0a4650"/><path d="M152 112h212v65H152z" fill="#0b3742"/><path d="M329 63h21v114h-21z" fill="#e4e8e3"/><path d="M350 71h61v105h-61z" fill="#f7f8f4"/><path d="M350 71h61v17h-61z" fill="#cdd6d2"/><path d="M115 96h45v28h-45zM164 96h45v28h-45zM213 96h45v28h-45zM115 128h45v28h-45zM164 128h45v28h-45zM213 128h45v28h-45zM262 128h45v28h-45z" fill="#cb6745"/><path d="M115 124h45v6h-45zM164 124h45v6h-45zM213 124h45v6h-45zM115 156h45v6h-45zM164 156h45v6h-45zM213 156h45v6h-45zM262 156h45v6h-45z" fill="#e7b666"/><path d="M308 126h21v50h-21z" fill="#79a9ba"/><path d="M337 52l34 17-34 7V52Z" fill="#f2b34b"/><path d="M0 219c54-9 104-9 151 0 49 9 101 9 155 0 67-11 138-8 214 6" stroke="#9ce7dc" strokeWidth="3" strokeLinecap="round" opacity=".7"/></svg></div>
         <div className="relative z-10 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <p className="text-[11px] font-bold tracking-wide text-emerald-100">TRADE INTELLIGENCE OVERVIEW</p>

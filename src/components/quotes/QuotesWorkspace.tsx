@@ -185,8 +185,10 @@ export function QuotesWorkspace() {
   const handleDeleteQuote = async (id: string) => {
     if (!confirm('Are you sure you want to permanently delete this quotation?')) return;
     try {
-      await supabase.from('quote_items').delete().eq('quote_id', id);
-      await supabase.from('quotes').delete().eq('id', id);
+      const { error: itemsError } = await supabase.from('quote_items').delete().eq('quote_id', id);
+      if (itemsError) throw itemsError;
+      const { error: quoteError } = await supabase.from('quotes').delete().eq('id', id);
+      if (quoteError) throw quoteError;
       setQuotes((prev) => prev.filter((q) => q.id !== id));
       showToast('Quotation deleted successfully.');
     } catch {
@@ -196,7 +198,8 @@ export function QuotesWorkspace() {
 
   const handleUpdateStatus = async (quoteId: string, status: Quote['status']) => {
     try {
-      await supabase.from('quotes').update({ status }).eq('id', quoteId);
+      const { error } = await supabase.from('quotes').update({ status }).eq('id', quoteId);
+      if (error) throw error;
       setQuotes((prev) => prev.map((q) => (q.id === quoteId ? { ...q, status } : q)));
       showToast(`Status updated to ${status}`);
     } catch {

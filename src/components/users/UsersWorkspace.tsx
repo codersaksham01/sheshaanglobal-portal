@@ -146,7 +146,8 @@ export function UsersWorkspace() {
         approved_by: 'Admin',
         approved_at: new Date().toISOString()
       };
-      await supabase.from('app_users').update(patch).eq('id', user.id);
+      const { error } = await supabase.from('app_users').update(patch).eq('id', user.id);
+      if (error) throw error;
       setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...patch } : u)));
       showToast(`Approved ${user.name} as ${role}.`);
     } catch {
@@ -158,7 +159,8 @@ export function UsersWorkspace() {
     if (!confirm(`Reject access request for ${user.name}?`)) return;
     try {
       const patch = { status: 'Rejected' as const, active: false };
-      await supabase.from('app_users').update(patch).eq('id', user.id);
+      const { error } = await supabase.from('app_users').update(patch).eq('id', user.id);
+      if (error) throw error;
       setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...patch } : u)));
       showToast(`Rejected request for ${user.name}.`);
     } catch {
@@ -169,7 +171,8 @@ export function UsersWorkspace() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to remove ${name} from portal users?`)) return;
     try {
-      await supabase.from('app_users').delete().eq('id', id);
+      const { error } = await supabase.from('app_users').delete().eq('id', id);
+      if (error) throw error;
       setUsers((prev) => prev.filter((u) => u.id !== id));
       showToast('User removed.');
     } catch {

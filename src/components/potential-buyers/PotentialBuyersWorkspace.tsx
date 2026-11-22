@@ -151,7 +151,8 @@ export function PotentialBuyersWorkspace() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Remove "${name}" from potential buyers?`)) return;
     try {
-      await supabase.from('leads').delete().eq('id', id);
+      const { error } = await supabase.from('leads').delete().eq('id', id);
+      if (error) throw error;
       setLeads((prev) => prev.filter((l) => l.id !== id));
       showToast('Buyer removed.');
     } catch {

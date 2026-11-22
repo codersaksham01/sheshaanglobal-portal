@@ -131,7 +131,8 @@ export function ProductsWorkspace() {
   const handleDelete = async (id: string, sku: string) => {
     if (!confirm(`Are you sure you want to delete SKU "${sku}"?`)) return;
     try {
-      await supabase.from('products').delete().eq('id', id);
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (error) throw error;
       setProducts((prev) => prev.filter((p) => p.id !== id));
       showToast('Product deleted.');
     } catch {

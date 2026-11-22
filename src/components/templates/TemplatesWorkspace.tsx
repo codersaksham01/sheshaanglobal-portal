@@ -127,7 +127,8 @@ export function TemplatesWorkspace() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete template "${name}"?`)) return;
     try {
-      await supabase.from('message_templates').delete().eq('id', id);
+      const { error } = await supabase.from('message_templates').delete().eq('id', id);
+      if (error) throw error;
       setTemplates((prev) => prev.filter((t) => t.id !== id));
       showToast('Template deleted.');
     } catch {

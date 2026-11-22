@@ -5,7 +5,7 @@ export type PortalRole = AppUser['role'];
 export const roleTabs: Record<PortalRole, readonly string[]> = {
   Admin: ['overview', 'crm', 'potentialBuyers', 'quotes', 'accounting', 'paymentIntelligence', 'teamTasks', 'inbox', 'templates', 'generateResponses', 'letterhead', 'products', 'vendors', 'users', 'teamChat', 'profile'],
   Executive: ['overview', 'crm', 'potentialBuyers', 'quotes', 'accounting', 'paymentIntelligence', 'teamTasks', 'inbox', 'templates', 'generateResponses', 'letterhead', 'products', 'vendors', 'teamChat', 'profile'],
-  Sales: ['overview', 'crm', 'potentialBuyers', 'quotes', 'teamTasks', 'inbox', 'templates', 'generateResponses', 'letterhead', 'products', 'teamChat', 'profile'],
+  Sales: ['overview', 'crm', 'potentialBuyers', 'quotes', 'teamTasks', 'inbox', 'templates', 'generateResponses', 'letterhead', 'products', 'vendors', 'teamChat', 'profile'],
   Accounts: ['overview', 'quotes', 'accounting', 'paymentIntelligence', 'teamTasks', 'letterhead', 'teamChat', 'profile'],
   Operations: ['overview', 'products', 'vendors', 'teamTasks', 'letterhead', 'teamChat', 'profile']
 };

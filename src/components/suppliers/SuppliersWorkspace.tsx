@@ -445,10 +445,9 @@ export function SuppliersWorkspace() {
           updated_at: new Date().toISOString()
         } as Vendor;
 
+        const { error } = await supabase.from('vendors').upsert(updated);
+        if (error) throw error;
         setSuppliers(prev => prev.map(s => s.id === updated.id ? updated : s));
-        try {
-          await supabase.from('vendors').upsert(updated);
-        } catch {}
         showToast(`Supplier "${updated.company_name}" updated`);
       } else {
         const newSupplier: Vendor = {
@@ -472,10 +471,9 @@ export function SuppliersWorkspace() {
           updated_at: new Date().toISOString()
         };
 
+        const { error } = await supabase.from('vendors').insert(newSupplier);
+        if (error) throw error;
         setSuppliers(prev => [newSupplier, ...prev]);
-        try {
-          await supabase.from('vendors').insert(newSupplier);
-        } catch {}
         showToast(`Supplier "${newSupplier.company_name}" added`);
       }
 
@@ -489,13 +487,15 @@ export function SuppliersWorkspace() {
 
   const handleDeleteSupplier = async (id: string, name: string) => {
     if (confirm(`Are you sure you want to delete supplier "${name}"?`)) {
-      setSuppliers(prev => prev.filter(s => s.id !== id));
       try {
-        await supabase.from('vendors').delete().eq('id', id);
+        const { error } = await supabase.from('vendors').delete().eq('id', id);
+        if (error) throw error;
+        setSuppliers(prev => prev.filter(s => s.id !== id));
+        showToast(`Supplier "${name}" deleted`);
       } catch (err: any) {
         console.warn('Failed to delete vendor on server:', err);
+        showToast(err?.message || 'Could not delete supplier');
       }
-      showToast(`Supplier "${name}" deleted`);
     }
   };
 
@@ -946,7 +946,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
           {directoryViewMode === 'table' ? (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
               <div className="overflow-hidden">
-                <table className="portal-compact-table w-full table-fixed text-left text-xs border-collapse">
+                <table className="portal-compact-table supplier-directory-table w-full table-fixed text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
                       <th className="py-3 px-3 sm:px-4 w-[43%] sm:w-auto">Supplier Company</th>
@@ -955,7 +955,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                       <th className="py-3 px-3 sm:px-4 hidden xl:table-cell">Commodities Handled</th>
                       <th className="py-3 px-3 sm:px-4 hidden 2xl:table-cell">Payment Terms</th>
                       <th className="py-3 px-2 sm:px-3 text-center w-[20%] sm:w-auto">Status</th>
-                      <th className="portal-table-actions py-3 px-3 sm:px-4 text-right w-[37%] sm:w-auto">Actions</th>
+                      <th className="portal-table-actions py-3 px-3 sm:px-4 text-right w-[9rem] lg:w-[12rem]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1029,33 +1029,31 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                         </td>
 
                         <td className="portal-table-actions py-3 px-3 sm:px-4 text-right whitespace-nowrap">
-                          <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
+                          <div className="inline-flex items-center justify-end gap-1 shrink-0">
                             <button
                               type="button"
                               onClick={() => setViewingSupplier(supplier)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 text-[11px] font-bold shadow-sm transition active:scale-95 shrink-0"
+                              className="inline-flex p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 shadow-sm transition active:scale-95 shrink-0"
                               title="View full supplier details"
                             >
                               <Eye className="h-3.5 w-3.5 text-blue-900 shrink-0" />
-                              <span className="hidden xl:inline">View</span>
                             </button>
 
                             <button
                               onClick={() => handleCreateAgreementForSupplier(supplier)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white text-[11px] font-bold shadow-sm transition active:scale-95 shrink-0"
+                              className="inline-flex p-1.5 rounded-lg bg-blue-900 hover:bg-blue-800 text-white shadow-sm transition active:scale-95 shrink-0"
                               title="Draft Supply Agreement"
                             >
                               <FileCheck2 className="h-3.5 w-3.5 text-orange-400 shrink-0" />
-                              <span className="hidden xl:inline">Agreement</span>
                             </button>
 
-                            <div className="flex items-center gap-1 pl-1 border-l border-slate-200 ml-0.5 shrink-0">
+                            <div className="flex items-center gap-1 pl-1 border-l border-slate-200 shrink-0">
                               {supplier.phone && (
                                 <a
                                   href={`https://wa.me/${supplier.phone.replace(/[^\d]/g, '')}`}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 shrink-0 transition"
+                                  className="hidden sm:inline-flex p-1.5 rounded-lg border border-slate-200 bg-white text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200 shrink-0 transition"
                                   title={`WhatsApp: ${supplier.phone}`}
                                 >
                                   <Phone className="h-3.5 w-3.5" />
@@ -1065,7 +1063,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                               {supplier.contact_email && (
                                 <a
                                   href={`mailto:${supplier.contact_email}`}
-                                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-900 hover:bg-blue-50 hover:border-blue-200 shrink-0 transition"
+                                  className="hidden sm:inline-flex p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-900 hover:bg-blue-50 hover:border-blue-200 shrink-0 transition"
                                   title={`Email: ${supplier.contact_email}`}
                                 >
                                   <Mail className="h-3.5 w-3.5" />
@@ -1242,7 +1240,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
             <div className="overflow-hidden">
-              <table className="portal-compact-table w-full table-fixed text-left text-xs border-collapse">
+              <table className="portal-compact-table supplier-agreements-table w-full table-fixed text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
                     <th className="py-3 px-3 sm:px-4 w-[27%] sm:w-auto">Agreement Ref</th>
@@ -1251,7 +1249,7 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                     <th className="py-3 px-3 sm:px-4 hidden lg:table-cell">Target Window</th>
                     <th className="py-3 px-3 sm:px-4 w-[22%] sm:w-auto">Contract Value</th>
                     <th className="hidden sm:table-cell py-3 px-2 sm:px-3 text-center">Status</th>
-                    <th className="portal-table-actions py-3 px-3 sm:px-4 text-right w-[24%] sm:w-auto">Actions</th>
+                    <th className="portal-table-actions py-3 px-3 sm:px-4 text-right w-[5.5rem]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1323,11 +1321,10 @@ For & On Behalf of ${activeSupplier?.company_name}: ${supplierSignatoryName} (${
                               if (agreement.supplier_id) setSelectedSupplierId(agreement.supplier_id);
                               setActiveView('studio');
                             }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-blue-900 text-[11px] font-bold shadow-sm transition active:scale-95 shrink-0"
+                            className="inline-flex p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-blue-900 shadow-sm transition active:scale-95 shrink-0"
                             title="Open in Agreement Studio"
                           >
                             <Eye className="h-3.5 w-3.5 text-blue-900 shrink-0" />
-                            <span className="hidden sm:inline">Open</span>
                           </button>
 
                           <button

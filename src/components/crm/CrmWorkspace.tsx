@@ -19,7 +19,7 @@ import {
   Clock,
   ExternalLink
 } from 'lucide-react';
-import { supabase } from '../../lib/supabaseClient';
+import { isMock, supabase } from '../../lib/supabaseClient';
 import { getPortalCache, setPortalCache, fetchAllPortalData } from '../../lib/portalDataStore';
 import { Lead, Client, MessageTemplate, TimelineActivity } from '../../lib/types';
 import { CrmLead, CrmStage, CrmPriority } from '../../lib/types/crm';
@@ -208,6 +208,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [selectedCrmLead, setSelectedCrmLead] = useState<CrmLead | null>(null);
   const [buyerPdfExportReady, setBuyerPdfExportReady] = useState(false);
+  const [purgingCrm, setPurgingCrm] = useState(false);
 
   // Load CRM Data directly from database
   const fetchCrmData = useCallback(async () => {
@@ -565,28 +566,93 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
 
   // Move Lead in Kanban
   const handleMoveLeadFromCrm = useCallback(async (leadId: string, targetStage: CrmStage) => {
-    setLeads((prev) =>
-      prev.map((l) => (l.id === leadId ? { ...l, stage: targetStage } : l))
-    );
     try {
-      await supabase.from('leads').update({ stage: targetStage }).eq('id', leadId);
+      const { error } = await supabase.from('leads').update({ stage: targetStage }).eq('id', leadId);
+      if (error) throw error;
+      setLeads((prev) =>
+        prev.map((l) => (l.id === leadId ? { ...l, stage: targetStage } : l))
+      );
     } catch (err) {
       console.error('Failed to update stage:', err);
+      alert('Could not update the lead stage. Please try again.');
     }
   }, []);
 
   // Delete Lead
   const handleDeleteLeadFromCrm = useCallback(async (leadId: string) => {
     if (!confirm('Are you sure you want to delete this lead?')) return;
-    setLeads((prev) => prev.filter((l) => l.id !== leadId));
-    setSelectedLeadIds((prev) => prev.filter((id) => id !== leadId));
-    if (selectedCrmLead?.id === leadId) setSelectedCrmLead(null);
     try {
-      await supabase.from('leads').delete().eq('id', leadId);
+      const { error } = await supabase.from('leads').delete().eq('id', leadId);
+      if (error) throw error;
+      setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      setSelectedLeadIds((prev) => prev.filter((id) => id !== leadId));
+      if (selectedCrmLead?.id === leadId) setSelectedCrmLead(null);
     } catch (err) {
       console.error('Failed to delete lead:', err);
+      alert('Could not delete the lead. Please try again.');
     }
   }, [selectedCrmLead]);
+
+  // CRM reset intentionally targets only records attached to CRM leads. Portal
+  // records such as quotes, invoices, products, users, and message templates
+  // are not part of this operation.
+  const handleStartFreshCrm = useCallback(async () => {
+    if (!leads.length) {
+      alert('There are no CRM leads to delete.');
+      return;
+    }
+
+    const leadIds = leads.map((lead) => lead.id);
+    const leadIdSet = new Set(leadIds);
+    const linkedActivities = activities.filter((activity) => activity.lead_id && leadIdSet.has(activity.lead_id));
+    const confirmed = window.confirm(
+      `Start the CRM fresh?\n\nThis permanently deletes ${leadIds.length} lead${leadIds.length === 1 ? '' : 's'} and ${linkedActivities.length} linked CRM activit${linkedActivities.length === 1 ? 'y' : 'ies'}, plus any CRM follow-up tasks attached to those leads.\n\nPortal data—including quotes, invoices, products, templates, users, shipments, and website data—will remain unchanged.`
+    );
+    if (!confirmed) return;
+
+    const typedConfirmation = window.prompt('Type DELETE CRM to permanently clear the CRM.');
+    if (typedConfirmation !== 'DELETE CRM') {
+      alert('CRM reset cancelled.');
+      return;
+    }
+
+    try {
+      setPurgingCrm(true);
+      if (isMock) {
+        const response = await fetch('/api/db?action=clear-crm', { method: 'POST' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not clear CRM data.');
+      } else {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
+
+        const response = await fetch('/api/crm/reset', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not clear CRM data.');
+      }
+
+      setLeads([]);
+      setActivities((current) => current.filter((activity) => !activity.lead_id || !leadIdSet.has(activity.lead_id)));
+      setSelectedLeadIds([]);
+      setSelectedCrmLead(null);
+      setCrmVisibleCount(50);
+      setPortalCache({ leads: [], activities: [] });
+      if (onLeadsChange) onLeadsChange([]);
+      alert('CRM data has been cleared. You can now start with a fresh pipeline.');
+    } catch (err) {
+      // The user-facing alert below provides the actionable failure message.
+      // Keep this as a warning so a recoverable data-operation error does not
+      // trigger Next.js' development error overlay.
+      console.warn('Failed to reset CRM data:', err);
+      alert(err instanceof Error ? `CRM reset could not be completed: ${err.message}` : 'CRM reset could not be completed. Please try again.');
+      await fetchCrmData();
+    } finally {
+      setPurgingCrm(false);
+    }
+  }, [activities, fetchCrmData, leads, onLeadsChange]);
 
   // Edit Lead / Open Drawer
   const handleEditLead = useCallback((lead: CrmLead) => {
@@ -595,14 +661,41 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
 
   // Save Lead from Drawer
   const handleSaveLeadFromDrawer = useCallback(async (updates: Partial<CrmLead>) => {
-    if (!selectedCrmLead) return;
-    const updated = { ...selectedCrmLead, ...updates, updated_at: new Date().toISOString() };
-    setLeads((prev) => prev.map((l) => (l.id === updated.id ? (updated as Lead) : l)));
-    setSelectedCrmLead(updated);
+    if (!selectedCrmLead) return false;
+    // PostgreSQL date columns reject an empty string. The drawer uses '' for
+    // an unselected follow-up date, so convert it to null before persistence.
+    const databaseUpdates = {
+      ...updates,
+      next_follow_up: updates.next_follow_up || null
+    };
+    const updated = {
+      ...selectedCrmLead,
+      ...updates,
+      next_follow_up: updates.next_follow_up || undefined,
+      updated_at: new Date().toISOString()
+    };
     try {
-      await supabase.from('leads').update(updates).eq('id', updated.id);
+      if (selectedCrmLead.id.startsWith('new-')) {
+        const { id: _temporaryId, created_at: _createdAt, updated_at: _updatedAt, ...newLeadBase } = selectedCrmLead;
+        // Build this from the database-safe updates so an empty optional date
+        // is sent as NULL rather than an invalid empty string.
+        const newLead = { ...newLeadBase, ...databaseUpdates };
+        const { data, error } = await supabase.from('leads').insert([newLead]).select().single();
+        if (error) throw error;
+        if (!data) throw new Error('The lead could not be created. Please try again.');
+        setLeads((prev) => [data, ...prev]);
+        setSelectedCrmLead(data as CrmLead);
+      } else {
+        const { error } = await supabase.from('leads').update(databaseUpdates).eq('id', updated.id);
+        if (error) throw error;
+        setLeads((prev) => prev.map((l) => (l.id === updated.id ? (updated as Lead) : l)));
+        setSelectedCrmLead(updated);
+      }
+      return true;
     } catch (err) {
-      console.error('Failed to save lead updates:', err);
+      console.warn('Failed to save lead updates:', err);
+      alert(err instanceof Error ? `Could not save lead changes: ${err.message}` : 'Could not save lead changes. Please try again.');
+      return false;
     }
   }, [selectedCrmLead]);
 
@@ -650,29 +743,33 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
     const today = new Date().toISOString().slice(0, 10);
     const selectedSet = new Set(selectedLeadIds);
 
-    setLeads((prev) =>
-      prev.map((l) => {
-        if (!selectedSet.has(l.id)) return l;
-        const notes = setLeadNoteValues(l, {
-          'Email Status': 'Email Sent',
-          'Last Email Sent On': today
-        });
-        return { ...l, notes, stage: l.stage === 'New Lead' ? 'Contacted' : l.stage };
-      })
-    );
-    setSelectedLeadIds([]);
-
-    for (const id of selectedLeadIds) {
-      try {
-        await supabase.from('leads').update({
+    try {
+      const results = await Promise.all(selectedLeadIds.map((id) =>
+        supabase.from('leads').update({
           stage: 'Contacted',
           updated_at: new Date().toISOString()
-        }).eq('id', id);
-      } catch {
-        // Continue
-      }
+        }).eq('id', id)
+      ));
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw failed.error;
+
+      setLeads((prev) =>
+        prev.map((l) => {
+          if (!selectedSet.has(l.id)) return l;
+          const notes = setLeadNoteValues(l, {
+            'Email Status': 'Email Sent',
+            'Last Email Sent On': today
+          });
+          return { ...l, notes, stage: l.stage === 'New Lead' ? 'Contacted' : l.stage };
+        })
+      );
+      setSelectedLeadIds([]);
+    } catch (err) {
+      console.error('Failed to update selected leads:', err);
+      alert('Could not update every selected lead. The CRM has been refreshed to show the saved records.');
+      await fetchCrmData();
     }
-  }, [selectedLeadIds]);
+  }, [fetchCrmData, selectedLeadIds]);
 
   // Bulk Delete
   const handleBulkDelete = useCallback(async () => {
@@ -680,16 +777,17 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
     if (!confirm(`Delete ${selectedLeadIds.length} selected leads? This cannot be undone.`)) return;
 
     const selectedSet = new Set(selectedLeadIds);
-    setLeads((prev) => prev.filter((l) => !selectedSet.has(l.id)));
-    setSelectedLeadIds([]);
-    if (selectedCrmLead && selectedSet.has(selectedCrmLead.id)) {
-      setSelectedCrmLead(null);
-    }
-
     try {
-      await supabase.from('leads').delete().in('id', selectedLeadIds);
+      const { error } = await supabase.from('leads').delete().in('id', selectedLeadIds);
+      if (error) throw error;
+      setLeads((prev) => prev.filter((l) => !selectedSet.has(l.id)));
+      setSelectedLeadIds([]);
+      if (selectedCrmLead && selectedSet.has(selectedCrmLead.id)) {
+        setSelectedCrmLead(null);
+      }
     } catch (err) {
       console.error('Failed to bulk delete leads:', err);
+      alert('Could not delete the selected leads. Please try again.');
     }
   }, [selectedLeadIds, selectedCrmLead]);
 
@@ -820,6 +918,16 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
             >
               <Download className="h-4 w-4" />
               Export Excel
+            </button>
+            <button
+              type="button"
+              onClick={handleStartFreshCrm}
+              disabled={!leads.length || purgingCrm}
+              className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-rose-600 text-white rounded-lg font-bold hover:bg-rose-700 transition text-xs shadow-2xs disabled:cursor-not-allowed disabled:opacity-40"
+              title="Permanently clear CRM leads and CRM follow-up history only"
+            >
+              {purgingCrm ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {purgingCrm ? 'Clearing CRM...' : 'Start Fresh'}
             </button>
           </div>
         </div>

@@ -1719,7 +1719,8 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     }
     setDeleting(true);
     try {
-      await supabase.from('quote_items').delete().eq('quote_id', quoteId);
+      const { error: itemsError } = await supabase.from('quote_items').delete().eq('quote_id', quoteId);
+      if (itemsError) throw itemsError;
       const { error } = await supabase.from('quotes').delete().eq('id', quoteId);
       if (error) throw error;
       clearDraft();

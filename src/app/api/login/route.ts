@@ -24,7 +24,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true });
   }
 
-  if (expectedPassword && typeof password === 'string' && password === expectedPassword) {
+  if (!expectedPassword) {
+    return NextResponse.json({ success: false, error: 'Portal login is not configured.' }, { status: 503 });
+  }
+
+  if (typeof password === 'string' && password === expectedPassword) {
     const response = NextResponse.json({ success: true });
     response.cookies.set(sessionCookieName, createSessionToken(), {
       httpOnly: true,
