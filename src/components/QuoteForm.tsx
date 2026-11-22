@@ -106,6 +106,37 @@ const getItemNetWeight = (item: QuoteItem) => {
   return Number(item.quantity || 0);
 };
 
+const quotationNumberWords = (amount: number, currency: 'USD' | 'INR') => {
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const underThousand = (value: number) => {
+    let result = '';
+    if (value >= 100) result += `${ones[Math.floor(value / 100)]} Hundred `;
+    value %= 100;
+    if (value >= 20) result += `${tens[Math.floor(value / 10)]} `;
+    value %= 10;
+    if (value > 0) result += `${ones[value]} `;
+    return result.trim();
+  };
+  const whole = Math.floor(Number(amount) || 0);
+  const fractional = Math.round(((Number(amount) || 0) - whole) * 100);
+  if (whole <= 0) return currency === 'INR' ? 'Indian Rupees Zero Only.' : 'U.S. Dollars Zero Only.';
+
+  const groups: Array<[number, string]> = currency === 'INR'
+    ? [[10000000, 'Crore'], [100000, 'Lakh'], [1000, 'Thousand']]
+    : [[1000000000, 'Billion'], [1000000, 'Million'], [1000, 'Thousand']];
+  let remainder = whole;
+  const words = groups.reduce((result, [divisor, label]) => {
+    const groupValue = Math.floor(remainder / divisor);
+    remainder %= divisor;
+    return groupValue ? `${result}${underThousand(groupValue)} ${label} ` : result;
+  }, '');
+  const mainAmount = `${words}${underThousand(remainder)}`.trim();
+  const prefix = currency === 'INR' ? 'Indian Rupees' : 'U.S. Dollars';
+  const cents = currency === 'INR' ? 'Paise' : 'Cents';
+  return fractional ? `${prefix} ${mainAmount} and ${underThousand(fractional)} ${cents} Only.` : `${prefix} ${mainAmount} Only.`;
+};
+
 const isMissingOptionalQuoteColumnError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String((error as { message?: string } | undefined)?.message || error || '');
   return message.includes('incoterm')
@@ -1961,98 +1992,158 @@ export const QuoteForm: React.FC<QuoteFormProps> = ({ quoteId, onSaveSuccess, on
     setDownloadingExcel(true);
 
     try {
-      const XLSX = await import('xlsx');
-      const currencyFormat = currency === 'INR' ? '₹#,##0.00' : '$#,##0.00';
-      const rows: Array<Array<string | number>> = [
-        [`Quotation: ${quoteNumber || 'Draft quotation'}`],
-        ['Status', status],
-        ['Date', new Date().toLocaleDateString('en-CA')],
-        [],
-        ['Buyer details'],
-        ['Company', currentClient?.company_name || ''],
-        ['Contact', currentClient?.contact_name || ''],
-        ['Email', currentClient?.contact_email || ''],
-        ['Address', currentClient?.address || ''],
-        [],
-        ['Shipment & terms'],
-        ['Currency', currency],
-        ['Incoterm', incoterm],
-        ['Origin country', originCountry],
-        ['Loading port', loadingPort],
-        ['Destination port', destinationPort || currentClient?.destination_port || ''],
-        ['Shipment mode', shipmentMode],
-        ['Payment terms', paymentTerms],
-        ['Validity (days)', validityDays ? Number(validityDays) : ''],
-        [],
-        ['Line items'],
-        ['#', 'SKU', 'Description', 'Pricing basis', 'Quantity', 'Unit', 'Unit weight (kg)', `Unit price (${currency})`, `Line total (${currency})`]
-      ];
+      const response = await fetch('/templates/commercial-quotation.xlsx');
+      if (!response.ok) throw new Error('The commercial quotation template could not be loaded.');
 
-      const lineItemStartRow = rows.length + 1;
-      lineItems.forEach((item, index) => {
-        const isPackagePricing = getItemPricingBasis(item) === 'package';
-        rows.push([
-          index + 1,
-          item.sku || '',
-          item.description || '',
-          isPackagePricing ? 'Per package' : 'Per kg',
-          isPackagePricing ? getItemPackageQuantity(item) : Number(item.quantity || 0),
-          isPackagePricing ? 'package' : 'kg',
-          isPackagePricing ? getItemPackageWeight(item) : Number(item.weight || 0),
-          isPackagePricing ? Number(item.package_unit_price || 0) : Number(item.unit_price || 0),
-          getItemSellTotal(item)
-        ]);
-      });
-      const lineItemEndRow = rows.length;
-
-      rows.push(
-        [],
-        ['Charge summary'],
-        [`Product total (${currency})`, lineItems.reduce((total, item) => total + getItemSellTotal(item), 0)],
-        ['Export packaging', Number(packagingCost || 0)],
-        ['Inland haulage', Number(inlandHaulageCost || 0)],
-        ['Customs clearance', Number(customsClearanceCost || 0)],
-        [freightLabels.transportType, Number(freightCost || 0)],
-        [freightLabels.insuranceLabel, Number(insuranceCost || 0)],
-        [`Grand total (${currency})`, 0],
-        [],
-        ['Notes', commercialNote || '']
-      );
-
-      const worksheet = XLSX.utils.aoa_to_sheet(rows);
-      const productTotalRow = lineItemEndRow + 3;
-      const grandTotalRow = productTotalRow + 6;
-      const productTotalFormula = lineItems.length
-        ? `SUM(I${lineItemStartRow}:I${lineItemEndRow})`
-        : '0';
-
-      lineItems.forEach((_, index) => {
-        const row = lineItemStartRow + index;
-        worksheet[`I${row}`] = { t: 'n', f: `E${row}*H${row}`, z: currencyFormat };
-        worksheet[`H${row}`] = { ...worksheet[`H${row}`], z: currencyFormat };
-      });
-      worksheet[`B${productTotalRow}`] = { t: 'n', f: productTotalFormula, z: currencyFormat };
-      for (let row = productTotalRow + 1; row <= grandTotalRow; row += 1) {
-        worksheet[`B${row}`] = { ...worksheet[`B${row}`], z: currencyFormat };
-      }
-      worksheet[`B${grandTotalRow}`] = {
-        t: 'n',
-        f: `SUM(B${productTotalRow}:B${grandTotalRow - 1})`,
-        z: currencyFormat
+      const { default: ExcelJS } = await import('exceljs/dist/exceljs.min.js') as unknown as {
+        default: { Workbook: new () => any };
       };
-      worksheet['!cols'] = [
-        { wch: 8 }, { wch: 20 }, { wch: 38 }, { wch: 16 }, { wch: 14 },
-        { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 20 }
-      ];
-      worksheet['!merges'] = [
-        XLSX.utils.decode_range('A1:I1'),
-        XLSX.utils.decode_range('A21:I21'),
-        XLSX.utils.decode_range(`A${productTotalRow - 1}:I${productTotalRow - 1}`)
-      ];
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(await response.arrayBuffer());
+      const worksheet = workbook.getWorksheet('Export Quotation Template');
+      if (!worksheet) throw new Error('The commercial quotation template is missing its worksheet.');
 
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Quotation');
-      XLSX.writeFile(workbook, excelFileName, { compression: true });
+      const copyRowStyle = (sourceRow: number, targetRow: number) => {
+        worksheet.getRow(targetRow).height = worksheet.getRow(sourceRow).height;
+        for (let column = 1; column <= 13; column += 1) {
+          worksheet.getCell(targetRow, column).style = JSON.parse(JSON.stringify(worksheet.getCell(sourceRow, column).style));
+        }
+      };
+      const shiftRows = (atRow: number, count: number) => {
+        if (count <= 0) return;
+        const merges = [...worksheet.model.merges] as string[];
+        merges.forEach((range) => worksheet.unMergeCells(range));
+        worksheet.spliceRows(atRow, 0, ...Array.from({ length: count }, () => []));
+        const moveRange = (range: string) => range.replace(/([A-Z]+)(\d+)/g, (_, column: string, row: string) => `${column}${Number(row) + count}`);
+        merges.forEach((range) => {
+          const rows = [...range.matchAll(/[A-Z]+(\d+)/g)].map((match) => Number(match[1]));
+          worksheet.mergeCells(Math.min(...rows) >= atRow ? moveRange(range) : range);
+        });
+      };
+      const mergeProductRows = (topRow: number) => {
+        const bottomRow = topRow + 1;
+        ['A', 'F'].forEach((column) => worksheet.mergeCells(`${column}${topRow}:${column}${bottomRow}`));
+        worksheet.mergeCells(`B${topRow}:E${topRow}`);
+        worksheet.mergeCells(`B${bottomRow}:E${bottomRow}`);
+        worksheet.mergeCells(`G${topRow}:I${bottomRow}`);
+        worksheet.mergeCells(`L${topRow}:M${bottomRow}`);
+      };
+      const mergeCostRows = (topRow: number) => {
+        const bottomRow = topRow + 1;
+        worksheet.mergeCells(`A${topRow}:A${bottomRow}`);
+        worksheet.mergeCells(`B${topRow}:F${topRow}`);
+        worksheet.mergeCells(`B${bottomRow}:F${bottomRow}`);
+        worksheet.mergeCells(`G${topRow}:I${bottomRow}`);
+        worksheet.mergeCells(`J${topRow}:K${bottomRow}`);
+        worksheet.mergeCells(`L${topRow}:M${bottomRow}`);
+      };
+
+      const products = lineItems.length ? lineItems : [{ sku: '', description: '', quantity: 0, unit_price: 0 } as QuoteItem];
+      const productRowExpansion = Math.max(0, products.length - 1) * 2;
+      shiftRows(26, productRowExpansion);
+      for (let index = 1; index < products.length; index += 1) {
+        const topRow = 24 + index * 2;
+        copyRowStyle(24, topRow);
+        copyRowStyle(25, topRow + 1);
+        mergeProductRows(topRow);
+      }
+
+      const productTotal = products.reduce((total, item) => total + getItemSellTotal(item), 0);
+      const originCharges = Number(packagingCost || 0) + Number(inlandHaulageCost || 0) + Number(customsClearanceCost || 0);
+      const costRows = [
+        { title: 'Offered Goods Value', detail: costBreakdownNotes.offered_goods || defaultCostBreakdownNotes.offered_goods, basis: 'As per Section 2', rate: 'Offered Rate', amount: productTotal },
+        ...(showOriginCharges && originCharges > 0 ? [{ title: 'Local Transport, Export & Handling Charges', detail: costBreakdownNotes.origin_charges || defaultCostBreakdownNotes.origin_charges, basis: 'Origin Services', rate: 'Overall Order', amount: originCharges }] : []),
+        ...(showOceanFreight && Number(freightCost || 0) > 0 ? [{ title: freightLabels.freightRowTitle, detail: costBreakdownNotes.ocean_freight || defaultCostBreakdownNotes.ocean_freight, basis: `Lump Sum (${shipmentMode || 'Freight'})`, rate: 'Overall Order', amount: Number(freightCost) }] : []),
+        ...(showInsuranceCharge && Number(insuranceCost || 0) > 0 ? [{ title: freightLabels.insuranceLabel, detail: costBreakdownNotes.insurance || defaultCostBreakdownNotes.insurance, basis: 'Lump Sum (Policy)', rate: 'Overall Order', amount: Number(insuranceCost) }] : [])
+      ];
+      const costStartRow = 32 + productRowExpansion;
+      const costRowExpansion = Math.max(0, costRows.length - 2) * 2;
+      shiftRows(costStartRow + 4, costRowExpansion);
+      for (let index = 2; index < costRows.length; index += 1) {
+        const topRow = costStartRow + index * 2;
+        copyRowStyle(costStartRow, topRow);
+        copyRowStyle(costStartRow + 1, topRow + 1);
+        mergeCostRows(topRow);
+      }
+
+      const destination = destinationPort || currentClient?.destination_port || '';
+      const exportDate = new Date().toLocaleDateString('en-GB');
+      worksheet.getCell('J3').value = quoteNumber || 'DRAFT';
+      worksheet.getCell('K4').value = exportDate;
+      worksheet.getCell('K5').value = validityDays ? `${validityDays} Days` : '';
+      worksheet.getCell('K6').value = paymentTerms || '';
+      worksheet.getCell('H11').value = currentClient?.company_name || '';
+      worksheet.getCell('H12').value = currentClient?.address || '';
+      worksheet.getCell('J14').value = [currentClient?.contact_name, currentClient?.phone].filter(Boolean).join(' | ');
+      worksheet.getCell('J15').value = currentClient?.contact_email || '';
+      worksheet.getCell('J16').value = destination;
+      [['A19', incoterm], ['C19', originCountry], ['E19', loadingPort], ['G19', destination], ['I19', shipmentMode], ['K19', paymentTerms]].forEach(([cell, value]) => { worksheet.getCell(cell).value = value || ''; });
+      worksheet.getCell('K23').value = `UNIT PRICE (-\n${currency})`;
+      worksheet.getCell('L23').value = `TOTAL AMOUNT (-\n${currency})`;
+
+      products.forEach((item, index) => {
+        const topRow = 24 + index * 2;
+        const packagePricing = getItemPricingBasis(item) === 'package';
+        const quantity = packagePricing ? getItemPackageQuantity(item) : Number(item.quantity || 0);
+        const unitPrice = packagePricing ? Number(item.package_unit_price || 0) : Number(item.unit_price || 0);
+        const description = [item.sku, item.description].filter(Boolean).join(' — ');
+        worksheet.getCell(`A${topRow}`).value = index + 1;
+        worksheet.getCell(`B${topRow}`).value = description;
+        worksheet.getCell(`B${topRow + 1}`).value = packagePricing ? `Pricing basis: package${getItemPackageWeight(item) ? ` (${getItemPackageWeight(item)} kg each)` : ''}` : 'Pricing basis: per kg';
+        worksheet.getCell(`F${topRow}`).value = item.hs_code || '';
+        worksheet.getCell(`G${topRow}`).value = item.packing_container || item.packaging_type || '';
+        worksheet.getCell(`J${topRow}`).value = quantity;
+        worksheet.getCell(`K${topRow}`).value = unitPrice;
+        worksheet.getCell(`L${topRow}`).value = { formula: `J${topRow}*K${topRow}`, result: getItemSellTotal(item) };
+        worksheet.getCell(`K${topRow}`).numFmt = '#,##0.00';
+        worksheet.getCell(`L${topRow}`).numFmt = '#,##0.00';
+      });
+
+      const productGrandTotalRow = 26 + productRowExpansion;
+      worksheet.getCell(`L${productGrandTotalRow}`).value = { formula: `SUM(${products.map((_, index) => `L${24 + index * 2}`).join(',')})`, result: productTotal };
+      worksheet.getCell(`L${productGrandTotalRow}`).numFmt = '#,##0.00';
+      worksheet.getCell(`A${productGrandTotalRow + 1}`).value = `Amount in Words: ${quotationNumberWords(productTotal, currency)}`;
+
+      costRows.forEach((entry, index) => {
+        const topRow = costStartRow + index * 2;
+        worksheet.getCell(`A${topRow}`).value = index + 1;
+        worksheet.getCell(`B${topRow}`).value = entry.title;
+        worksheet.getCell(`B${topRow + 1}`).value = entry.detail;
+        worksheet.getCell(`G${topRow}`).value = entry.basis;
+        worksheet.getCell(`J${topRow}`).value = entry.rate;
+        worksheet.getCell(`L${topRow}`).value = entry.amount;
+        worksheet.getCell(`L${topRow}`).numFmt = '#,##0.00';
+      });
+      for (let index = costRows.length; index < 2; index += 1) {
+        const topRow = costStartRow + index * 2;
+        ['A', 'B', 'G', 'J', 'L'].forEach((column) => { worksheet.getCell(`${column}${topRow}`).value = ''; });
+        worksheet.getCell(`B${topRow + 1}`).value = '';
+      }
+      const offeredTotal = costRows.reduce((total, row) => total + row.amount, 0);
+      const offeredTotalRow = 36 + productRowExpansion + costRowExpansion;
+      worksheet.getCell(`L${offeredTotalRow}`).value = { formula: `SUM(${costRows.map((_, index) => `L${costStartRow + index * 2}`).join(',')})`, result: offeredTotal };
+      worksheet.getCell(`L${offeredTotalRow}`).numFmt = '#,##0.00';
+      worksheet.getCell(`A${offeredTotalRow + 1}`).value = `Total Offered Value in Words: ${quotationNumberWords(offeredTotal, currency)}`;
+
+      const sectionOffset = productRowExpansion + costRowExpansion;
+      worksheet.getCell(`C${39 + sectionOffset}`).value = commercialNote || 'This commercial structure is indicative and subject to final confirmation, availability of cargo, and standard export documentation.';
+      worksheet.getCell(`A${50 + sectionOffset}`).value = (includedScope || []).map((item) => `• ${item}`).join('\n');
+      worksheet.getCell(`H${50 + sectionOffset}`).value = (excludedScope || []).map((item) => `• ${item}`).join('\n');
+      worksheet.getCell(`A${55 + sectionOffset}`).value = (docList || []).map((item) => `• ${item}`).join('\n');
+      const logisticsRows: Array<[number, keyof LogisticsSpecs]> = [[55, 'shipment_window'], [56, 'transit_time'], [57, 'partial_shipment'], [58, 'container_type'], [59, 'storage_condition']];
+      logisticsRows.forEach(([row, key]) => { worksheet.getCell(`K${row + sectionOffset}`).value = specMap[key] || ''; });
+      worksheet.getCell(`A${62 + sectionOffset}`).value = (commercialTerms || []).map((item) => `• ${item}`).join('\n');
+
+      const output = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = excelFileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       console.error('Error exporting quotation to Excel:', err);
       alert('Unable to export the quotation to Excel. Please try again.');
