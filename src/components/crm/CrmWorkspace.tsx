@@ -19,7 +19,7 @@ import {
   Clock,
   ExternalLink
 } from 'lucide-react';
-import { isMock, supabase } from '../../lib/supabaseClient';
+import { isMock, isSupabaseConfigured, supabase } from '../../lib/supabaseClient';
 import { getPortalCache, setPortalCache, fetchAllPortalData } from '../../lib/portalDataStore';
 import { Lead, Client, MessageTemplate, TimelineActivity } from '../../lib/types';
 import { CrmLead, CrmStage, CrmPriority } from '../../lib/types/crm';
@@ -622,7 +622,7 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
         const response = await fetch('/api/db?action=clear-crm', { method: 'POST' });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || 'Could not clear CRM data.');
-      } else {
+      } else if (isSupabaseConfigured) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) throw new Error('Your session has expired. Please sign in again.');
 
@@ -632,6 +632,18 @@ export function CrmWorkspace({ initialLeads, onLeadsChange }: CrmWorkspaceProps)
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || 'Could not clear CRM data.');
+      } else {
+        // The live Netlify portal is currently configured with the Firebase
+        // data adapter. It has no Supabase Auth client, so calling
+        // `supabase.auth.getSession()` here crashes before any deletion can
+        // begin. Its compatible adapter supports these filtered deletes.
+        const results = await Promise.all([
+          supabase.from('activities').delete().in('lead_id', leadIds),
+          supabase.from('tasks').delete().in('lead_id', leadIds),
+          supabase.from('leads').delete().in('id', leadIds)
+        ]);
+        const failed = results.find((result: { error?: { message?: string } }) => result?.error);
+        if (failed?.error) throw new Error(failed.error.message || 'Could not clear CRM data.');
       }
 
       setLeads([]);
